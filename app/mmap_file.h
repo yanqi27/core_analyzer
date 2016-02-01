@@ -30,7 +30,6 @@
 #include <windows.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <stdio.h>
 #else
 #include <sys/mman.h>
 #include <fcntl.h>
@@ -39,6 +38,7 @@
 #include <errno.h>
 #include <sys/stat.h>
 #endif
+#include <stdio.h>
 
 #include "cross_platform.h"
 
@@ -204,6 +204,10 @@ public:
 		}
 
 #ifdef WIN32
+		if (mpStartAddr)
+		{
+			::UnmapViewOfFile(mpStartAddr);
+		}
 		if(mhFile)
 		{
 			::CloseHandle(mhFile);

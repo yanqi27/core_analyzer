@@ -539,3 +539,9 @@ address_t ca_eval_address(const char* expr)
 void calc_heap_usage(char *exp)
 {
 }
+
+CA_BOOL  search_all_objects(unsigned int)
+{
+	return CA_FALSE;
+}
+

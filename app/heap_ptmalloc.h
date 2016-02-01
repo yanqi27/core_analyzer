@@ -323,6 +323,40 @@ struct malloc_par_GLIBC_2_12 {
 #define HEAP_MAX_SIZE_GLIBC_2_12    HEAP_MAX_SIZE_GLIBC_2_5
 
 /************************************************************************
+**  GNU C Library version 2.17
+************************************************************************/
+#define malloc_state_GLIBC_2_17 malloc_state_GLIBC_2_12
+
+struct malloc_par_GLIBC_2_17 {
+  /* Tunable parameters */
+  unsigned long    trim_threshold;
+  INTERNAL_SIZE_T  top_pad;
+  INTERNAL_SIZE_T  mmap_threshold;
+  INTERNAL_SIZE_T  arena_test;
+  INTERNAL_SIZE_T  arena_max;
+
+  /* Memory map support */
+  int              n_mmaps;
+  int              n_mmaps_max;
+  int              max_n_mmaps;
+  int              no_dyn_threshold;
+
+  /* Cache malloc_getpagesize */
+  //unsigned int     pagesize;
+
+  /* Statistics */
+  INTERNAL_SIZE_T  mmapped_mem;
+  INTERNAL_SIZE_T  max_mmapped_mem;
+  INTERNAL_SIZE_T  max_total_mem; /* only kept for NO_THREADS */
+
+  /* First address handed out by MORECORE/sbrk.  */
+  char*            sbrk_base;
+};
+
+#define HEAP_MAX_SIZE_GLIBC_2_17    HEAP_MAX_SIZE_GLIBC_2_5
+#define MAX_FAST_SIZE_GLIBC_2_17    MAX_FAST_SIZE_GLIBC_2_12
+
+/************************************************************************
 **  32-bit Target
 **  Assume the debug host is 64-bit
 ************************************************************************/
@@ -609,5 +643,36 @@ struct malloc_par_GLIBC_2_12_32 {
 };
 
 #define HEAP_MAX_SIZE_GLIBC_2_12_32    HEAP_MAX_SIZE_GLIBC_2_5_32
+
+#define malloc_state_GLIBC_2_17_32 malloc_state_GLIBC_2_12_32
+
+struct malloc_par_GLIBC_2_17_32 {
+  // Tunable parameters
+  unsigned int    trim_threshold;
+  INTERNAL_SIZE_T_32  top_pad;
+  INTERNAL_SIZE_T_32  mmap_threshold;
+  INTERNAL_SIZE_T_32  arena_test;
+  INTERNAL_SIZE_T_32  arena_max;
+
+  // Memory map support
+  int              n_mmaps;
+  int              n_mmaps_max;
+  int              max_n_mmaps;
+  int              no_dyn_threshold;
+
+  // Cache malloc_getpagesize
+  //unsigned int     pagesize;
+
+  // Statistics
+  INTERNAL_SIZE_T_32  mmapped_mem;
+  INTERNAL_SIZE_T_32  max_mmapped_mem;
+  INTERNAL_SIZE_T_32  max_total_mem; // only kept for NO_THREADS
+
+  // First address handed out by MORECORE/sbrk.
+  ptr_t_32            sbrk_base;	//char*
+};
+
+#define HEAP_MAX_SIZE_GLIBC_2_17_32    HEAP_MAX_SIZE_GLIBC_2_5_32
+
 
 #endif /* _MM_PTMALLOC_H */

@@ -21,8 +21,9 @@ extern void set_max_indirection_level(unsigned int);
 
 extern CA_BOOL find_object_refs_on_threads(address_t addr, size_t size, unsigned int depth);
 
-extern CA_BOOL  search_cplusplus_objects_and_references(const char* exp);
+extern CA_BOOL  search_cplusplus_objects_and_references(const char* exp, CA_BOOL thread_scope);
 extern struct CA_LIST* search_cplusplus_objects_with_vptr(const char* exp);
+extern CA_BOOL  search_all_objects(unsigned int);
 
 extern CA_BOOL find_shared_objects_by_threads(struct CA_LIST* threads);
 extern struct CA_LIST* search_shared_objects_by_threads(struct CA_LIST* threads);

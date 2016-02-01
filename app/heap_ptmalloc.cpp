@@ -43,6 +43,7 @@ union malloc_state
 	struct malloc_state_GLIBC_2_4 mstate_2_4;
 	struct malloc_state_GLIBC_2_5 mstate_2_5;
 	struct malloc_state_GLIBC_2_12 mstate_2_12;
+	struct malloc_state_GLIBC_2_17 mstate_2_17;
 	struct malloc_state_GLIBC_2_3_32 mstate_2_3_32;
 	struct malloc_state_GLIBC_2_4_32 mstate_2_4_32;
 	struct malloc_state_GLIBC_2_5_32 mstate_2_5_32;
@@ -140,6 +141,15 @@ struct ca_arena
 		mparams.sbrk_base      = (char*) pars.sbrk_base; \
 	} while(0)
 
+#define COPY_MALLOC_PAR_WITHOUT_PAGESIZE(pars) \
+	do { \
+		mparams.mmap_threshold = pars.mmap_threshold; \
+		mparams.n_mmaps        = pars.n_mmaps; \
+		mparams.pagesize       = 4096; \
+		mparams.mmapped_mem    = pars.mmapped_mem; \
+		mparams.sbrk_base      = (char*) pars.sbrk_base; \
+	} while(0)
+
 /*
  * Global variables
  */
@@ -169,6 +179,7 @@ static void copy_mstate_2_3(struct ca_malloc_state*, struct malloc_state_GLIBC_2
 static void copy_mstate_2_4(struct ca_malloc_state*, struct malloc_state_GLIBC_2_4*);
 static void copy_mstate_2_5(struct ca_malloc_state*, struct malloc_state_GLIBC_2_5*);
 static void copy_mstate_2_12(struct ca_malloc_state*, struct malloc_state_GLIBC_2_12*);
+#define copy_mstate_2_17(ca_state,malloc_state) copy_mstate_2_12(ca_state,malloc_state)
 
 static CA_BOOL build_sorted_heaps(void);
 static void release_sorted_heaps(void);
@@ -290,6 +301,7 @@ CA_BOOL heap_walk(address_t heapaddr, CA_BOOL verbose)
 	size_t totoal_free_bytes, totoal_inuse_bytes;
 	unsigned long total_num_inuse, total_num_free;
 	unsigned int num_mmap;
+	unsigned int mmap_arena_cnt = 0;
 	int i, num_error;
 	struct ca_heap*  heap;
 
@@ -356,6 +368,7 @@ CA_BOOL heap_walk(address_t heapaddr, CA_BOOL verbose)
 		else if (arena->mType == ENUM_HEAP_MMAP_BLOCK)
 		{
 			CA_PRINT("\tmmap-ed large memory blocks:\n");
+			mmap_arena_cnt++;
 		}
 		else
 		{
@@ -406,7 +419,7 @@ CA_BOOL heap_walk(address_t heapaddr, CA_BOOL verbose)
 	CA_PRINT("\n");
 	if (rc)
 	{
-		CA_PRINT("\tThere are %d arenas", g_arena_cnt);
+		CA_PRINT("\tThere are %d arenas", g_arena_cnt - mmap_arena_cnt);
 		if (num_mmap > 0)
 			CA_PRINT(" and %d mmap-ed memory blocks", num_mmap);
 		CA_PRINT(" Total ");
@@ -878,6 +891,13 @@ static struct ca_arena* build_arena(address_t arena_vaddr, enum HEAP_TYPE type)
 			if (rc)
 				copy_mstate_2_12(&arena->mpState, &arena_state.mstate_2_12);
 		}
+		else if (glibc_ver_minor == 17)
+		{
+			rc = read_memory_wrapper(NULL, arena_vaddr, &arena_state,
+					ptr_bit == 64 ? sizeof(struct malloc_state_GLIBC_2_17) : sizeof(struct malloc_state_GLIBC_2_17_32));
+			if (rc)
+				copy_mstate_2_17(&arena->mpState, &arena_state.mstate_2_17);
+		}
 		else
 			return NULL;
 
@@ -1020,6 +1040,8 @@ static struct ca_arena* build_arena(address_t arena_vaddr, enum HEAP_TYPE type)
 			mstate_size = ptr_bit == 64 ? sizeof(struct malloc_state_GLIBC_2_5) : sizeof(struct malloc_state_GLIBC_2_5_32);
 		else if (glibc_ver_minor == 12)
 			mstate_size = ptr_bit == 64 ? sizeof(struct malloc_state_GLIBC_2_12) : sizeof(struct malloc_state_GLIBC_2_12_32);
+		else if (glibc_ver_minor == 17)
+			mstate_size = ptr_bit == 64 ? sizeof(struct malloc_state_GLIBC_2_17) : sizeof(struct malloc_state_GLIBC_2_17_32);
 		else
 			return NULL;
 
@@ -1212,6 +1234,15 @@ static CA_BOOL build_heaps_internal_32(address_t main_arena_vaddr, address_t mpa
 		if (rc)
 			COPY_MALLOC_PAR(pars);
 	}
+	else if (glibc_ver_minor == 17)
+	{
+		struct malloc_par_GLIBC_2_17_32 pars;
+		g_HEAP_MAX_SIZE = HEAP_MAX_SIZE_GLIBC_2_17_32;
+		g_MAX_FAST_SIZE = MAX_FAST_SIZE_GLIBC_2_12_32;
+		rc = read_memory_wrapper(NULL, mparams_vaddr, &pars, sizeof(pars));
+		if (rc)
+			COPY_MALLOC_PAR_WITHOUT_PAGESIZE(pars);
+	}
 
 	if (!rc)
 	{
@@ -1328,6 +1359,15 @@ static CA_BOOL build_heaps_internal_64(address_t main_arena_vaddr, address_t mpa
 		if (rc)
 			COPY_MALLOC_PAR(pars);
 	}
+	else if (glibc_ver_minor == 17)
+	{
+		struct malloc_par_GLIBC_2_17 pars;
+		g_HEAP_MAX_SIZE = HEAP_MAX_SIZE_GLIBC_2_17;
+		g_MAX_FAST_SIZE = MAX_FAST_SIZE_GLIBC_2_17;
+		rc = read_memory_wrapper(NULL, mparams_vaddr, &pars, sizeof(pars));
+		if (rc)
+			COPY_MALLOC_PAR_WITHOUT_PAGESIZE(pars);
+	}
 
 	if (!rc)
 	{
@@ -1419,7 +1459,8 @@ static CA_BOOL build_heaps(void)
 		&& glibc_ver_minor != 4
 		&& glibc_ver_minor != 5
 		//&& glibc_ver_minor != 11
-		&& glibc_ver_minor != 12)
+		&& glibc_ver_minor != 12
+		&& glibc_ver_minor != 17)
 	{
 		CA_PRINT("The memory manager of glibc %d.%d is not supported in this release\n",
 				glibc_ver_major, glibc_ver_minor);
@@ -1469,7 +1510,7 @@ static CA_BOOL in_fastbins_or_remainder(struct ca_malloc_state* mstate, mchunkpt
 		else
 			index = fastbin_index_GLIBC_2_5_32(chunksz);
 	}
-	else if (glibc_ver_minor == 12)
+	else if (glibc_ver_minor == 12 || glibc_ver_minor == 17)
 	{
 		if (ptr_bit == 64)
 			index = fastbin_index_GLIBC_2_12(chunksz);

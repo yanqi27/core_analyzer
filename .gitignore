@@ -27,6 +27,9 @@
 *.out
 *.app
 
+#Kdevelop files
+*.kdev4
+
 # =========================
 # Operating System Files
 # =========================

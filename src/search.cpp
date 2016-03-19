@@ -1096,7 +1096,7 @@ struct CA_LIST* search_cplusplus_objects_with_vptr(const char* exp)
 /////////////////////////////////////////////////////////////////////////
 // search C++ objects and references to them by the type of the input expression
 /////////////////////////////////////////////////////////////////////////
-CA_BOOL search_cplusplus_objects_and_references(const char* exp)
+CA_BOOL search_cplusplus_objects_and_references(const char* exp, CA_BOOL thread_scope)
 {
 	CA_BOOL lbFound = CA_FALSE;
 	struct CA_LIST* vtables = ca_list_new();

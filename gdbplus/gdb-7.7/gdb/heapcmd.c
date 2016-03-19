@@ -173,7 +173,7 @@ obj_command (char *arg, int from_tty)
 		return;
 
 	old_chain = make_cleanup_restore_current_thread ();
-	search_cplusplus_objects_and_references(arg);
+	search_cplusplus_objects_and_references(arg, CA_FALSE);
 	// remember to resume the current thread/frame
 	do_cleanups (old_chain);
 }

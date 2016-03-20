@@ -8,6 +8,8 @@
 #include "segment.h"
 #include "heap_ptmalloc.h"
 
+#pragma GCC diagnostic ignored "-Wint-to-pointer-cast"
+
 /***************************************************************************
 * Implementation specific data structures
 ***************************************************************************/
@@ -19,8 +21,11 @@ struct ca_malloc_par
 {
   INTERNAL_SIZE_T  mmap_threshold;
   int              n_mmaps;
+  int              n_mmaps_max;
+  int              max_n_mmaps;
   unsigned int     pagesize;
   INTERNAL_SIZE_T  mmapped_mem;
+  INTERNAL_SIZE_T  max_total_mem;
   char*            sbrk_base;
 };
 
@@ -30,7 +35,7 @@ struct ca_malloc_state {
   mfastbinptr      fastbins[NFASTBINS_GLIBC_2_5];	/* ver 2.5 has bigger NFASTBINS than ver 2.3 */
   mchunkptr        top;
   mchunkptr        last_remainder;
-  mchunkptr        bins[NBINS * 2 - 2];
+  mchunkptr        bins[NBINS * 2];
   unsigned int     binmap[BINMAPSIZE];
   void *next;
   void *next_free;
@@ -136,6 +141,9 @@ struct ca_arena
 	do { \
 		mparams.mmap_threshold = pars.mmap_threshold; \
 		mparams.n_mmaps        = pars.n_mmaps; \
+		mparams.n_mmaps_max    = pars.n_mmaps_max; \
+		mparams.max_total_mem  = pars.max_total_mem; \
+		mparams.max_n_mmaps    = pars.max_n_mmaps; \
 		mparams.pagesize       = pars.pagesize; \
 		mparams.mmapped_mem    = pars.mmapped_mem; \
 		mparams.sbrk_base      = (char*) pars.sbrk_base; \
@@ -145,6 +153,9 @@ struct ca_arena
 	do { \
 		mparams.mmap_threshold = pars.mmap_threshold; \
 		mparams.n_mmaps        = pars.n_mmaps; \
+		mparams.n_mmaps_max    = pars.n_mmaps_max; \
+		mparams.max_total_mem  = pars.max_total_mem; \
+		mparams.max_n_mmaps    = pars.max_n_mmaps; \
 		mparams.pagesize       = 4096; \
 		mparams.mmapped_mem    = pars.mmapped_mem; \
 		mparams.sbrk_base      = (char*) pars.sbrk_base; \
@@ -338,6 +349,8 @@ CA_BOOL heap_walk(address_t heapaddr, CA_BOOL verbose)
 	CA_PRINT("\t\tmmap_threshold="PRINT_FORMAT_SIZE"\n", mparams.mmap_threshold);
 	CA_PRINT("\t\tpagesize=%d\n", mparams.pagesize);
 	CA_PRINT("\t\tn_mmaps=%d\n", mparams.n_mmaps);
+	CA_PRINT("\t\tn_mmaps_max=%d\n", mparams.n_mmaps_max);
+	CA_PRINT("\t\ttotal mmap regions created=%d\n", mparams.max_n_mmaps);
 	CA_PRINT("\t\tmmapped_mem="PRINT_FORMAT_SIZE"\n", mparams.mmapped_mem);
 	CA_PRINT("\t\tsbrk_base=%p\n", mparams.sbrk_base);
 
@@ -891,7 +904,7 @@ static struct ca_arena* build_arena(address_t arena_vaddr, enum HEAP_TYPE type)
 			if (rc)
 				copy_mstate_2_12(&arena->mpState, &arena_state.mstate_2_12);
 		}
-		else if (glibc_ver_minor == 17)
+		else if (glibc_ver_minor == 17 || glibc_ver_minor == 18 || glibc_ver_minor == 19)
 		{
 			rc = read_memory_wrapper(NULL, arena_vaddr, &arena_state,
 					ptr_bit == 64 ? sizeof(struct malloc_state_GLIBC_2_17) : sizeof(struct malloc_state_GLIBC_2_17_32));
@@ -1040,7 +1053,7 @@ static struct ca_arena* build_arena(address_t arena_vaddr, enum HEAP_TYPE type)
 			mstate_size = ptr_bit == 64 ? sizeof(struct malloc_state_GLIBC_2_5) : sizeof(struct malloc_state_GLIBC_2_5_32);
 		else if (glibc_ver_minor == 12)
 			mstate_size = ptr_bit == 64 ? sizeof(struct malloc_state_GLIBC_2_12) : sizeof(struct malloc_state_GLIBC_2_12_32);
-		else if (glibc_ver_minor == 17)
+		else if (glibc_ver_minor == 17 || glibc_ver_minor == 18 || glibc_ver_minor == 19)
 			mstate_size = ptr_bit == 64 ? sizeof(struct malloc_state_GLIBC_2_17) : sizeof(struct malloc_state_GLIBC_2_17_32);
 		else
 			return NULL;
@@ -1179,7 +1192,7 @@ static CA_BOOL build_heaps_internal_32(address_t main_arena_vaddr, address_t mpa
 {
 	address_t arena_vaddr;
 	struct ca_arena* arena;
-	CA_BOOL rc;
+	CA_BOOL rc = CA_FALSE;
 
 	// Read in the tuning parames
 	if (glibc_ver_minor == 3)
@@ -1234,7 +1247,7 @@ static CA_BOOL build_heaps_internal_32(address_t main_arena_vaddr, address_t mpa
 		if (rc)
 			COPY_MALLOC_PAR(pars);
 	}
-	else if (glibc_ver_minor == 17)
+	else if (glibc_ver_minor == 17 || glibc_ver_minor == 18 || glibc_ver_minor == 19)
 	{
 		struct malloc_par_GLIBC_2_17_32 pars;
 		g_HEAP_MAX_SIZE = HEAP_MAX_SIZE_GLIBC_2_17_32;
@@ -1304,7 +1317,7 @@ static CA_BOOL build_heaps_internal_64(address_t main_arena_vaddr, address_t mpa
 {
 	address_t arena_vaddr;
 	struct ca_arena* arena;
-	CA_BOOL rc;
+	CA_BOOL rc = CA_FALSE;
 
 	// Read in the tuning parames
 	if (glibc_ver_minor == 3)
@@ -1359,7 +1372,7 @@ static CA_BOOL build_heaps_internal_64(address_t main_arena_vaddr, address_t mpa
 		if (rc)
 			COPY_MALLOC_PAR(pars);
 	}
-	else if (glibc_ver_minor == 17)
+	else if (glibc_ver_minor == 17 || glibc_ver_minor == 18 || glibc_ver_minor == 19)
 	{
 		struct malloc_par_GLIBC_2_17 pars;
 		g_HEAP_MAX_SIZE = HEAP_MAX_SIZE_GLIBC_2_17;
@@ -1460,7 +1473,9 @@ static CA_BOOL build_heaps(void)
 		&& glibc_ver_minor != 5
 		//&& glibc_ver_minor != 11
 		&& glibc_ver_minor != 12
-		&& glibc_ver_minor != 17)
+		&& glibc_ver_minor != 17
+		&& glibc_ver_minor != 18
+		&& glibc_ver_minor != 19)
 	{
 		CA_PRINT("The memory manager of glibc %d.%d is not supported in this release\n",
 				glibc_ver_major, glibc_ver_minor);
@@ -1510,7 +1525,7 @@ static CA_BOOL in_fastbins_or_remainder(struct ca_malloc_state* mstate, mchunkpt
 		else
 			index = fastbin_index_GLIBC_2_5_32(chunksz);
 	}
-	else if (glibc_ver_minor == 12 || glibc_ver_minor == 17)
+	else if (glibc_ver_minor == 12 || glibc_ver_minor == 17 || glibc_ver_minor == 18 || glibc_ver_minor == 19)
 	{
 		if (ptr_bit == 64)
 			index = fastbin_index_GLIBC_2_12(chunksz);
@@ -1742,9 +1757,9 @@ static CA_BOOL check_bin_and_fastbin(struct ca_arena* arena)
 
 	for (fbi = 0; fbi < arena->mpState.nfastbins; fbi++)
 	{
-		error_found = CA_FALSE;
 		address_t chunk_vaddr = (address_t)arena->mpState.fastbins[fbi];
 		address_t chunk_prev_vaddr = 0;
+		error_found = CA_FALSE;
 		while (chunk_vaddr)
 		{
 			union ca_malloc_chunk fast_chunk;

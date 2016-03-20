@@ -33,6 +33,8 @@
 #include "segment.h"
 #include "stl_container.h"
 
+#pragma GCC diagnostic ignored "-Wint-to-pointer-cast"
+
 #ifdef linux
 static const char* reg_names[ELF_NGREG] = {
 	"%r15",

@@ -43,24 +43,11 @@ typedef struct malloc_chunk* mchunkptr;
    MINSIZE :                                                      \
    ((req) + SIZE_SZ + MALLOC_ALIGN_MASK) & ~MALLOC_ALIGN_MASK)
 
-/* The maximum fastbin request size we support */
-#define MAX_FAST_SIZE_GLIBC_2_3     80
-#define fastbin_index_GLIBC_2_3(sz) ((((unsigned int)(sz)) >> 3) - 2)
-#define NFASTBINS_GLIBC_2_3  (fastbin_index_GLIBC_2_3(request2size(MAX_FAST_SIZE_GLIBC_2_3))+1)
-
-#define MAX_FAST_SIZE_GLIBC_2_5     MAX_FAST_SIZE_GLIBC_2_3
-#define fastbin_index_GLIBC_2_5(sz) fastbin_index_GLIBC_2_3(sz)
-#define NFASTBINS_GLIBC_2_5         NFASTBINS_GLIBC_2_3
-
-#define MAX_FAST_SIZE_GLIBC_2_12     (80 * SIZE_SZ / 4)
-#define fastbin_index_GLIBC_2_12(sz) ((((unsigned int)(sz)) >> (SIZE_SZ == 8 ? 4 : 3)) - 2)
-#define NFASTBINS_GLIBC_2_12  (fastbin_index_GLIBC_2_12(request2size(MAX_FAST_SIZE_GLIBC_2_12))+1)
-
 #define NONCONTIGUOUS_BIT (2U)
 #define contiguous(M)     (((M)->flags &  NONCONTIGUOUS_BIT) == 0)
 #define noncontiguous(M)  (((M)->flags &  NONCONTIGUOUS_BIT) != 0)
 
-#define NBINS             128
+#define NBINS            128
 #define BINMAPSHIFT      5
 #define BITSPERMAP       (1U << BINMAPSHIFT)
 #define BINMAPSIZE       (NBINS / BITSPERMAP)
@@ -77,6 +64,11 @@ typedef struct malloc_chunk* mchunkptr;
 /************************************************************************
 **  GNU C Library version 2.3.4
 ************************************************************************/
+/* The maximum fastbin request size we support */
+#define MAX_FAST_SIZE_GLIBC_2_3     80
+#define fastbin_index_GLIBC_2_3(sz) ((((unsigned int)(sz)) >> 3) - 2)
+#define NFASTBINS_GLIBC_2_3  (fastbin_index_GLIBC_2_3(request2size(MAX_FAST_SIZE_GLIBC_2_3))+1)
+
 struct malloc_state_GLIBC_2_3 {
   int mutex; //mutex_t mutex;
 
@@ -183,6 +175,10 @@ struct malloc_state_GLIBC_2_4 {
 /************************************************************************
 **  GNU C Library version 2.5 and later
 ************************************************************************/
+#define MAX_FAST_SIZE_GLIBC_2_5     MAX_FAST_SIZE_GLIBC_2_3
+#define fastbin_index_GLIBC_2_5(sz) fastbin_index_GLIBC_2_3(sz)
+#define NFASTBINS_GLIBC_2_5         NFASTBINS_GLIBC_2_3
+
 struct malloc_state_GLIBC_2_5 {
   int mutex; //mutex_t mutex;
 
@@ -262,6 +258,12 @@ struct heap_info_GLIBC_2_5 {
 /************************************************************************
 **  GNU C Library version 2.12.2
 ************************************************************************/
+// MAX_FAST_SIZE is 160; NFASTBINS is 10
+// global_max_fast is 128 by default
+#define MAX_FAST_SIZE_GLIBC_2_12     (80 * SIZE_SZ / 4)
+#define fastbin_index_GLIBC_2_12(sz) ((((unsigned int)(sz)) >> (SIZE_SZ == 8 ? 4 : 3)) - 2)
+#define NFASTBINS_GLIBC_2_12         (fastbin_index_GLIBC_2_12(request2size(MAX_FAST_SIZE_GLIBC_2_12))+1)
+
 struct malloc_state_GLIBC_2_12 {
   int mutex; //mutex_t mutex;
 
@@ -339,6 +341,9 @@ struct malloc_par_GLIBC_2_17 {
   int              n_mmaps;
   int              n_mmaps_max;
   int              max_n_mmaps;
+  /* the mmap_threshold is dynamic, until the user sets
+     it manually, at which point we need to disable any
+     dynamic behavior. */
   int              no_dyn_threshold;
 
   /* Cache malloc_getpagesize */
@@ -357,8 +362,15 @@ struct malloc_par_GLIBC_2_17 {
 #define MAX_FAST_SIZE_GLIBC_2_17    MAX_FAST_SIZE_GLIBC_2_12
 
 /************************************************************************
+**  GNU C Library version 2.18 and 2.19 are the same as 2.17
+************************************************************************/
+
+
+/************************************************************************
 **  32-bit Target
 **  Assume the debug host is 64-bit
+* 
+*   Warning, 32-bit core analyzer is not tested as often as 64-bit
 ************************************************************************/
 #define INTERNAL_SIZE_T_32 unsigned int
 #define SIZE_SZ_32                (sizeof(INTERNAL_SIZE_T_32))

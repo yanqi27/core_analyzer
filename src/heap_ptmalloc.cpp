@@ -5,6 +5,8 @@
  *      Author: myan
  */
 #include <gnu/libc-version.h>
+#include <assert.h>
+
 #include "segment.h"
 #include "heap_ptmalloc.h"
 
@@ -32,7 +34,7 @@ struct ca_malloc_par
 struct ca_malloc_state {
   int flags;
   int nfastbins;
-  mfastbinptr      fastbins[NFASTBINS_GLIBC_2_5];	/* ver 2.5 has bigger NFASTBINS than ver 2.3 */
+  mfastbinptr      fastbins[NFASTBINS_GLIBC_2_5]; /* ver 2.5 has bigger NFASTBINS than other versions */
   mchunkptr        top;
   mchunkptr        last_remainder;
   mchunkptr        bins[NBINS * 2];
@@ -48,11 +50,12 @@ union malloc_state
 	struct malloc_state_GLIBC_2_4 mstate_2_4;
 	struct malloc_state_GLIBC_2_5 mstate_2_5;
 	struct malloc_state_GLIBC_2_12 mstate_2_12;
-	struct malloc_state_GLIBC_2_17 mstate_2_17;
+	struct malloc_state_GLIBC_2_22 mstate_2_22;
 	struct malloc_state_GLIBC_2_3_32 mstate_2_3_32;
 	struct malloc_state_GLIBC_2_4_32 mstate_2_4_32;
 	struct malloc_state_GLIBC_2_5_32 mstate_2_5_32;
 	struct malloc_state_GLIBC_2_12_32 mstate_2_12_32;
+	struct malloc_state_GLIBC_2_22_32 mstate_2_22_32;
 };
 
 union ca_malloc_chunk
@@ -161,6 +164,57 @@ struct ca_arena
 		mparams.sbrk_base      = (char*) pars.sbrk_base; \
 	} while(0)
 
+#define copy_mstate(arena, orig, orig_32)								\
+	do {												\
+		if (g_ptr_bit == 64) {									\
+			(arena)->flags = 0; /* (orig)->flags; for 2.4 and later */			\
+			(arena)->nfastbins = sizeof((orig)->fastbins)/sizeof((orig)->fastbins[0]);	\
+			memcpy((arena)->fastbins, (orig)->fastbins, sizeof((orig)->fastbins));		\
+			(arena)->top = (orig)->top;							\
+			(arena)->last_remainder = (orig)->last_remainder;				\
+			memcpy((arena)->bins, (orig)->bins, sizeof((orig)->bins));			\
+			memcpy((arena)->binmap, (orig)->binmap, sizeof((orig)->binmap));		\
+			(arena)->next = (orig)->next;							\
+			(arena)->next_free = NULL; /* (orig)->next_free; for 2.5 and later */		\
+			(arena)->system_mem = (orig)->system_mem;					\
+		} else if (g_ptr_bit == 32) {								\
+			unsigned int i;									\
+			(arena)->flags = 0; /* (orig_32)->flags; for 2.4 and later */			\
+			(arena)->nfastbins = sizeof((orig_32)->fastbins)/sizeof((orig_32)->fastbins[0]);\
+			for (i = 0; i < (arena)->nfastbins; i++)					\
+				(arena)->fastbins[i] = (mfastbinptr) (orig_32)->fastbins[i];		\
+			(arena)->top = (mchunkptr) (orig_32)->top;					\
+			(arena)->last_remainder = (mchunkptr) (orig_32)->last_remainder;		\
+			for (i = 0; i < sizeof((orig_32)->bins)/sizeof((orig_32)->bins[0]); i++)	\
+				(arena)->bins[i] = (mchunkptr) (orig_32)->bins[i];			\
+			memcpy((arena)->binmap, (orig_32)->binmap, sizeof((orig_32)->binmap));		\
+			(arena)->next = (void*) (orig_32)->next;					\
+			(arena)->next_free = NULL; /* (orig_32)->next_free; for 2.5 and later */	\
+			(arena)->system_mem = (orig_32)->system_mem;					\
+		}											\
+	} while(0)
+
+#define read_mp_32(v)									\
+	do {										\
+		struct malloc_par_GLIBC_2_##v##_32 pars;				\
+		g_HEAP_MAX_SIZE = HEAP_MAX_SIZE_GLIBC_2_##v##_32;			\
+		g_MAX_FAST_SIZE = MAX_FAST_SIZE_GLIBC_2_##v##_32;			\
+		rc = read_memory_wrapper(NULL, mparams_vaddr, &pars, sizeof(pars));	\
+		if (rc)									\
+			COPY_MALLOC_PAR_WITHOUT_PAGESIZE(pars);				\
+	} while (0)
+
+#define read_mp(v)									\
+	do {										\
+		struct malloc_par_GLIBC_2_##v pars;					\
+		g_HEAP_MAX_SIZE = HEAP_MAX_SIZE_GLIBC_2_##v;				\
+		g_MAX_FAST_SIZE = MAX_FAST_SIZE_GLIBC_2_##v;				\
+		rc = read_memory_wrapper(NULL, mparams_vaddr, &pars, sizeof(pars));	\
+		if (rc)									\
+			COPY_MALLOC_PAR_WITHOUT_PAGESIZE(pars);				\
+	} while (0)
+
+
 /*
  * Global variables
  */
@@ -186,11 +240,6 @@ static CA_BOOL traverse_heap_blocks(struct ca_heap*, CA_BOOL, size_t*, size_t*, 
 
 static CA_BOOL build_heaps(void);
 static CA_BOOL get_glibc_version(void);
-static void copy_mstate_2_3(struct ca_malloc_state*, struct malloc_state_GLIBC_2_3*);
-static void copy_mstate_2_4(struct ca_malloc_state*, struct malloc_state_GLIBC_2_4*);
-static void copy_mstate_2_5(struct ca_malloc_state*, struct malloc_state_GLIBC_2_5*);
-static void copy_mstate_2_12(struct ca_malloc_state*, struct malloc_state_GLIBC_2_12*);
-#define copy_mstate_2_17(ca_state,malloc_state) copy_mstate_2_12(ca_state,malloc_state)
 
 static CA_BOOL build_sorted_heaps(void);
 static void release_sorted_heaps(void);
@@ -201,6 +250,8 @@ static address_t search_chunk(struct ca_heap*, address_t);
 static CA_BOOL fill_heap_block(struct ca_heap*, address_t, struct heap_block*);
 
 static CA_BOOL in_fastbins_or_remainder(struct ca_malloc_state*, mchunkptr, size_t);
+
+static size_t get_mstate_size(void);
 
 /***************************************************************************
 * Exposed functions
@@ -872,50 +923,28 @@ static struct ca_arena* build_arena(address_t arena_vaddr, enum HEAP_TYPE type)
 	}
 	else
 	{
+		size_t mstate_size = get_mstate_size();
 		union malloc_state arena_state;
 		CA_BOOL rc;
 
 		// Read in arena's meta data, i.e. struct malloc_state
-		if (glibc_ver_minor == 3)
-		{
-			rc = read_memory_wrapper(NULL, arena_vaddr, &arena_state,
-					ptr_bit == 64 ? sizeof(struct malloc_state_GLIBC_2_3) : sizeof(struct malloc_state_GLIBC_2_3_32));
-			if (rc)
-				copy_mstate_2_3(&arena->mpState, &arena_state.mstate_2_3);
-		}
-		else if (glibc_ver_minor == 4)
-		{
-			rc = read_memory_wrapper(NULL, arena_vaddr, &arena_state,
-					ptr_bit == 64 ? sizeof(struct malloc_state_GLIBC_2_4) : sizeof(struct malloc_state_GLIBC_2_4_32));
-			if (rc)
-				copy_mstate_2_4(&arena->mpState, &arena_state.mstate_2_4);
-		}
-		else if (glibc_ver_minor == 5)
-		{
-			rc = read_memory_wrapper(NULL, arena_vaddr, &arena_state,
-					ptr_bit == 64 ? sizeof(struct malloc_state_GLIBC_2_5) : sizeof(struct malloc_state_GLIBC_2_5_32));
-			if (rc)
-				copy_mstate_2_5(&arena->mpState, &arena_state.mstate_2_5);
-		}
-		else if (glibc_ver_minor == 12)
-		{
-			rc = read_memory_wrapper(NULL, arena_vaddr, &arena_state,
-					ptr_bit == 64 ? sizeof(struct malloc_state_GLIBC_2_12) : sizeof(struct malloc_state_GLIBC_2_12_32));
-			if (rc)
-				copy_mstate_2_12(&arena->mpState, &arena_state.mstate_2_12);
-		}
-		else if (glibc_ver_minor == 17 || glibc_ver_minor == 18 || glibc_ver_minor == 19)
-		{
-			rc = read_memory_wrapper(NULL, arena_vaddr, &arena_state,
-					ptr_bit == 64 ? sizeof(struct malloc_state_GLIBC_2_17) : sizeof(struct malloc_state_GLIBC_2_17_32));
-			if (rc)
-				copy_mstate_2_17(&arena->mpState, &arena_state.mstate_2_17);
-		}
-		else
-			return NULL;
-
-		if (!rc)
-		{
+		rc = read_memory_wrapper(NULL, arena_vaddr, &arena_state, mstate_size);
+		if (rc) {
+			if (glibc_ver_minor == 3)
+				copy_mstate(&arena->mpState, &arena_state.mstate_2_3, &arena_state.mstate_2_3_32);
+			else if (glibc_ver_minor == 4)
+				copy_mstate(&arena->mpState, &arena_state.mstate_2_4, &arena_state.mstate_2_4_32);
+			else if (glibc_ver_minor == 5)
+				copy_mstate(&arena->mpState, &arena_state.mstate_2_5, &arena_state.mstate_2_5_32);
+			else if (glibc_ver_minor == 12 || (glibc_ver_minor >= 17 && glibc_ver_minor <= 21))
+				copy_mstate(&arena->mpState, &arena_state.mstate_2_12, &arena_state.mstate_2_12_32);
+			else if (glibc_ver_minor >= 22 && glibc_ver_minor <= 23)
+				copy_mstate(&arena->mpState, &arena_state.mstate_2_22, &arena_state.mstate_2_22_32);
+			else {
+				assert(0 && "internal error: glibc version not supported");
+				return NULL;
+			}
+		} else {
 			CA_PRINT("Failed to read arena at "PRINT_FORMAT_POINTER"\n", arena_vaddr);
 			release_ca_arena(arena);
 			return NULL;
@@ -1046,17 +1075,7 @@ static struct ca_arena* build_arena(address_t arena_vaddr, enum HEAP_TYPE type)
 	{
 		// dynamically created arena
 		address_t h_vaddr = (address_t) heap_for_ptr(top_addr);
-		size_t mstate_size;
-		if (glibc_ver_minor == 3 || glibc_ver_minor == 4)
-			mstate_size = ptr_bit == 64 ? sizeof(struct malloc_state_GLIBC_2_3) : sizeof(struct malloc_state_GLIBC_2_3_32);
-		else if (glibc_ver_minor == 12)
-			mstate_size = ptr_bit == 64 ? sizeof(struct malloc_state_GLIBC_2_5) : sizeof(struct malloc_state_GLIBC_2_5_32);
-		else if (glibc_ver_minor == 12)
-			mstate_size = ptr_bit == 64 ? sizeof(struct malloc_state_GLIBC_2_12) : sizeof(struct malloc_state_GLIBC_2_12_32);
-		else if (glibc_ver_minor == 17 || glibc_ver_minor == 18 || glibc_ver_minor == 19)
-			mstate_size = ptr_bit == 64 ? sizeof(struct malloc_state_GLIBC_2_17) : sizeof(struct malloc_state_GLIBC_2_17_32);
-		else
-			return NULL;
+		size_t mstate_size = get_mstate_size();
 
 		// It may have more than one heap
 		while (h_vaddr)
@@ -1196,31 +1215,13 @@ static CA_BOOL build_heaps_internal_32(address_t main_arena_vaddr, address_t mpa
 
 	// Read in the tuning parames
 	if (glibc_ver_minor == 3)
-	{
-		struct malloc_par_GLIBC_2_3_32 pars;
-		g_HEAP_MAX_SIZE = HEAP_MAX_SIZE_GLIBC_2_3_32;
-		g_MAX_FAST_SIZE = MAX_FAST_SIZE_GLIBC_2_3_32;
-		rc = read_memory_wrapper(NULL, mparams_vaddr, &pars, sizeof(pars));
-		if (rc)
-			COPY_MALLOC_PAR(pars);
-	}
+		read_mp_32(3);
 	else if (glibc_ver_minor == 4)
-	{
-		struct malloc_par_GLIBC_2_4_32 pars;
-		g_HEAP_MAX_SIZE = HEAP_MAX_SIZE_GLIBC_2_4_32;
-		g_MAX_FAST_SIZE = MAX_FAST_SIZE_GLIBC_2_4_32;
-		rc = read_memory_wrapper(NULL, mparams_vaddr, &pars, sizeof(pars));
-		if (rc)
-			COPY_MALLOC_PAR(pars);
-	}
+		read_mp_32(4);
 	else if (glibc_ver_minor == 5)
 	{
-		struct malloc_par_GLIBC_2_5_32 pars;
-		g_HEAP_MAX_SIZE = HEAP_MAX_SIZE_GLIBC_2_5_32;
-		g_MAX_FAST_SIZE = MAX_FAST_SIZE_GLIBC_2_5_32;
-		rc = read_memory_wrapper(NULL, mparams_vaddr, &pars, sizeof(pars));
-		if (rc)
-			COPY_MALLOC_PAR(pars);
+		read_mp_32(5);
+
 		// My machine (rhel5.8) has glibc2.5 but its mp_ is of glibc2.12
 		// !FIXME!
 		if (mparams.pagesize != 0x1000ul)
@@ -1238,24 +1239,10 @@ static CA_BOOL build_heaps_internal_32(address_t main_arena_vaddr, address_t mpa
 			}
 		}
 	}
-	else if (glibc_ver_minor == 12)
-	{
-		struct malloc_par_GLIBC_2_12_32 pars;
-		g_HEAP_MAX_SIZE = HEAP_MAX_SIZE_GLIBC_2_12_32;
-		g_MAX_FAST_SIZE = MAX_FAST_SIZE_GLIBC_2_12_32;
-		rc = read_memory_wrapper(NULL, mparams_vaddr, &pars, sizeof(pars));
-		if (rc)
-			COPY_MALLOC_PAR(pars);
-	}
-	else if (glibc_ver_minor == 17 || glibc_ver_minor == 18 || glibc_ver_minor == 19)
-	{
-		struct malloc_par_GLIBC_2_17_32 pars;
-		g_HEAP_MAX_SIZE = HEAP_MAX_SIZE_GLIBC_2_17_32;
-		g_MAX_FAST_SIZE = MAX_FAST_SIZE_GLIBC_2_12_32;
-		rc = read_memory_wrapper(NULL, mparams_vaddr, &pars, sizeof(pars));
-		if (rc)
-			COPY_MALLOC_PAR_WITHOUT_PAGESIZE(pars);
-	}
+	else if (glibc_ver_minor == 12 || (glibc_ver_minor >= 17 && glibc_ver_minor <= 21))
+		read_mp_32(12);
+	else if (glibc_ver_minor >= 22 && glibc_ver_minor <= 23)
+		read_mp_32(22);
 
 	if (!rc)
 	{
@@ -1321,31 +1308,12 @@ static CA_BOOL build_heaps_internal_64(address_t main_arena_vaddr, address_t mpa
 
 	// Read in the tuning parames
 	if (glibc_ver_minor == 3)
-	{
-		struct malloc_par_GLIBC_2_3 pars;
-		g_HEAP_MAX_SIZE = HEAP_MAX_SIZE_GLIBC_2_3;
-		g_MAX_FAST_SIZE = MAX_FAST_SIZE_GLIBC_2_3;
-		rc = read_memory_wrapper(NULL, mparams_vaddr, &pars, sizeof(pars));
-		if (rc)
-			COPY_MALLOC_PAR(pars);
-	}
+		read_mp(3);
 	else if (glibc_ver_minor == 4)
-	{
-		struct malloc_par_GLIBC_2_4 pars;
-		g_HEAP_MAX_SIZE = HEAP_MAX_SIZE_GLIBC_2_4;
-		g_MAX_FAST_SIZE = MAX_FAST_SIZE_GLIBC_2_4;
-		rc = read_memory_wrapper(NULL, mparams_vaddr, &pars, sizeof(pars));
-		if (rc)
-			COPY_MALLOC_PAR(pars);
-	}
+		read_mp(4);
 	else if (glibc_ver_minor == 5)
 	{
-		struct malloc_par_GLIBC_2_5 pars;
-		g_HEAP_MAX_SIZE = HEAP_MAX_SIZE_GLIBC_2_5;
-		g_MAX_FAST_SIZE = MAX_FAST_SIZE_GLIBC_2_5;
-		rc = read_memory_wrapper(NULL, mparams_vaddr, &pars, sizeof(pars));
-		if (rc)
-			COPY_MALLOC_PAR(pars);
+		read_mp(5);
 		// My machine (rhel5.8) has glibc2.5 but its mp_ is of glibc2.12
 		// !FIXME!
 		if (mparams.pagesize != 0x1000ul)
@@ -1363,24 +1331,10 @@ static CA_BOOL build_heaps_internal_64(address_t main_arena_vaddr, address_t mpa
 			}
 		}
 	}
-	else if (glibc_ver_minor == 12)
-	{
-		struct malloc_par_GLIBC_2_12 pars;
-		g_HEAP_MAX_SIZE = HEAP_MAX_SIZE_GLIBC_2_12;
-		g_MAX_FAST_SIZE = MAX_FAST_SIZE_GLIBC_2_12;
-		rc = read_memory_wrapper(NULL, mparams_vaddr, &pars, sizeof(pars));
-		if (rc)
-			COPY_MALLOC_PAR(pars);
-	}
-	else if (glibc_ver_minor == 17 || glibc_ver_minor == 18 || glibc_ver_minor == 19)
-	{
-		struct malloc_par_GLIBC_2_17 pars;
-		g_HEAP_MAX_SIZE = HEAP_MAX_SIZE_GLIBC_2_17;
-		g_MAX_FAST_SIZE = MAX_FAST_SIZE_GLIBC_2_17;
-		rc = read_memory_wrapper(NULL, mparams_vaddr, &pars, sizeof(pars));
-		if (rc)
-			COPY_MALLOC_PAR_WITHOUT_PAGESIZE(pars);
-	}
+	else if (glibc_ver_minor == 12 || (glibc_ver_minor >= 17 && glibc_ver_minor <= 21))
+		read_mp(12);
+	else if (glibc_ver_minor >= 22 && glibc_ver_minor <= 23)
+		read_mp(22);
 
 	if (!rc)
 	{
@@ -1460,6 +1414,8 @@ static CA_BOOL build_heaps(void)
 
 	g_heap_ready = CA_FALSE;
 
+	assert(NFASTBINS_GLIBC_2_5 >= NFASTBINS_GLIBC_2_12);
+
 	if (glibc_ver_major != 2 && !get_glibc_version())
 		return CA_FALSE;
 
@@ -1473,9 +1429,7 @@ static CA_BOOL build_heaps(void)
 		&& glibc_ver_minor != 5
 		//&& glibc_ver_minor != 11
 		&& glibc_ver_minor != 12
-		&& glibc_ver_minor != 17
-		&& glibc_ver_minor != 18
-		&& glibc_ver_minor != 19)
+		&& (glibc_ver_minor < 17 || glibc_ver_minor > 23))
 	{
 		CA_PRINT("The memory manager of glibc %d.%d is not supported in this release\n",
 				glibc_ver_major, glibc_ver_minor);
@@ -1525,7 +1479,7 @@ static CA_BOOL in_fastbins_or_remainder(struct ca_malloc_state* mstate, mchunkpt
 		else
 			index = fastbin_index_GLIBC_2_5_32(chunksz);
 	}
-	else if (glibc_ver_minor == 12 || glibc_ver_minor == 17 || glibc_ver_minor == 18 || glibc_ver_minor == 19)
+	else if (glibc_ver_minor == 12 || (glibc_ver_minor >= 17 && glibc_ver_minor <= 23))
 	{
 		if (ptr_bit == 64)
 			index = fastbin_index_GLIBC_2_12(chunksz);
@@ -2081,142 +2035,26 @@ static CA_BOOL get_glibc_version(void)
 	return CA_FALSE;
 }
 
-static void copy_mstate_2_3(struct ca_malloc_state* arena, struct malloc_state_GLIBC_2_3* orig)
+/*
+ * Helper functions that depends on the glibc version
+ * 
+ */
+static size_t get_mstate_size(void)
 {
-	int ptr_bit = g_ptr_bit;
-	if (ptr_bit == 64)
-	{
-		arena->flags = 0;
-		arena->nfastbins = NFASTBINS_GLIBC_2_3;
-		memcpy(arena->fastbins, orig->fastbins, sizeof(mfastbinptr)*NFASTBINS_GLIBC_2_3);
-		arena->top = orig->top;
-		arena->last_remainder = orig->last_remainder;
-		memcpy(arena->bins, orig->bins, sizeof(mchunkptr) * NBINS * 2);
-		memcpy(arena->binmap, orig->binmap, sizeof(unsigned int) * BINMAPSIZE);
-		arena->next = orig->next;
-		arena->next_free = NULL;
-		arena->system_mem = orig->system_mem;
-	}
-	else if (ptr_bit == 32)
-	{
-		unsigned int i;
-		struct malloc_state_GLIBC_2_3_32* orig_32 = (struct malloc_state_GLIBC_2_3_32*) orig;
-		arena->flags = 0;
-		arena->nfastbins = NFASTBINS_GLIBC_2_3_32;
-		for (i = 0; i < NFASTBINS_GLIBC_2_3_32; i++)
-			arena->fastbins[i] = (mfastbinptr) orig_32->fastbins[i];
-		arena->top = (mchunkptr) orig_32->top;
-		arena->last_remainder = (mchunkptr) orig_32->last_remainder;
-		for (i = 0; i < NBINS * 2; i++)
-			arena->bins[i] = (mchunkptr) orig_32->bins[i];
-		memcpy(arena->binmap, orig_32->binmap, sizeof(unsigned int) * BINMAPSIZE);
-		arena->next = (void*) orig_32->next;
-		arena->next_free = NULL;
-		arena->system_mem = orig_32->system_mem;
-	}
+	size_t mstate_size;
+	if (glibc_ver_minor == 3)
+		mstate_size = g_ptr_bit == 64 ? sizeof(struct malloc_state_GLIBC_2_3) : sizeof(struct malloc_state_GLIBC_2_3_32);
+	else if (glibc_ver_minor == 4)
+		mstate_size = g_ptr_bit == 64 ? sizeof(struct malloc_state_GLIBC_2_4) : sizeof(struct malloc_state_GLIBC_2_4_32);
+	else if (glibc_ver_minor == 5)
+		mstate_size = g_ptr_bit == 64 ? sizeof(struct malloc_state_GLIBC_2_5) : sizeof(struct malloc_state_GLIBC_2_5_32);
+	else if (glibc_ver_minor == 12 || (glibc_ver_minor >= 17 && glibc_ver_minor <= 21))
+		mstate_size = g_ptr_bit == 64 ? sizeof(struct malloc_state_GLIBC_2_12) : sizeof(struct malloc_state_GLIBC_2_12_32);
+	else if (glibc_ver_minor >= 22 && glibc_ver_minor <= 23)
+		mstate_size = g_ptr_bit == 64 ? sizeof(struct malloc_state_GLIBC_2_22) : sizeof(struct malloc_state_GLIBC_2_22_32);
+	else
+		assert(0 && "internal error: glibc version not supported");
+
+	return mstate_size;
 }
 
-static void copy_mstate_2_4(struct ca_malloc_state* arena, struct malloc_state_GLIBC_2_4* orig)
-{
-	int ptr_bit = g_ptr_bit;
-	if (ptr_bit == 64)
-	{
-		arena->flags = orig->flags;
-		arena->nfastbins = NFASTBINS_GLIBC_2_3;
-		memcpy(arena->fastbins, orig->fastbins, sizeof(mfastbinptr)*NFASTBINS_GLIBC_2_3);
-		arena->top = orig->top;
-		arena->last_remainder = orig->last_remainder;
-		memcpy(arena->bins, orig->bins, sizeof(mchunkptr) * NBINS * 2);
-		memcpy(arena->binmap, orig->binmap, sizeof(unsigned int) * BINMAPSIZE);
-		arena->next = orig->next;
-		arena->next_free = NULL;
-		arena->system_mem = orig->system_mem;
-	}
-	else if (ptr_bit == 32)
-	{
-		unsigned int i;
-		struct malloc_state_GLIBC_2_4_32* orig_32 = (struct malloc_state_GLIBC_2_4_32*) orig;
-		arena->flags = orig_32->flags;
-		arena->nfastbins = NFASTBINS_GLIBC_2_3_32;
-		for (i = 0; i < NFASTBINS_GLIBC_2_3_32; i++)
-			arena->fastbins[i] = (mfastbinptr) orig_32->fastbins[i];
-		arena->top = (mchunkptr) orig_32->top;
-		arena->last_remainder = (mchunkptr) orig_32->last_remainder;
-		for (i = 0; i < NBINS * 2; i++)
-			arena->bins[i] = (mchunkptr) orig_32->bins[i];
-		memcpy(arena->binmap, orig_32->binmap, sizeof(unsigned int) * BINMAPSIZE);
-		arena->next = (void*) orig_32->next;
-		arena->next_free = NULL;
-		arena->system_mem = orig_32->system_mem;
-	}
-}
-
-static void copy_mstate_2_5(struct ca_malloc_state* arena, struct malloc_state_GLIBC_2_5* orig)
-{
-	int ptr_bit = g_ptr_bit;
-	if (ptr_bit == 64)
-	{
-		arena->flags = orig->flags;
-		arena->nfastbins = NFASTBINS_GLIBC_2_5;
-		memcpy(arena->fastbins, orig->fastbins, sizeof(mfastbinptr)*NFASTBINS_GLIBC_2_5);
-		arena->top = orig->top;
-		arena->last_remainder = orig->last_remainder;
-		memcpy(arena->bins, orig->bins, sizeof(mchunkptr) * (NBINS * 2 -2));
-		memcpy(arena->binmap, orig->binmap, sizeof(unsigned int) * BINMAPSIZE);
-		arena->next = orig->next;
-		arena->next_free = orig->next_free;
-		arena->system_mem = orig->system_mem;
-	}
-	else if (ptr_bit == 32)
-	{
-		unsigned int i;
-		struct malloc_state_GLIBC_2_5_32* orig_32 = (struct malloc_state_GLIBC_2_5_32*) orig;
-		arena->flags = orig_32->flags;
-		arena->nfastbins = NFASTBINS_GLIBC_2_5_32;
-		for (i = 0; i < NFASTBINS_GLIBC_2_5_32; i++)
-			arena->fastbins[i] = (mfastbinptr) orig_32->fastbins[i];
-		arena->top = (mchunkptr) orig_32->top;
-		arena->last_remainder = (mchunkptr) orig_32->last_remainder;
-		for (i = 0; i < NBINS * 2 - 2; i++)
-			arena->bins[i] = (mchunkptr) orig_32->bins[i];
-		memcpy(arena->binmap, orig_32->binmap, sizeof(unsigned int) * BINMAPSIZE);
-		arena->next = (void*) orig_32->next;
-		arena->next_free = (void*) orig_32->next_free;
-		arena->system_mem = orig_32->system_mem;
-	}
-}
-
-static void copy_mstate_2_12(struct ca_malloc_state* arena, struct malloc_state_GLIBC_2_12* orig)
-{
-	int ptr_bit = g_ptr_bit;
-	if (ptr_bit == 64)
-	{
-		arena->flags = orig->flags;
-		arena->nfastbins = NFASTBINS_GLIBC_2_12;
-		memcpy(arena->fastbins, orig->fastbins, sizeof(mfastbinptr)*NFASTBINS_GLIBC_2_12);
-		arena->top = orig->top;
-		arena->last_remainder = orig->last_remainder;
-		memcpy(arena->bins, orig->bins, sizeof(mchunkptr) * (NBINS * 2 -2));
-		memcpy(arena->binmap, orig->binmap, sizeof(unsigned int) * BINMAPSIZE);
-		arena->next = orig->next;
-		arena->next_free = orig->next_free;
-		arena->system_mem = orig->system_mem;
-	}
-	else if (ptr_bit == 32)
-	{
-		unsigned int i;
-		struct malloc_state_GLIBC_2_12_32* orig_32 = (struct malloc_state_GLIBC_2_12_32*) orig;
-		arena->flags = orig_32->flags;
-		arena->nfastbins = NFASTBINS_GLIBC_2_12_32;
-		for (i = 0; i < NFASTBINS_GLIBC_2_12_32; i++)
-			arena->fastbins[i] = (mfastbinptr) orig_32->fastbins[i];
-		arena->top = (mchunkptr) orig_32->top;
-		arena->last_remainder = (mchunkptr) orig_32->last_remainder;
-		for (i = 0; i < NBINS * 2 - 2; i++)
-			arena->bins[i] = (mchunkptr) orig_32->bins[i];
-		memcpy(arena->binmap, orig_32->binmap, sizeof(unsigned int) * BINMAPSIZE);
-		arena->next = (void*) orig_32->next;
-		arena->next_free = (void*) orig_32->next_free;
-		arena->system_mem = orig_32->system_mem;
-	}
-}

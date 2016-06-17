@@ -11,6 +11,17 @@
 #include <pthread.h>
 #include "heap.h"
 
+/*
+ * Version history of the memory allocator
+ * 
+ * 	glibc		ptmalloc		dlmalloc
+ * 	------------------------------------------------
+ * 	2.3		?
+ * 	2.4		?
+ * 	2.5		?
+ * 	2.12 - 2.23	ptmalloc2-20011215	2.7.0
+ */
+
 #ifndef size_t
 typedef long unsigned int size_t;
 #endif
@@ -325,7 +336,8 @@ struct malloc_par_GLIBC_2_12 {
 #define HEAP_MAX_SIZE_GLIBC_2_12    HEAP_MAX_SIZE_GLIBC_2_5
 
 /************************************************************************
-**  GNU C Library version 2.17
+**  GNU C Library version 2.17 - 2.21
+**    struct malloc_par removes member "pagesize"
 ************************************************************************/
 #define malloc_state_GLIBC_2_17 malloc_state_GLIBC_2_12
 
@@ -362,15 +374,54 @@ struct malloc_par_GLIBC_2_17 {
 #define MAX_FAST_SIZE_GLIBC_2_17    MAX_FAST_SIZE_GLIBC_2_12
 
 /************************************************************************
-**  GNU C Library version 2.18 and 2.19 are the same as 2.17
+**  GNU C Library version 2.22 - 2.23
+**    struct malloc_state adds a member "attached_threads"
 ************************************************************************/
+struct malloc_state_GLIBC_2_22 {
+  int mutex; //mutex_t mutex;
 
+  /* Flags (formerly in max_fast).  */
+  int flags;
+
+  /* Fastbins */
+  mfastbinptr      fastbins[NFASTBINS_GLIBC_2_12];
+
+  /* Base of the topmost chunk -- not otherwise kept in a bin */
+  mchunkptr        top;
+
+  /* The remainder from the most recent split of a small request */
+  mchunkptr        last_remainder;
+
+  /* Normal bins packed as described above */
+  mchunkptr        bins[NBINS * 2 - 2];
+
+  /* Bitmap of bins */
+  unsigned int     binmap[BINMAPSIZE];
+
+  /* Linked list */
+  struct malloc_state_GLIBC_2_22 *next;
+
+  /* Linked list for free arenas.  */
+  struct malloc_state_GLIBC_2_22 *next_free;
+
+  /* Number of threads attached to this arena.  0 if the arena is on the free list. */
+  INTERNAL_SIZE_T attached_threads;
+
+  /* Memory allocated from the system in this arena.  */
+  INTERNAL_SIZE_T system_mem;
+  INTERNAL_SIZE_T max_system_mem;
+};
+
+#define malloc_par_GLIBC_2_22 malloc_par_GLIBC_2_17
+
+#define HEAP_MAX_SIZE_GLIBC_2_22    HEAP_MAX_SIZE_GLIBC_2_5
+#define MAX_FAST_SIZE_GLIBC_2_22    MAX_FAST_SIZE_GLIBC_2_12
 
 /************************************************************************
 **  32-bit Target
 **  Assume the debug host is 64-bit
 * 
-*   Warning, 32-bit core analyzer is not tested as often as 64-bit
+*   !Warning, 32-bit core analyzer is not tested as often as 64-bit
 ************************************************************************/
 #define INTERNAL_SIZE_T_32 unsigned int
 #define SIZE_SZ_32                (sizeof(INTERNAL_SIZE_T_32))
@@ -686,5 +737,43 @@ struct malloc_par_GLIBC_2_17_32 {
 
 #define HEAP_MAX_SIZE_GLIBC_2_17_32    HEAP_MAX_SIZE_GLIBC_2_5_32
 
+struct malloc_state_GLIBC_2_22_32 {
+  int mutex; //mutex_t mutex;
+
+  // Flags (formerly in max_fast).
+  int flags;
+
+  // Fastbins
+  ptr_t_32      fastbins[NFASTBINS_GLIBC_2_12_32];	//mfastbinptr_32
+
+  // Base of the topmost chunk -- not otherwise kept in a bin
+  ptr_t_32        top;	//mchunkptr_32
+
+  // The remainder from the most recent split of a small request
+  ptr_t_32        last_remainder;	//mchunkptr_32
+
+  // Normal bins packed as described above
+  ptr_t_32        bins[NBINS * 2 - 2];	//mchunkptr_32
+
+  // Bitmap of bins/
+  unsigned int     binmap[BINMAPSIZE];
+
+  // Linked list
+  ptr_t_32 next;	//struct malloc_state_GLIBC_2_22_32 *
+
+  // Linked list for free arenas.
+  ptr_t_32 next_free;	//struct malloc_state_GLIBC_2_22_32 *
+
+  /* Number of threads attached to this arena.  0 if the arena is on the free list. */
+  INTERNAL_SIZE_T_32 attached_threads;
+
+  // Memory allocated from the system in this arena.
+  INTERNAL_SIZE_T_32 system_mem;
+  INTERNAL_SIZE_T_32 max_system_mem;
+};
+#define malloc_par_GLIBC_2_22_32 malloc_par_GLIBC_2_17_32
+
+#define HEAP_MAX_SIZE_GLIBC_2_22_32    HEAP_MAX_SIZE_GLIBC_2_5_32
+#define MAX_FAST_SIZE_GLIBC_2_22_32    MAX_FAST_SIZE_GLIBC_2_12_32
 
 #endif /* _MM_PTMALLOC_H */

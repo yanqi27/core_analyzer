@@ -220,7 +220,7 @@ CA_BOOL heap_command_impl(char* args)
 					CA_PRINT("\t[Free]\n");
 				CA_PRINT("\t[Address] "PRINT_FORMAT_POINTER"\n", heap_block.addr);
 				CA_PRINT("\t[Size]    "PRINT_FORMAT_SIZE"\n", heap_block.size);
-				CA_PRINT("\t[Offset]  +"PRINT_FORMAT_SIZE"\n", addr - heap_block.addr);
+				CA_PRINT("\t[Offset]  "PRINT_FORMAT_SIZE"\n", addr - heap_block.addr);
 			}
 			else
 				CA_PRINT("[Error] Failed to query the memory block\n");

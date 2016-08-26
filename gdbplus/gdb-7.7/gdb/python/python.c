@@ -1924,6 +1924,7 @@ Return the selected inferior object." },
   { "inferiors", gdbpy_inferiors, METH_NOARGS,
     "inferiors () -> (gdb.Inferior, ...).\n\
 Return a tuple containing all inferiors." },
+	{"heap_block", gdbpy_heap_block, METH_VARARGS, "Return the heap memory block with given address." },
 	{"heap_walk", gdbpy_heap_walk, METH_VARARGS, "Return the next heap memory block." },
 	{"big_block", gdbpy_big_blocks, METH_VARARGS, "Return biggest heap memory blocks in size." },
 	{"cpp_object", gdbpy_cpp_object, METH_VARARGS, "Return C++ objects of the type same as the input expression." },

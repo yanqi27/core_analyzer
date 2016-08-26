@@ -15,8 +15,8 @@ mallocTest: mallocTest.o
 %.o: %.cpp
 	$(CXX) $(COMP_OPT) -c $<
 
-run:
-	./mallocTest
+check: all
+	gdb -q -x verify.py
 
 clean:
-	rm *.o core.* ${TARGETS}
+	rm *.o ${TARGETS}

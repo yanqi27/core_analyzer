@@ -309,6 +309,7 @@ char *gdbpy_parse_command_name (const char *name,
 				struct cmd_list_element ***base_list,
 				struct cmd_list_element **start_list);
 
+PyObject *gdbpy_heap_block (PyObject *self, PyObject *args);
 PyObject *gdbpy_heap_walk (PyObject *self, PyObject *args);
 PyObject *gdbpy_big_blocks (PyObject *self, PyObject *args);
 PyObject *gdbpy_cpp_object (PyObject *self, PyObject *args);

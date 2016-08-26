@@ -6,45 +6,76 @@
 */
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include <list>
 #include <iostream>
+#include <malloc.h>
 
-int main(int argc, char** argv)
+struct region {
+	void *p;
+	size_t size;
+	bool inuse;
+};
+
+const unsigned num_regions = 4096;
+region * regions;
+
+static size_t
+rand_size()
 {
-    //allocate small blocks
-    const int nblks = 10;
-    char* pa[nblks];
-    for (int i = 0; i < nblks; i++) {
-	pa[i] = (char*)malloc(i << 2);
-    }
-
-    //allocate bigger blocsk (> threshold 256KB)
-    const int nregions = 5;
-    void* mpa[nregions];
-    const size_t sz = 256 * 1024;
-    for (int i = 0; i < nregions; i++) {
-	mpa[i] = malloc(sz + i * 4096);
-    }
-
-    //check fast bins
-    std::list<void*> blklist;
-    std::list<int> blksz;
-    for (int sz = 1; sz < 160; sz += 16) {
-	void *p = malloc(sz);
-	memset(p, sz, sz);
-	blklist.push_back(p);
-	blksz.push_back(sz);
-    }
-    std::cout << "The following block should be in free state" << std::endl;
-    std::list<void*>::iterator itr;
-    std::list<int>::iterator itr2;
-    for (itr = blklist.begin(), itr2 = blksz.begin(); itr != blklist.end() && itr2 != blksz.end(); itr++, itr2++) {
-	void* p = *itr;
-	free(p);
-	int sz = *itr2;
-	std::cout << "0x" << std::hex << p << " size=" << std::dec << sz << std::endl;
-    }
-    
-    
-    ::abort();
+	return rand() % 1024;
 }
+
+static void
+fatal_error(const char* e)
+{
+	std::cerr << e << std::endl;
+	exit(-1);
+}
+
+static bool
+is_lucky(unsigned index)
+{
+	//half are lucky
+	return (index % 2) ^ (rand() % 2);
+}
+
+int
+main(int argc, char** argv)
+{
+
+	//initialize random number generator
+	srand (time(NULL));
+
+	//allocate container
+	regions = (region *) calloc(num_regions, sizeof *regions);
+	if (regions == NULL)
+		fatal_error("Out of memory");
+
+	//allocate memory blocks in random sizes
+	for (unsigned i = 0; i < num_regions; i++) {
+		regions[i].size = rand_size();
+		regions[i].inuse = true;
+		regions[i].p = malloc(regions[i].size);
+		if (regions[i].p == NULL)
+			fatal_error("Out of memory");
+		regions[i].size = malloc_usable_size(regions[i].p);
+	}
+
+	//free part of the memory blocks
+	for (unsigned i = 0; i < num_regions; i++) {
+		if (is_lucky(i) == true) {
+			regions[i].inuse = false;
+			free(regions[i].p);
+		}
+	}
+
+	//create memory image for inspection
+	if (::getenv("PAUSE") != NULL)
+		::pause();
+	else
+		::abort();
+
+	return 0;
+}
+

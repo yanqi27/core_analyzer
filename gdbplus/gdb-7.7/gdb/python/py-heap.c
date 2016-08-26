@@ -208,6 +208,66 @@ PyTypeObject heap_block_object_type = {
 	heap_block_new /* tp_new */
 };
 
+/* Implementation of gdb.heap_block()
+ * Take one argument of long
+   Returns the heap block containing the given address, or None.  */
+PyObject *gdbpy_heap_block (PyObject *self, PyObject *args)
+{
+	PyObject *result = NULL;
+	struct heap_block blk;
+	address_t addr = 0;
+
+	if (PyTuple_Size (args) == 1)
+	{
+		PyObject *obj = PyTuple_GetItem (args, 0);
+		if (PyInt_Check (obj))
+			addr = (address_t) PyInt_AsLong (obj);
+		else if (PyLong_Check (obj))
+			addr = (address_t) PyLong_AsLong (obj);
+		else
+		{
+			PyErr_SetString (PyExc_TypeError, _("Expect an integer as the address of a heap memory"));
+			return NULL;
+		}
+	}
+	else
+	{
+		PyErr_SetString (PyExc_TypeError, _("heap_block takes one argument"));
+		return NULL;
+	}
+
+	if (!update_memory_segments_and_heaps())
+	{
+		PyErr_SetString (PyExc_MemoryError, _("Failed to read and initialize process's heap segments."));
+		return NULL;
+	}
+
+	if (get_heap_block_info(addr, &blk))
+	{
+		heap_block_object* blk_object;
+		blk_object = PyObject_New (heap_block_object, &heap_block_object_type);
+		if (blk_object)
+		{
+			blk_object->address = Py_BuildValue("l", blk.addr);
+			blk_object->size = Py_BuildValue("l", blk.size);
+			blk_object->inuse = Py_BuildValue("b", blk.inuse);
+		}
+		else
+		{
+			PyErr_SetString (PyExc_MemoryError, _("Could not allocate memory to create heap_block object."));
+			return NULL;
+		}
+		result = (PyObject*) blk_object;
+	}
+	else
+	{
+		result = Py_None;
+		Py_INCREF (Py_None);
+	}
+
+	  return result;
+}
+
 /* Implementation of gdb.heap_walk()
  * Take one argument of long or gdb.Heap_block, or no argument
    Returns the next heap block after the given address, or None.  */

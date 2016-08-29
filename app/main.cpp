@@ -280,7 +280,11 @@ static int AskChoice(const char** options)
 	do
 	{
 		printf("Select [0-%d]: ", totalChoices-1);
-		fgets(linebuf, 256, stdin);
+		if (fgets(linebuf, 256, stdin) == NULL)
+		{
+			rc = 11;
+			break;
+		}
 		rc = atoi(linebuf);
 	} while (!isdigit(linebuf[0]) || rc<0 || rc>=totalChoices);
 

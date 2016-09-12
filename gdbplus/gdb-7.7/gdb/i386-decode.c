@@ -33,12 +33,9 @@
  and the small letter tells about the operand size.  Refer to
  the Intel manual for details.  */
 
-# define _GL_INLINE_HEADER_BEGIN
-# define _GL_INLINE_HEADER_END
-
-#include "sysdep.h"
+#include "opcodes/sysdep.h"
 #include "dis-asm.h"
-#include "../opcodes/opintl.h"
+#include "opcodes/opintl.h"
 #include "opcode/i386.h"
 #include "libiberty.h"
 
@@ -9112,7 +9109,8 @@ static void set_op(bfd_vma op, int riprel) {
 static void OP_REG(int code, int sizeflag) {
 	const char *s;
 	int add;
-	int reg_size, reg_index;
+	int reg_size = 0;
+	int reg_index = 0;
 	USED_REX(REX_B);
 	if (rex & REX_B)
 		add = 8;
@@ -9225,7 +9223,8 @@ static void OP_REG(int code, int sizeflag) {
 
 static void OP_IMREG(int code, int sizeflag) {
 	const char *s;
-	int reg_size, reg_index;
+	int reg_size = 0;
+	int reg_index = 0;
 
 	switch (code) {
 	case indir_dx_reg:

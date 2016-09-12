@@ -780,7 +780,7 @@ CA_BOOL biggest_heap_owners_generic(unsigned int num, CA_BOOL all_reachable_bloc
 		segment = &g_segments[i];
 		if (segment->m_type == ENUM_STACK || segment->m_type == ENUM_MODULE_DATA)
 		{
-			int tid;
+			int tid = 0;
 			// check registers if it is a thread's stack segment
 			if (segment->m_type == ENUM_STACK)
 			{

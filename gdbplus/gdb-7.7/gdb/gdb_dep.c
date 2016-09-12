@@ -23,7 +23,7 @@
 #endif
 
 // True if target is a dump file, false for live process
-int g_debug_core = CA_FALSE;
+CA_BOOL g_debug_core = CA_FALSE;
 
 // Target's bit mode, 32 or 64
 unsigned int g_ptr_bit = 64;
@@ -2061,7 +2061,9 @@ void decode_func(char *arg)
 	CORE_ADDR user_low=0, user_high=0;
 	int i, count, numregs;
 	CA_BOOL multi_frame = CA_FALSE;
-	int frame_lo, frame_hi, frame;
+	int frame_lo = 0;
+	int frame_hi = 0;
+	int  frame;
 	struct ca_reg_value user_input_regs[TOTAL_REGS];
 	struct ca_reg_value param_regs[TOTAL_REGS];
 	CA_BOOL verbose = CA_FALSE;

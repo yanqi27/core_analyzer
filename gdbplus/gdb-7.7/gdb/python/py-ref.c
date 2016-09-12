@@ -232,7 +232,7 @@ object_ref_new (PyTypeObject *type, PyObject *args, PyObject *keywords)
 {
 	object_ref *self = NULL;
 	PyObject *obj;
-	address_t addr;
+	address_t addr = 0;
 
 	if (PyTuple_Size (args) != 1)
 	{

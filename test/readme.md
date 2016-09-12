@@ -14,3 +14,10 @@ To run the test, simply
 ```
 make check
 ```
+
+To run the test manually with a core file
+```
+gdb mallocTest core.2708
+(gdb) source verify_methods.py
+(gdb) py check()
+```

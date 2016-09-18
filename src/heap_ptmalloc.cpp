@@ -936,7 +936,7 @@ static struct ca_arena* build_arena(address_t arena_vaddr, enum HEAP_TYPE type)
 				copy_mstate(&arena->mpState, &arena_state.mstate_2_4, &arena_state.mstate_2_4_32);
 			else if (glibc_ver_minor == 5)
 				copy_mstate(&arena->mpState, &arena_state.mstate_2_5, &arena_state.mstate_2_5_32);
-			else if (glibc_ver_minor == 12 || (glibc_ver_minor >= 17 && glibc_ver_minor <= 21))
+			else if (glibc_ver_minor >= 12 && glibc_ver_minor <= 21)
 				copy_mstate(&arena->mpState, &arena_state.mstate_2_12, &arena_state.mstate_2_12_32);
 			else if (glibc_ver_minor >= 22 && glibc_ver_minor <= 23)
 				copy_mstate(&arena->mpState, &arena_state.mstate_2_22, &arena_state.mstate_2_22_32);
@@ -1239,10 +1239,10 @@ static CA_BOOL build_heaps_internal_32(address_t main_arena_vaddr, address_t mpa
 			}
 		}
 	}
-	else if (glibc_ver_minor == 12 || (glibc_ver_minor >= 17 && glibc_ver_minor <= 21))
+	else if (glibc_ver_minor >= 12 && glibc_ver_minor <= 16)
 		read_mp_32(12);
-	else if (glibc_ver_minor >= 22 && glibc_ver_minor <= 23)
-		read_mp_32(22);
+	else if (glibc_ver_minor >= 17 && glibc_ver_minor <= 23)
+		read_mp_32(17);
 
 	if (!rc)
 	{
@@ -1331,10 +1331,10 @@ static CA_BOOL build_heaps_internal_64(address_t main_arena_vaddr, address_t mpa
 			}
 		}
 	}
-	else if (glibc_ver_minor == 12 || (glibc_ver_minor >= 17 && glibc_ver_minor <= 21))
+	else if (glibc_ver_minor >= 12 && glibc_ver_minor <= 16)
 		read_mp(12);
-	else if (glibc_ver_minor >= 22 && glibc_ver_minor <= 23)
-		read_mp(22);
+	else if (glibc_ver_minor >= 17 && glibc_ver_minor <= 23)
+		read_mp(17);
 
 	if (!rc)
 	{
@@ -1428,8 +1428,7 @@ static CA_BOOL build_heaps(void)
 		&& glibc_ver_minor != 4
 		&& glibc_ver_minor != 5
 		//&& glibc_ver_minor != 11
-		&& glibc_ver_minor != 12
-		&& (glibc_ver_minor < 17 || glibc_ver_minor > 23))
+		&& (glibc_ver_minor < 12 || glibc_ver_minor > 23))
 	{
 		CA_PRINT("The memory manager of glibc %d.%d is not supported in this release\n",
 				glibc_ver_major, glibc_ver_minor);
@@ -1479,7 +1478,7 @@ static CA_BOOL in_fastbins_or_remainder(struct ca_malloc_state* mstate, mchunkpt
 		else
 			index = fastbin_index_GLIBC_2_5_32(chunksz);
 	}
-	else if (glibc_ver_minor == 12 || (glibc_ver_minor >= 17 && glibc_ver_minor <= 23))
+	else if (glibc_ver_minor >= 12 && glibc_ver_minor <= 23)
 	{
 		if (ptr_bit == 64)
 			index = fastbin_index_GLIBC_2_12(chunksz);
@@ -2048,7 +2047,7 @@ static size_t get_mstate_size(void)
 		mstate_size = g_ptr_bit == 64 ? sizeof(struct malloc_state_GLIBC_2_4) : sizeof(struct malloc_state_GLIBC_2_4_32);
 	else if (glibc_ver_minor == 5)
 		mstate_size = g_ptr_bit == 64 ? sizeof(struct malloc_state_GLIBC_2_5) : sizeof(struct malloc_state_GLIBC_2_5_32);
-	else if (glibc_ver_minor == 12 || (glibc_ver_minor >= 17 && glibc_ver_minor <= 21))
+	else if (glibc_ver_minor >= 12 && glibc_ver_minor <= 21)
 		mstate_size = g_ptr_bit == 64 ? sizeof(struct malloc_state_GLIBC_2_12) : sizeof(struct malloc_state_GLIBC_2_12_32);
 	else if (glibc_ver_minor >= 22 && glibc_ver_minor <= 23)
 		mstate_size = g_ptr_bit == 64 ? sizeof(struct malloc_state_GLIBC_2_22) : sizeof(struct malloc_state_GLIBC_2_22_32);

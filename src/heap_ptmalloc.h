@@ -736,6 +736,7 @@ struct malloc_par_GLIBC_2_17_32 {
 };
 
 #define HEAP_MAX_SIZE_GLIBC_2_17_32    HEAP_MAX_SIZE_GLIBC_2_5_32
+#define MAX_FAST_SIZE_GLIBC_2_17_32    MAX_FAST_SIZE_GLIBC_2_12_32
 
 struct malloc_state_GLIBC_2_22_32 {
   int mutex; //mutex_t mutex;

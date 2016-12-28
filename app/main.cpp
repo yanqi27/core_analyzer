@@ -38,13 +38,13 @@
 
 // forward declaration
 static int AskChoice(const char** options);
-static CA_BOOL PrintBlockInfo(address_t addr);
+static bool PrintBlockInfo(address_t addr);
 
 // Global vars
 const char* gpInputExecName = NULL;
-CA_BOOL gbBatchMode = CA_FALSE;
-CA_BOOL gbVerbose   = CA_FALSE;
-CA_BOOL g_debug_core = CA_TRUE;
+bool gbBatchMode = false;
+bool gbVerbose   = false;
+bool g_debug_core = true;
 
 static void PrintBanner()
 {
@@ -57,10 +57,10 @@ static void PrintBanner()
 // The main menu
 int main(int argc, char** argv)
 {
-	CA_BOOL need_exec_file = CA_TRUE;
+	bool need_exec_file = true;
 	// validate input arguments
 #if defined(_AIX) || defined(WIN32) || defined(__MACH__)
-	need_exec_file = CA_FALSE;
+	need_exec_file = false;
 	if (argc < 2)
 	{
 		printf("Usage: %s [-b] core_file\n", argv[0]);
@@ -77,7 +77,7 @@ int main(int argc, char** argv)
 	int nextarg = 1;
 	if (0 == strcmp(argv[nextarg], "-b"))
 	{
-		gbBatchMode = CA_TRUE;
+		gbBatchMode = true;
 		nextarg++;
 	}
 
@@ -115,7 +115,7 @@ int main(int argc, char** argv)
 	if (gbBatchMode)
 	{
 		PrintCoreInfo(lCoreMmap);
-		heap_walk(0, CA_TRUE);
+		heap_walk(0, true);
 		return 0;
 	}
 
@@ -157,11 +157,11 @@ int main(int argc, char** argv)
 		// Horizonal search of all direct first-level references for given object
 		else if (opt == 1)
 		{
-			lpObjectVirtAddr = AskParam("Object start address", NULL, CA_TRUE);
-			lObjectSize = AskParam("Object size(RETURN to search the address)", NULL, CA_TRUE);
+			lpObjectVirtAddr = AskParam("Object start address", NULL, true);
+			lObjectSize = AskParam("Object size(RETURN to search the address)", NULL, true);
 			if (lObjectSize == 0)
 				lObjectSize = 1;
-			address_t val =  AskParam("Maximum indirection levels(1-32, RETURN for 1)", NULL, CA_TRUE);
+			address_t val =  AskParam("Maximum indirection levels(1-32, RETURN for 1)", NULL, true);
 			if (val == 0)
 				val = 1;
 			unsigned int nLevel = (unsigned int)val;
@@ -185,7 +185,7 @@ int main(int argc, char** argv)
 		// Vertical search, find at least one reference chain that leads a known-type variable to the given object
 		else if (opt == 2)
 		{
-			lpObjectVirtAddr = AskParam("Address value", NULL, CA_TRUE);
+			lpObjectVirtAddr = AskParam("Address value", NULL, true);
 			if (!find_object_type(lpObjectVirtAddr) )
 			{
 				printf("No object associated with 0x%lx is found\n", lpObjectVirtAddr);
@@ -201,8 +201,8 @@ int main(int argc, char** argv)
 		// Analyze the memory content within a given address range
 		else if (opt == 4)
 		{
-			start = AskParam("Start address", NULL, CA_TRUE);
-			end = AskParam("End address", NULL, CA_TRUE);
+			start = AskParam("Start address", NULL, true);
+			end = AskParam("End address", NULL, true);
 			if (start >= end)
 				printf("Invalid input addresses!\n");
 			print_memory_pattern(start, end);
@@ -210,7 +210,7 @@ int main(int argc, char** argv)
 		// Heap memory block
 		else if (opt == 5)
 		{
-			address_t lpBlockAddr = AskParam("Block address", NULL, CA_TRUE);
+			address_t lpBlockAddr = AskParam("Block address", NULL, true);
 			if (!PrintBlockInfo(lpBlockAddr))
 			{
 				//break;
@@ -219,8 +219,8 @@ int main(int argc, char** argv)
 		// Page work
 		else if (opt == 6)
 		{
-			address_t lpPoolAddr = AskParam("Address", NULL, CA_TRUE);
-			if (!heap_walk(lpPoolAddr, CA_FALSE))
+			address_t lpPoolAddr = AskParam("Address", NULL, true);
+			if (!heap_walk(lpPoolAddr, false))
 			{
 				//break;
 			}
@@ -228,7 +228,7 @@ int main(int argc, char** argv)
 		// Heap walk
 		else if (opt == 7)
 		{
-			if (!heap_walk(0, CA_FALSE))
+			if (!heap_walk(0, false))
 			{
 				//break;
 			}
@@ -236,7 +236,7 @@ int main(int argc, char** argv)
 		// Top-sized memory blocks
 		else if (opt == 8)
 		{
-			unsigned int num = AskParam("Number of in-use top-sized heap memory blocks", NULL, CA_TRUE);
+			unsigned int num = AskParam("Number of in-use top-sized heap memory blocks", NULL, true);
 			if (!biggest_blocks(num))
 			{
 				//break;
@@ -245,8 +245,8 @@ int main(int argc, char** argv)
 		// Variables/owners that reference most heap memory
 		else if (opt == 9)
 		{
-			unsigned int num = AskParam("Number of top users(variables) of heap memory", NULL, CA_TRUE);
-			if (!biggest_heap_owners_generic(num, CA_FALSE))
+			unsigned int num = AskParam("Number of top users(variables) of heap memory", NULL, true);
+			if (!biggest_heap_owners_generic(num, false))
 			{
 				//break;
 			}
@@ -291,7 +291,7 @@ static int AskChoice(const char** options)
 	return rc;
 }
 
-static CA_BOOL PrintBlockInfo(address_t addr)
+static bool PrintBlockInfo(address_t addr)
 {
 	struct heap_block block_info;
 	if (get_heap_block_info(addr, &block_info))
@@ -311,5 +311,5 @@ static CA_BOOL PrintBlockInfo(address_t addr)
 	{
 		printf("[Error] Failed to query the memory block\n");
 	}
-	return CA_TRUE;
+	return true;
 }

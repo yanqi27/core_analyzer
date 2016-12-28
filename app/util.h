@@ -44,7 +44,7 @@
 // Helper functions
 ////////////////////////////////////////////////////////////////////
 extern address_t String2ULong(const char* exp);
-extern address_t AskParam(const char* message, const char* env_name, CA_BOOL ask);
+extern address_t AskParam(const char* message, const char* env_name, bool ask);
 extern char* AskPath(const char* pathname);
 extern const char* GetBaseName(const char* ipPath);
 extern bool FileReadable(const char* ipFilePath);

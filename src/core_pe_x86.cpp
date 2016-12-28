@@ -489,7 +489,7 @@ int read_registers(const struct ca_segment* segment, struct reg_value* regs, int
 	return NUM_REGS;
 }
 
-CA_BOOL search_registers(const struct ca_segment* segment,
+bool search_registers(const struct ca_segment* segment,
 						struct CA_LIST* targets,
 						struct CA_LIST* refs)
 {
@@ -523,7 +523,7 @@ CA_BOOL search_registers(const struct ca_segment* segment,
 					ref->vaddr        = 0;
 					ref->value        = regs[k];
 					ca_list_push_back(refs, ref);
-					lbFound = CA_TRUE;
+					lbFound = true;
 					break;
 				}
 			}
@@ -688,7 +688,7 @@ extern bool g_dbgheap;
 
 bool InitCoreAnalyzer(MmapFile& irExec, MmapFile& irCore)
 {
-	bool rc = BuildSegments(irCore) /*&& test_segments(CA_TRUE)*/;
+	bool rc = BuildSegments(irCore) /*&& test_segments(true)*/;
 
 	return rc;
 }

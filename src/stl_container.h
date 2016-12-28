@@ -16,10 +16,10 @@ struct CA_LIST;
 
 #ifdef CA_USE_SPLAY_TREE
 typedef int (*CA_CompareFunctionType) (splay_tree_key, splay_tree_key);
-CA_BOOL ca_set_insert_key_and_val(struct CA_SET* iset, void* key, void* val);
+bool ca_set_insert_key_and_val(struct CA_SET* iset, void* key, void* val);
 #else
-typedef CA_BOOL (*CA_CompareFunctionType)(void *, void *);
-CA_BOOL ca_set_insert(struct CA_SET*, void*);
+typedef bool (*CA_CompareFunctionType)(void *, void *);
+bool ca_set_insert(struct CA_SET*, void*);
 #endif
 
 struct CA_SET* ca_set_new(CA_CompareFunctionType comp);
@@ -38,7 +38,7 @@ void  ca_list_push_back(struct CA_LIST*, void*);
 void* ca_list_pop_front(struct CA_LIST*);
 struct CA_LIST* ca_list_new(void);
 void ca_list_delete(struct CA_LIST*);
-CA_BOOL ca_list_empty(struct CA_LIST*);
+bool ca_list_empty(struct CA_LIST*);
 size_t ca_list_size(struct CA_LIST*);
 
 #endif // _STL_CONTAINER_H

@@ -29,7 +29,7 @@ struct heap_block
 {
 	address_t addr;
 	size_t    size;
-	CA_BOOL   inuse;
+	bool   inuse;
 };
 
 struct reg_ref
@@ -104,8 +104,8 @@ struct CA_LIST;
 /////////////////////////////////////////////////////////////////////////
 // Import functions (required from heap parser, x_dep, etc.)
 /////////////////////////////////////////////////////////////////////////
-extern CA_BOOL is_heap_object_with_vptr(const struct object_reference*, char*, size_t);
-extern CA_BOOL search_registers(const struct ca_segment*, struct CA_LIST*, struct CA_LIST*);
+extern bool is_heap_object_with_vptr(const struct object_reference*, char*, size_t);
+extern bool search_registers(const struct ca_segment*, struct CA_LIST*, struct CA_LIST*);
 extern int read_registers(const struct ca_segment*, struct reg_value*, int);
 extern int get_frame_number(const struct ca_segment*, address_t, int*);
 extern int get_thread_id(const struct ca_segment*);

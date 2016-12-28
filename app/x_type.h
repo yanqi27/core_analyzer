@@ -80,10 +80,6 @@ typedef unsigned long address_t;
 
 #endif
 
-typedef bool CA_BOOL;
-#define CA_TRUE  true
-#define CA_FALSE false
-
 #define PERMISSION_X 0x0001
 #define PERMISSION_W 0x0002
 #define PERMISSION_R 0x0004

@@ -21,7 +21,7 @@ struct heap_owner
 #define LINE_BUF_SZ 1024
 
 // Forward declaration
-static CA_BOOL
+static bool
 mark_blocks_referenced_by_globals_locals(struct inuse_block*, unsigned long, unsigned int*);
 
 static void
@@ -36,7 +36,7 @@ static void add_owner(struct heap_owner*, unsigned int, struct heap_owner*);
 static size_t
 heap_aggregate_size(struct inuse_block*, struct inuse_block*, unsigned long, unsigned int*,	unsigned long*);
 
-static CA_BOOL
+static bool
 build_block_index_map(struct inuse_block*, struct inuse_block*, unsigned long);
 
 // Global Vars
@@ -91,19 +91,19 @@ char ca_help_msg[] = "Commands of core_analyzer "CA_VERSION_STRING"\n"
 /*
  * Parse user options and invoke corresponding heap-related functions
  */
-CA_BOOL heap_command_impl(char* args)
+bool heap_command_impl(char* args)
 {
-	CA_BOOL rc = CA_TRUE;
+	bool rc = true;
 
 	address_t addr = 0;
-	CA_BOOL verbose = CA_FALSE;
-	CA_BOOL check_leak = CA_FALSE;
-	CA_BOOL calc_usage = CA_FALSE;
-	CA_BOOL block_info = CA_FALSE;
-	CA_BOOL cluster_blocks = CA_FALSE;
-	CA_BOOL top_block = CA_FALSE;
-	CA_BOOL top_user = CA_FALSE;
-	CA_BOOL all_reachable_blocks = CA_FALSE;	// experimental option
+	bool verbose = false;
+	bool check_leak = false;
+	bool calc_usage = false;
+	bool block_info = false;
+	bool cluster_blocks = false;
+	bool top_block = false;
+	bool top_user = false;
+	bool all_reachable_blocks = false;	// experimental option
 	char* expr = NULL;
 
 	// Parse user input options
@@ -120,68 +120,68 @@ CA_BOOL heap_command_impl(char* args)
 			{
 				if (strcmp(option, "/leak") == 0 || strcmp(option, "/l") == 0)
 				{
-					check_leak = CA_TRUE;
+					check_leak = true;
 					if (block_info || cluster_blocks || calc_usage || top_block || top_user || addr)
 					{
 						CA_PRINT("Option [%s] conflicts with one of the previous options\n", option);
-						return CA_FALSE;
+						return false;
 					}
 				}
 				else if (strcmp(option, "/verbose") == 0 || strcmp(option, "/v") == 0)
 				{
-					verbose = CA_TRUE;
+					verbose = true;
 				}
 				else if (strcmp(option, "/block") == 0 || strcmp(option, "/b") == 0)
 				{
-					block_info = CA_TRUE;
+					block_info = true;
 					if (check_leak || cluster_blocks || calc_usage || top_block || top_user)
 					{
 						CA_PRINT("Option [%s] conflicts with one of the previous options\n", option);
-						return CA_FALSE;
+						return false;
 					}
 				}
 				else if (strcmp(option, "/cluster") == 0 || strcmp(option, "/c") == 0)
 				{
-					cluster_blocks = CA_TRUE;
+					cluster_blocks = true;
 					if (check_leak || block_info || calc_usage || top_block || top_user)
 					{
 						CA_PRINT("Option [%s] conflicts with one of the previous options\n", option);
-						return CA_FALSE;
+						return false;
 					}
 				}
 				else if (strcmp(option, "/usage") == 0 || strcmp(option, "/u") == 0)
 				{
-					calc_usage = CA_TRUE;
+					calc_usage = true;
 					if (check_leak || block_info || cluster_blocks || top_block || top_user)
 					{
 						CA_PRINT("Option [%s] conflicts with one of the previous options\n", option);
-						return CA_FALSE;
+						return false;
 					}
 				}
 				else if (strcmp(option, "/topblock") == 0 || strcmp(option, "/tb") == 0)
 				{
-					top_block = CA_TRUE;
+					top_block = true;
 					if (check_leak || block_info || cluster_blocks || calc_usage || top_user)
 					{
 						CA_PRINT("Option [%s] conflicts with one of the previous options\n", option);
-						return CA_FALSE;
+						return false;
 					}
 				}
 				else if (strcmp(option, "/topuser") == 0 || strcmp(option, "/tu") == 0)
 				{
-					top_user = CA_TRUE;
+					top_user = true;
 					if (check_leak || block_info || cluster_blocks || calc_usage || top_block)
 					{
 						CA_PRINT("Option [%s] conflicts with one of the previous options\n", option);
-						return CA_FALSE;
+						return false;
 					}
 				}
 				else if (strcmp(option, "/all") == 0 || strcmp(option, "/a") == 0)
-					all_reachable_blocks = CA_TRUE;
+					all_reachable_blocks = true;
 				else
 				{
 					CA_PRINT("Invalid option: [%s]\n", option);
-					return CA_FALSE;
+					return false;
 				}
 			}
 			else if (calc_usage)
@@ -194,7 +194,7 @@ CA_BOOL heap_command_impl(char* args)
 			else
 			{
 				CA_PRINT("Invalid option: [%s]\n", option);
-				return CA_FALSE;
+				return false;
 			}
 		}
 	}
@@ -266,10 +266,10 @@ CA_BOOL heap_command_impl(char* args)
 /*
  * Parse user options and invoke corresponding search functions
  */
-CA_BOOL ref_command_impl(char* args)
+bool ref_command_impl(char* args)
 {
 	int rc;
-	CA_BOOL threadref = CA_FALSE;
+	bool threadref = false;
 	address_t addr = 0;
 	size_t size  = 0;
 	size_t level = 0;
@@ -285,14 +285,14 @@ CA_BOOL ref_command_impl(char* args)
 		{
 			char* option = options[i];
 			if (strcmp(option, "/thread") == 0 || strcmp(option, "/t") == 0)
-				threadref = CA_TRUE;
+				threadref = true;
 			else if (addr == 0)
 			{
 				addr = ca_eval_address (option);
 				if (addr == 0)
 				{
 					CA_PRINT("Invalid address [%s] argument\n", option);
-					return CA_FALSE;
+					return false;
 				}
 			}
 			else if (size == 0)
@@ -301,7 +301,7 @@ CA_BOOL ref_command_impl(char* args)
 				if (size == 0)
 				{
 					CA_PRINT("Invalid size [%s] argument\n", option);
-					return CA_FALSE;
+					return false;
 				}
 			}
 			else if (level == 0)
@@ -310,13 +310,13 @@ CA_BOOL ref_command_impl(char* args)
 				if (level == 0)
 				{
 					CA_PRINT("Invalid level [%s] argument\n", option);
-					return CA_FALSE;
+					return false;
 				}
 			}
 			else
 			{
 				CA_PRINT("Too many arguments: %s\n", option);
-				return CA_FALSE;
+				return false;
 			}
 		}
 	}
@@ -324,7 +324,7 @@ CA_BOOL ref_command_impl(char* args)
 	if (addr == 0)
 	{
 		CA_PRINT("Missing object address.");
-		return CA_FALSE;
+		return false;
 	}
 
 	if (threadref)
@@ -356,7 +356,7 @@ CA_BOOL ref_command_impl(char* args)
 	if (!rc)
 		CA_PRINT("No result found\n");
 
-	return CA_TRUE;
+	return true;
 }
 
 /*
@@ -388,7 +388,7 @@ print_segment(struct ca_segment* segment)
 	CA_PRINT("\n");
 }
 
-CA_BOOL segment_command_impl(char* args)
+bool segment_command_impl(char* args)
 {
 	struct ca_segment* segment;
 
@@ -477,13 +477,13 @@ CA_BOOL segment_command_impl(char* args)
 			}
 		}*/
 	}
-	return CA_TRUE;
+	return true;
 }
 
 /*
  * Parse user options and invoke corresponding pattern function
  */
-CA_BOOL pattern_command_impl(char* args)
+bool pattern_command_impl(char* args)
 {
 	address_t lo = 0, hi = 0;
 	// Parse user input options
@@ -495,25 +495,25 @@ CA_BOOL pattern_command_impl(char* args)
 		if (num_options != 2)
 		{
 			CA_PRINT("Expect arguments: <start> <end>\n");
-			return CA_FALSE;
+			return false;
 		}
 		lo = ca_eval_address (options[0]);
 		hi = ca_eval_address (options[1]);
 		if (hi <= lo)
 		{
 			CA_PRINT("Invalid memory address range (start >= end)\n");
-			return CA_FALSE;
+			return false;
 		}
 	}
 	else
 	{
 		CA_PRINT("Missing object address.");
-		return CA_FALSE;
+		return false;
 	}
 
 	print_memory_pattern(lo, hi);
 
-	return CA_TRUE;
+	return true;
 }
 
 /*
@@ -675,22 +675,22 @@ static void fprint_size(char* buf, size_t sz)
 }
 
 // Find the top n memory blocks in term of size
-CA_BOOL biggest_blocks(unsigned int num)
+bool biggest_blocks(unsigned int num)
 {
-	CA_BOOL rc = CA_TRUE;
+	bool rc = true;
 	struct heap_block* blocks;
 
 	if (num == 0)
-		return CA_TRUE;
+		return true;
 	else if (num > 1024 * 1024)
 	{
 		CA_PRINT("The number %d is too big, I am not sure I can do it\n", num);
-		return CA_FALSE;
+		return false;
 	}
 
 	blocks = (struct heap_block*) calloc (num, sizeof(struct heap_block));
 	if (!blocks)
-		return CA_FALSE;
+		return false;
 
 	if (get_biggest_blocks (blocks, num))
 	{
@@ -706,7 +706,7 @@ CA_BOOL biggest_blocks(unsigned int num)
 		}
 	}
 	else
-		rc = CA_FALSE;
+		rc = false;
 
 	// cleanup
 	free (blocks);
@@ -717,9 +717,9 @@ CA_BOOL biggest_blocks(unsigned int num)
 /*
  * Find/display global/local variables which own the most heap memory in bytes
  */
-CA_BOOL biggest_heap_owners_generic(unsigned int num, CA_BOOL all_reachable_blocks)
+bool biggest_heap_owners_generic(unsigned int num, bool all_reachable_blocks)
 {
-	CA_BOOL rc = CA_FALSE;
+	bool rc = false;
 	unsigned int i;
 	int nregs = 0;
 	struct reg_value *regs_buf = NULL;
@@ -743,7 +743,7 @@ CA_BOOL biggest_heap_owners_generic(unsigned int num, CA_BOOL all_reachable_bloc
 
 	// Allocate an array for the biggest num of owners
 	if (num == 0)
-		return CA_FALSE;
+		return false;
 	owners = (struct heap_owner *) calloc(num, sizeof(struct heap_owner));
 	if (!owners)
 		goto clean_out;
@@ -851,7 +851,7 @@ CA_BOOL biggest_heap_owners_generic(unsigned int num, CA_BOOL all_reachable_bloc
 				size_t val_len = ptr_sz;
 				address_t sym_addr;
 				size_t    sym_sz;
-				CA_BOOL known_sym = CA_FALSE;
+				bool known_sym = false;
 
 				// If the address belongs to a known variable, include all its subfields
 				// FIXME
@@ -864,7 +864,7 @@ CA_BOOL biggest_heap_owners_generic(unsigned int num, CA_BOOL all_reachable_bloc
 					ref.where.stack.tid = tid;
 					ref.where.stack.frame = get_frame_number(segment, cursor, &ref.where.stack.offset);
 					if (known_stack_sym(&ref, &sym_addr, &sym_sz) && sym_sz)
-						known_sym = CA_TRUE;
+						known_sym = true;
 				}
 				else if (segment->m_type == ENUM_MODULE_DATA)
 				{
@@ -872,7 +872,7 @@ CA_BOOL biggest_heap_owners_generic(unsigned int num, CA_BOOL all_reachable_bloc
 					ref.where.module.size = segment->m_vsize;
 					ref.where.module.name = segment->m_module_name;
 					if (known_global_sym(&ref, &sym_addr, &sym_sz) && sym_sz)
-						known_sym = CA_TRUE;
+						known_sym = true;
 				}
 				if (known_sym)
 				{
@@ -919,7 +919,7 @@ CA_BOOL biggest_heap_owners_generic(unsigned int num, CA_BOOL all_reachable_bloc
 			ref.where.heap.addr = blk->addr;
 			ref.where.heap.size = blk->size;
 			ref.where.heap.inuse = 1;
-			calc_aggregate_size(&ref, ptr_sz, CA_FALSE, inuse_blocks, num_inuse_blocks, &aggr_size, &aggr_count);
+			calc_aggregate_size(&ref, ptr_sz, false, inuse_blocks, num_inuse_blocks, &aggr_size, &aggr_count);
 			// update the top list if applies
 			if (aggr_size >= smallest->aggr_size)
 			{
@@ -940,13 +940,13 @@ CA_BOOL biggest_heap_owners_generic(unsigned int num, CA_BOOL all_reachable_bloc
 		if (owner->aggr_size)
 		{
 			CA_PRINT("[%d] ", i+1);
-			print_ref(&owner->ref, 0, CA_FALSE, CA_FALSE);
+			print_ref(&owner->ref, 0, false, false);
 			CA_PRINT("    |--> ");
 			print_size(owner->aggr_size);
 			CA_PRINT(" (%ld blocks)\n", owner->aggr_count);
 		}
 	}
-	rc = CA_TRUE;
+	rc = true;
 
 clean_out:
 	// clean up
@@ -964,10 +964,10 @@ clean_out:
  * Given a reference, a variable or a pointer to a heap block, with known size,
  * 	Return its aggregated reachable in-use blocks
  */
-CA_BOOL
+bool
 calc_aggregate_size(const struct object_reference *ref,
 					size_t var_len,
-					CA_BOOL all_reachable_blocks,
+					bool all_reachable_blocks,
 					struct inuse_block *inuse_blocks,
 					unsigned long num_inuse_blocks,
 					size_t *total_size,
@@ -998,7 +998,7 @@ calc_aggregate_size(const struct object_reference *ref,
 		{
 			bitmap_capacity = 0;
 			CA_PRINT("Out of Memory\n");
-			return CA_FALSE;
+			return false;
 		}
 		bitmap_capacity = num_inuse_blocks;
 	}
@@ -1008,7 +1008,7 @@ calc_aggregate_size(const struct object_reference *ref,
 	if (ref->storage_type == ENUM_REGISTER || ref->storage_type == ENUM_HEAP)
 	{
 		if (var_len != ptr_sz)
-			return CA_FALSE;
+			return false;
 		blk = find_inuse_block(ref->vaddr, inuse_blocks, num_inuse_blocks);
 		if (blk)
 		{
@@ -1017,7 +1017,7 @@ calc_aggregate_size(const struct object_reference *ref,
 			{
 				*total_size  = blk->reachable.aggr_size;
 				*total_count = blk->reachable.aggr_count;
-				return CA_TRUE;
+				return true;
 			}
 			else
 			{
@@ -1030,7 +1030,7 @@ calc_aggregate_size(const struct object_reference *ref,
 			}
 		}
 		else
-			return CA_FALSE;
+			return false;
 	}
 	// input reference is an object with given size, e.g. a local/global variable
 	else
@@ -1047,14 +1047,14 @@ calc_aggregate_size(const struct object_reference *ref,
 					{
 						*total_size  = blk->reachable.aggr_size;
 						*total_count = blk->reachable.aggr_count;
-						return CA_TRUE;
+						return true;
 					}
 				}
 				else
-					return CA_FALSE;
+					return false;
 			}
 			else
-				return CA_FALSE;
+				return false;
 		}
 		cursor = ref->vaddr;
 		end  = cursor + var_len;
@@ -1111,14 +1111,14 @@ calc_aggregate_size(const struct object_reference *ref,
 	// return happily
 	*total_size  = aggr_size;
 	*total_count = aggr_count;
-	return CA_TRUE;
+	return true;
 }
 
 // A not-so-fast leak checking based on the concept what a heap block without any
 // reference directly/indirectly from a global/local variable is a lost one
-CA_BOOL display_heap_leak_candidates(void)
+bool display_heap_leak_candidates(void)
 {
-	CA_BOOL rc = CA_TRUE;
+	bool rc = true;
 	unsigned long total_blocks = 0;
 	struct inuse_block* blocks = NULL;
 	struct inuse_block* blk;
@@ -1133,7 +1133,7 @@ CA_BOOL display_heap_leak_candidates(void)
 	if (!blocks || total_blocks == 0)
 	{
 		CA_PRINT("Failed: no in-use heap block is found\n");
-		return CA_FALSE;
+		return false;
 	}
 
 	// Prepare bitmap with the clean state
@@ -1142,7 +1142,7 @@ CA_BOOL display_heap_leak_candidates(void)
 	if (!qv_bitmap)
 	{
 		CA_PRINT("Out of Memory\n");
-		rc = CA_FALSE;
+		rc = false;
 		goto leak_check_out;
 	}
 
@@ -1150,7 +1150,7 @@ CA_BOOL display_heap_leak_candidates(void)
 	// for all references to these in-use blocks, mark them queued and visited
 	if (!mark_blocks_referenced_by_globals_locals(blocks, total_blocks, qv_bitmap))
 	{
-		rc = CA_FALSE;
+		rc = false;
 		goto leak_check_out;
 	}
 
@@ -1170,7 +1170,7 @@ CA_BOOL display_heap_leak_candidates(void)
 			{
 				if (!build_block_index_map(blk, blocks, total_blocks))
 				{
-					rc = CA_FALSE;
+					rc = false;
 					goto leak_check_out;
 				}
 			}
@@ -1283,7 +1283,7 @@ void init_mem_histogram(unsigned int nbuckets)
 	}
 }
 
-void add_block_mem_histogram(size_t size, CA_BOOL inuse, unsigned int num_block)
+void add_block_mem_histogram(size_t size, bool inuse, unsigned int num_block)
 {
 	unsigned int n;
 
@@ -1446,7 +1446,7 @@ struct inuse_block* find_inuse_block(address_t addr, struct inuse_block* blocks,
 	return NULL;
 }
 
-static CA_BOOL
+static bool
 mark_blocks_referenced_by_globals_locals(struct inuse_block* blocks,
 						unsigned long total_blocks, unsigned int* qv_bitmap)
 {
@@ -1504,7 +1504,7 @@ mark_blocks_referenced_by_globals_locals(struct inuse_block* blocks,
 		}
 	}
 
-	return CA_TRUE;
+	return true;
 }
 
 static unsigned long get_next_queued_index(unsigned int* bitmap, unsigned long max_index, unsigned long cur_index)
@@ -1577,7 +1577,7 @@ static unsigned int* get_index_map_buffer(unsigned int len)
 /*
  * block's index map is an array of indexes of sub blocks
  */
-static CA_BOOL build_block_index_map(struct inuse_block* blk,
+static bool build_block_index_map(struct inuse_block* blk,
 						struct inuse_block* inuse_blocks,
 						unsigned long num_inuse_blocks)
 {
@@ -1607,7 +1607,7 @@ static CA_BOOL build_block_index_map(struct inuse_block* blk,
 				sub_blk = find_inuse_block(ptr, inuse_blocks, num_inuse_blocks);
 				if (sub_blk)
 				{
-					CA_BOOL found_dup = CA_FALSE;
+					bool found_dup = false;
 					// avoid duplicate, which is not uncommon
 					// FIXME, consider non-linear search
 					index = sub_blk - inuse_blocks;
@@ -1615,7 +1615,7 @@ static CA_BOOL build_block_index_map(struct inuse_block* blk,
 					{
 						if (index_buf[i] == index)
 						{
-							found_dup = CA_TRUE;
+							found_dup = true;
 							break;
 						}
 					}
@@ -1625,7 +1625,7 @@ static CA_BOOL build_block_index_map(struct inuse_block* blk,
 						if (total_sub_blocks == UINT_MAX)
 						{
 							CA_PRINT("Internal fatal error: number of sub blocks exceeds 4 billion\n");
-							return CA_FALSE;
+							return false;
 						}
 					}
 				}
@@ -1638,11 +1638,11 @@ static CA_BOOL build_block_index_map(struct inuse_block* blk,
 		if (!blk->reachable.index_map)
 		{
 			CA_PRINT("Out-of-memory\n");
-			return CA_FALSE;
+			return false;
 		}
 		memcpy(blk->reachable.index_map, index_buf, total_sub_blocks * sizeof(unsigned int));
 	}
-	return CA_TRUE;
+	return true;
 }
 
 /*

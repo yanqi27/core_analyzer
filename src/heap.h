@@ -12,17 +12,17 @@
 /*
  * Exposed functions
  */
-extern CA_BOOL init_heap(void);
+extern bool init_heap(void);
 
-extern CA_BOOL heap_walk(address_t addr, CA_BOOL verbose);
+extern bool heap_walk(address_t addr, bool verbose);
 
-extern CA_BOOL is_heap_block(address_t addr);
+extern bool is_heap_block(address_t addr);
 
-extern CA_BOOL get_heap_block_info(address_t addr, struct heap_block* blk);
+extern bool get_heap_block_info(address_t addr, struct heap_block* blk);
 
-extern CA_BOOL get_next_heap_block(address_t addr, struct heap_block* blk);
+extern bool get_next_heap_block(address_t addr, struct heap_block* blk);
 
-extern CA_BOOL get_biggest_blocks(struct heap_block* blks, unsigned int num);
+extern bool get_biggest_blocks(struct heap_block* blks, unsigned int num);
 
 extern void print_size(size_t sz);
 
@@ -49,22 +49,22 @@ struct inuse_block
  * 	If param opBlocks is NULL, return number of in-use only,
  * 	otherwise, populate the array with all in-use block info
  */
-extern CA_BOOL walk_inuse_blocks(struct inuse_block* opBlocks, unsigned long* opCount);
+extern bool walk_inuse_blocks(struct inuse_block* opBlocks, unsigned long* opCount);
 
 extern struct inuse_block* build_inuse_heap_blocks(unsigned long*);
 extern void free_inuse_heap_blocks(struct inuse_block*, unsigned long);
 
 extern struct inuse_block* find_inuse_block(address_t, struct inuse_block*, unsigned long);
 
-extern CA_BOOL display_heap_leak_candidates(void);
+extern bool display_heap_leak_candidates(void);
 
-extern CA_BOOL biggest_blocks(unsigned int num);
-extern CA_BOOL biggest_heap_owners_generic(unsigned int num, CA_BOOL all_reachable_blocks);
+extern bool biggest_blocks(unsigned int num);
+extern bool biggest_heap_owners_generic(unsigned int num, bool all_reachable_blocks);
 
-extern CA_BOOL
+extern bool
 calc_aggregate_size(const struct object_reference *ref,
 					size_t var_len,
-					CA_BOOL all_reachable_blocks,
+					bool all_reachable_blocks,
 					struct inuse_block *inuse_blocks,
 					unsigned long num_inuse_blocks,
 					size_t *aggr_size,
@@ -85,6 +85,6 @@ struct MemHistogram
 extern void display_mem_histogram(const char*);
 extern void init_mem_histogram(unsigned int nbuckets);
 extern void release_mem_histogram(void);
-extern void add_block_mem_histogram(size_t, CA_BOOL, unsigned int);
+extern void add_block_mem_histogram(size_t, bool, unsigned int);
 
 #endif

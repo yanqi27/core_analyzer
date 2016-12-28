@@ -156,7 +156,7 @@ heap(PDEBUG_CLIENT4 Client, PCSTR args)
 	if (args && strlen(args))
 		args_buf = strdup(args);
 
-	CA_BOOL rc = heap_command_impl(args_buf);
+	bool rc = heap_command_impl(args_buf);
 
 	if (args_buf)
 		free(args_buf);
@@ -182,7 +182,7 @@ ref (PDEBUG_CLIENT4 Client, PCSTR args)
 	if (args && strlen(args))
 		args_buf = strdup(args);
 
-	CA_BOOL rc = ref_command_impl(args_buf);
+	bool rc = ref_command_impl(args_buf);
 
 	if (args_buf)
 		free(args_buf);
@@ -208,7 +208,7 @@ segment(PDEBUG_CLIENT4 Client, PCSTR args)
 	if (args && strlen(args))
 		args_buf = strdup(args);
 
-	CA_BOOL rc = segment_command_impl(args_buf);
+	bool rc = segment_command_impl(args_buf);
 
 	if (args_buf)
 		free(args_buf);
@@ -231,7 +231,7 @@ pattern (PDEBUG_CLIENT4 Client, PCSTR args)
 	if (args && strlen(args))
 		args_buf = strdup(args);
 
-	CA_BOOL rc = pattern_command_impl(args_buf);
+	bool rc = pattern_command_impl(args_buf);
 
 	if (args_buf)
 		free(args_buf);
@@ -275,7 +275,7 @@ shrobj(PDEBUG_CLIENT4 Client, PCSTR args)
 
 	if (args && strlen(args))
 	{
-    	char* buf = strdup(args);
+		char* buf = strdup(args);
 		char* options[MAX_NUM_OPTIONS];
 		int num_options = ca_parse_options(buf, options);
 		int i;

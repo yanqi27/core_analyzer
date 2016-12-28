@@ -1,13 +1,14 @@
 ### Unit Test
-This test verifies core_analyzer's following functions:
+This test verifies core_analyzer's functions through its gdb python extension.
+A python script is invoked by gdb, which loads and runs a C++ program. The
+program allocates numerous heap memory and creates C++ objects. The python
+script extracts variables from the program which identifies heap blocks and
+their status. It then calls core_analyzer APIs and compares the result with
+what the variables reveal.
 
--  small heap region's size and status
-- gdb python extension
+The test is first run against a live process. The python script then creates
+a core dump file and loads it and verifies core_analyzer APIs again.
 
-It has following limitations:
-
-- ptmalloc only. The test calls malloc_usable_size() to get heap allocation size
-- gdb and python
 
 To run the test, simply
 
@@ -15,9 +16,7 @@ To run the test, simply
 make check
 ```
 
-To run the test manually with a core file
+By default, ptmalloc is tested. For tcmalloc
 ```
-gdb mallocTest core.2708
-(gdb) source verify_methods.py
-(gdb) py check()
+make check_tcmalloc
 ```

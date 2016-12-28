@@ -45,7 +45,7 @@ const int min_chars = MIN_CHARS_OF_STRING;
 ////////////////////////////////////////////////////////////////////
 // Helper functions
 ////////////////////////////////////////////////////////////////////
-address_t AskParam(const char* message, const char* env_name, CA_BOOL ask)
+address_t AskParam(const char* message, const char* env_name, bool ask)
 {
 	if (env_name)
 	{
@@ -61,12 +61,10 @@ address_t AskParam(const char* message, const char* env_name, CA_BOOL ask)
 
 	printf("%s ? ", message);
 	char linebuf[LINE_BUFFER_SZ];
-	fgets(linebuf, LINE_BUFFER_SZ, stdin);
-
-	if (strlen(linebuf) <= 0)
+	if (fgets(linebuf, LINE_BUFFER_SZ, stdin) == NULL ||
+	    strlen(linebuf) <= 0) {
 		return 0;
-	else
-	{
+	} else {
 		char* cursor = &linebuf[0];
 		// remove return character
 		for (int i=0; i<LINE_BUFFER_SZ; i++, cursor++)
@@ -92,7 +90,8 @@ char* AskPath(const char* pathname)
 {
 	printf("%s Path ? ", pathname);
 	char* lpPath = new char [MAX_PATH_LEN];
-	fgets(lpPath, MAX_PATH_LEN, stdin);
+	if (fgets(lpPath, MAX_PATH_LEN, stdin) == NULL)
+		return NULL;
 	return lpPath;
 }
 
@@ -314,7 +313,7 @@ const char* RemoveLineReturn(char* ipLineBuf)
 // Current implementation checks if the first 8-byte points to a module's
 // .data section
 /////////////////////////////////////////////////////////////////////////
-CA_BOOL is_heap_object_with_vptr(const struct object_reference* ref, char* name_buf, size_t buff_sz)
+bool is_heap_object_with_vptr(const struct object_reference* ref, char* name_buf, size_t buff_sz)
 {
 	int ptr_sz = g_ptr_bit >> 3;
 	address_t addr = ref->where.heap.addr;
@@ -327,9 +326,9 @@ CA_BOOL is_heap_object_with_vptr(const struct object_reference* ref, char* name_
 #else
 		if (segment && segment->m_type == ENUM_MODULE_DATA)
 #endif
-			return CA_TRUE;
+			return true;
 	}
-	return CA_FALSE;
+	return false;
 }
 
 //////////////////////////////////////////////////////////////
@@ -447,20 +446,20 @@ void clear_addr_type_map()
 {
 }
 
-CA_BOOL inferior_memory_read (address_t addr, void* buffer, size_t sz)
+bool inferior_memory_read (address_t addr, void* buffer, size_t sz)
 {
-	return CA_FALSE;
+	return false;
 }
 
-address_t get_var_addr_by_name(const char* varname, CA_BOOL ask)
+address_t get_var_addr_by_name(const char* varname, bool ask)
 {
 	if (ask)
 	{
 		printf("Please input the address of variable %s\n", varname);
 #ifdef __GNUC__
-		printf("You can find it by command \"(gdb)print &%s\"\n", varname, varname);
+		printf("You can find it by command \"(gdb)print &%s\"\n", varname);
 #else
-		printf("You can find it by command \"(windbg)? $%s\"\n", varname, varname);
+		printf("You can find it by command \"(windbg)? $%s\"\n", varname);
 #endif
 	}
 
@@ -477,31 +476,31 @@ address_t get_var_addr_by_name(const char* varname, CA_BOOL ask)
 	return rs;
 }
 
-static CA_BOOL g_control_c_pressed = CA_FALSE;
+static bool g_control_c_pressed = false;
 
-CA_BOOL user_request_break()
+bool user_request_break()
 {
 	if (g_control_c_pressed)
 	{
-		g_control_c_pressed = CA_FALSE;
-		return CA_TRUE;
+		g_control_c_pressed = false;
+		return true;
 	}
-	return CA_FALSE;
+	return false;
 }
 
-CA_BOOL get_vtable_from_exp(const char*, struct CA_LIST*, char*, size_t, size_t*)
+bool get_vtable_from_exp(const char*, struct CA_LIST*, char*, size_t, size_t*)
 {
-	return CA_FALSE;
+	return false;
 }
 
-CA_BOOL known_global_sym(const struct object_reference* ref, address_t* sym_addr, size_t* sym_sz)
+bool known_global_sym(const struct object_reference* ref, address_t* sym_addr, size_t* sym_sz)
 {
-	return CA_FALSE;
+	return false;
 }
 
-CA_BOOL known_stack_sym(const struct object_reference* ref, address_t* sym_addr, size_t* sym_sz)
+bool known_stack_sym(const struct object_reference* ref, address_t* sym_addr, size_t* sym_sz)
 {
-	return CA_FALSE;
+	return false;
 }
 
 #define DEFAULT_WIDTH 40
@@ -540,8 +539,8 @@ void calc_heap_usage(char *exp)
 {
 }
 
-CA_BOOL  search_all_objects(unsigned int)
+bool  search_all_objects(unsigned int)
 {
-	return CA_FALSE;
+	return false;
 }
 

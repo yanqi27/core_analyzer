@@ -23,8 +23,8 @@ struct shared_object
 /////////////////////////////////////////////////////
 // global variables
 /////////////////////////////////////////////////////
-CA_BOOL g_skip_free = CA_TRUE;
-CA_BOOL g_skip_unknown = CA_FALSE;
+bool g_skip_free = true;
+bool g_skip_unknown = false;
 unsigned int g_max_indirection_level = 16;
 #define MAX_INDIRECTION_LEVEL 64
 
@@ -46,15 +46,15 @@ static struct CA_SET* g_shared_objects = NULL;
 /////////////////////////////////////////////////////
 // forward declarations.
 /////////////////////////////////////////////////////
-static size_t is_string(address_t, int, CA_BOOL*);
+static size_t is_string(address_t, int, bool*);
 static void print_string(address_t str);
 static void print_wstring(address_t str);
 static void print_ref_chain (struct CA_LIST*);
 static void init_shared_objects(void);
 static void empty_shared_objects(void);
 static void print_shared_objects_by_threads(void);
-static struct shared_object* add_one_shared_object(address_t, CA_BOOL, unsigned int);
-static CA_BOOL has_multiple_thread_owners(struct shared_object* shrobj);
+static struct shared_object* add_one_shared_object(address_t, bool, unsigned int);
+static bool has_multiple_thread_owners(struct shared_object* shrobj);
 
 /***************************************************************************
 * Search functions
@@ -64,10 +64,10 @@ static CA_BOOL has_multiple_thread_owners(struct shared_object* shrobj);
  * 		next_bit_index represents the i_th pointers in this segment
  * 		searched-for value is in the range of [target_low, target_high)
  * Return:
- * 		CA_TRUE if the 1st match is found, CA_FALSE otherwise
+ * 		true if the 1st match is found, false otherwise
  * 		next_bit_index is updated
  */
-static CA_BOOL
+static bool
 search_value_by_range(struct ca_segment* segment,
 		size_t* next_bit_index,
 		struct object_range** targets,
@@ -137,7 +137,7 @@ search_value_by_range(struct ca_segment* segment,
 						{
 							*found_val = val;
 							*found_vaddr = segment->m_vaddr + offset;
-							return CA_TRUE;
+							return true;
 						}
 					}
 				}
@@ -172,7 +172,7 @@ search_value_by_range(struct ca_segment* segment,
 					{
 						*found_val = val;
 						*found_vaddr = segment->m_vaddr + (next - start);
-						return CA_TRUE;
+						return true;
 					}
 				}
 				(*next_bit_index)++;
@@ -181,7 +181,7 @@ search_value_by_range(struct ca_segment* segment,
 		}
 	}
 
-	return CA_FALSE;
+	return false;
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -189,19 +189,19 @@ search_value_by_range(struct ca_segment* segment,
 // Found references are inserted into output list.
 // Return true if at least one is found
 /////////////////////////////////////////////////////////////////////////
-static CA_BOOL
+static bool
 search_value_internal(struct CA_LIST* targets,
-					CA_BOOL target_is_ptr,
+					bool target_is_ptr,
 					enum storage_type stype,
 					struct CA_LIST* refs)
 {
-	CA_BOOL lbFound = CA_FALSE;
+	bool lbFound = false;
 	unsigned int i;
 	unsigned int num_targets = ca_list_size(targets);
 	struct object_range** target_array = NULL;
 
 	if (num_targets == 0)
-		return CA_FALSE;
+		return false;
 	else
 	{
 		struct object_range* target;
@@ -218,7 +218,7 @@ search_value_internal(struct CA_LIST* targets,
 		{
 			CA_PRINT("Internal error: corrupted targets CA_LIST\n");
 			free(target_array);
-			return CA_FALSE;
+			return false;
 		}
 	}
 
@@ -231,7 +231,7 @@ search_value_internal(struct CA_LIST* targets,
 		if (segment->m_type == ENUM_STACK && (stype & ENUM_REGISTER))
 		{
 			if (search_registers(segment, targets, refs))
-				lbFound = CA_TRUE;
+				lbFound = true;
 		}
 
 		// skip undesired setment
@@ -277,7 +277,7 @@ search_value_internal(struct CA_LIST* targets,
 				if(search_value_by_range(segment, &next_bit_index, target_array, target_is_ptr, &val, &vaddr))
 				{
 					// find a match in this segment
-					CA_BOOL valid_ref = CA_FALSE;
+					bool valid_ref = false;
 					struct object_reference* ref = (struct object_reference*) malloc(sizeof(struct object_reference));
 					ref->storage_type = segment->m_type;
 					ref->vaddr        = vaddr;
@@ -289,12 +289,12 @@ search_value_internal(struct CA_LIST* targets,
 						ref->where.stack.tid = segment->m_thread.tid;
 						ref->where.stack.frame = get_frame_number(segment, vaddr, &ref->where.stack.offset);
 						if (ref->where.stack.frame >= 0 || !g_skip_free)
-							valid_ref = CA_TRUE;
+							valid_ref = true;
 					}
 					else if (segment->m_type == ENUM_MODULE_TEXT || segment->m_type == ENUM_MODULE_DATA)
 					{
 						// it belongs to a module's .text or .data
-						valid_ref = CA_TRUE;
+						valid_ref = true;
 						ref->where.module.name = segment->m_module_name;
 						ref->where.module.base = segment->m_vaddr;
 						ref->where.module.size = segment->m_vsize;
@@ -309,7 +309,7 @@ search_value_internal(struct CA_LIST* targets,
 							// we generally don't care about free heap memory
 							if (blk.inuse || !g_skip_free)
 							{
-								valid_ref = CA_TRUE;
+								valid_ref = true;
 								ref->where.heap.addr = blk.addr;
 								ref->where.heap.size = blk.size;
 								ref->where.heap.inuse = blk.inuse;
@@ -322,7 +322,7 @@ search_value_internal(struct CA_LIST* targets,
 					if (valid_ref || (!g_skip_unknown && ref->storage_type == ENUM_UNKNOWN))
 					{
 						ca_list_push_back(refs, ref);
-						lbFound = CA_TRUE;
+						lbFound = true;
 						// avoid exceedingly too many refs for any human being to read
 						if (ca_list_size(refs) > 16 * 1024)
 							break;
@@ -399,10 +399,10 @@ fill_ref_location(struct object_reference* ref)
 /////////////////////////////////////////////////////////////////////////
 // Given an object, check whether its data member references the target
 /////////////////////////////////////////////////////////////////////////
-static CA_BOOL search_object_tree (struct CA_LIST* refs, address_t obj_vaddr, size_t obj_sz, size_t iLevel)
+static bool search_object_tree (struct CA_LIST* refs, address_t obj_vaddr, size_t obj_sz, size_t iLevel)
 {
 	size_t ptr_sz = g_ptr_bit >> 3;
-	CA_BOOL rc = CA_FALSE;
+	bool rc = false;
 	struct object_reference* ref;
 	struct ca_segment* segment;
 	address_t sym_addr;
@@ -416,7 +416,7 @@ static CA_BOOL search_object_tree (struct CA_LIST* refs, address_t obj_vaddr, si
 
 	segment = get_segment (ref->value, ptr_sz);
 	if (!segment)
-		return CA_FALSE;
+		return false;
 
 	// go deeper if the referenced value points to a global variable or an in-use heap block
 	if (segment->m_type == ENUM_MODULE_DATA && known_global_sym(ref, &sym_addr, &sym_sz))
@@ -452,7 +452,7 @@ static CA_BOOL search_object_tree (struct CA_LIST* refs, address_t obj_vaddr, si
 			if (val >= obj_vaddr && val < obj_vaddr + obj_sz)
 			{
 				// find one match
-				rc = CA_TRUE;
+				rc = true;
 				new_ref.vaddr = cursor;
 				new_ref.value = val;
 				ca_list_push_front(refs, &new_ref);
@@ -466,7 +466,7 @@ static CA_BOOL search_object_tree (struct CA_LIST* refs, address_t obj_vaddr, si
 				new_ref.value = val;
 				ca_list_push_front(refs, &new_ref);
 				if (search_object_tree (refs, obj_vaddr, obj_sz, iLevel - 1))
-					rc = CA_TRUE;
+					rc = true;
 				ca_list_pop_front(refs);
 			}
 			cursor += ptr_sz;
@@ -480,16 +480,16 @@ static CA_BOOL search_object_tree (struct CA_LIST* refs, address_t obj_vaddr, si
 // Same as find_object_refs, except only thread stack memory is searched
 //     including registers of thread context
 /////////////////////////////////////////////////////////////////////////
-CA_BOOL find_object_refs_on_threads(address_t obj_vaddr, size_t obj_sz, unsigned int iLevel)
+bool find_object_refs_on_threads(address_t obj_vaddr, size_t obj_sz, unsigned int iLevel)
 {
 	size_t ptr_sz = g_ptr_bit >> 3;
 	unsigned int i;
-	CA_BOOL rc = CA_FALSE;
+	bool rc = false;
 
 	if (iLevel <= 0 || iLevel > g_max_indirection_level)
 	{
 		CA_PRINT("The indirecton level %d is too high\n", iLevel);
-		return CA_FALSE;
+		return false;
 	}
 
 	// static buffer for all register values
@@ -522,13 +522,13 @@ CA_BOOL find_object_refs_on_threads(address_t obj_vaddr, size_t obj_sz, unsigned
 				if (g_regs_buf[k].reg_width == ptr_sz
 					&& g_regs_buf[k].value >= obj_vaddr && g_regs_buf[k].value < obj_vaddr + obj_sz)
 				{
-					rc = CA_TRUE;
+					rc = true;
 					ref.storage_type = ENUM_REGISTER;
 					ref.where.reg.tid = get_thread_id (segment);
 					ref.where.reg.reg_num = k;
 					ref.value = g_regs_buf[k].value;
 					CA_PRINT("------------------------ %d ------------------------\n", ++g_output_count);
-					print_ref(&ref, 0, CA_FALSE, CA_TRUE);
+					print_ref(&ref, 0, false, true);
 					CA_PRINT("\n");
 				}
 			}
@@ -554,10 +554,10 @@ CA_BOOL find_object_refs_on_threads(address_t obj_vaddr, size_t obj_sz, unsigned
 					ref.value = val;
 					if (val >= obj_vaddr && val < obj_vaddr + obj_sz)
 					{
-						rc = CA_TRUE;
+						rc = true;
 						ref.where.stack.frame = get_frame_number(segment, cursor, &ref.where.stack.offset);
 						CA_PRINT("------------------------ %d ------------------------\n", ++g_output_count);
-						print_ref (&ref, 0, CA_FALSE, CA_TRUE);
+						print_ref (&ref, 0, false, true);
 						CA_PRINT("\n");
 					}
 					else if (iLevel > 1 && val)
@@ -565,7 +565,7 @@ CA_BOOL find_object_refs_on_threads(address_t obj_vaddr, size_t obj_sz, unsigned
 						struct CA_LIST* refs = ca_list_new();
 						ca_list_push_front(refs, &ref);
 						if (search_object_tree (refs, obj_vaddr, obj_sz, iLevel - 1))
-							rc = CA_TRUE;
+							rc = true;
 						ca_list_delete(refs);
 					}
 					cursor += ptr_sz;
@@ -595,7 +595,7 @@ struct CA_LIST* search_object_refs(address_t obj_vaddr, size_t obj_sz, unsigned 
 
 	ref_list = ca_list_new();
 	// invoke full-core memory search
-	if (search_value_internal(targets, CA_FALSE, stype, ref_list) )
+	if (search_value_internal(targets, false, stype, ref_list) )
 	{
 		struct object_reference* ref;
 		// References are found, eliminate unwanted and save the rest into result
@@ -604,7 +604,7 @@ struct CA_LIST* search_object_refs(address_t obj_vaddr, size_t obj_sz, unsigned 
 		while ( (ref = (struct object_reference*) ca_list_traverse_next(ref_list)) )
 		{
 			// remove self/circular-reference heap block
-			CA_BOOL dup_heap_block = CA_FALSE;
+			bool dup_heap_block = false;
 			if (ref->storage_type == ENUM_HEAP)
 			{
 				const struct object_reference* cursor;
@@ -613,7 +613,7 @@ struct CA_LIST* search_object_refs(address_t obj_vaddr, size_t obj_sz, unsigned 
 				{
 					if (cursor->storage_type == ENUM_HEAP && cursor->where.heap.addr == ref->where.heap.addr)
 					{
-						dup_heap_block = CA_TRUE;
+						dup_heap_block = true;
 						break;
 					}
 				}
@@ -634,7 +634,7 @@ struct CA_LIST* search_object_refs(address_t obj_vaddr, size_t obj_sz, unsigned 
 // Horizontal search.
 //     direct and indirect references to an object up to iLevel
 /////////////////////////////////////////////////////////////////////////
-CA_BOOL find_object_refs(address_t obj_vaddr, size_t obj_sz, unsigned int iLevel)
+bool find_object_refs(address_t obj_vaddr, size_t obj_sz, unsigned int iLevel)
 {
 	unsigned int i, n;
 	struct object_reference* ref;
@@ -667,7 +667,7 @@ CA_BOOL find_object_refs(address_t obj_vaddr, size_t obj_sz, unsigned int iLevel
 			ref = refs[i];
 			if (ref->level == n && ref->storage_type != ENUM_REGISTER)
 			{
-				CA_BOOL target_is_ptr = CA_TRUE;
+				bool target_is_ptr = true;
 				struct CA_LIST* targets = ca_list_new();
 				struct object_range target;
 				target.low = ref->vaddr;
@@ -675,7 +675,7 @@ CA_BOOL find_object_refs(address_t obj_vaddr, size_t obj_sz, unsigned int iLevel
 				// default search scope is the exact address
 				if (ref->target_index < 0)
 				{
-					target_is_ptr = CA_FALSE;
+					target_is_ptr = false;
 					target.high = target.low + obj_sz;
 				}
 				else if (ref->storage_type == ENUM_HEAP)
@@ -693,7 +693,7 @@ CA_BOOL find_object_refs(address_t obj_vaddr, size_t obj_sz, unsigned int iLevel
 					while ( (aref = (struct object_reference*) ca_list_traverse_next(ref_list)) )
 					{
 						// remove self/circular-reference heap block
-						int dup_heap_block = CA_FALSE;
+						int dup_heap_block = false;
 						if (aref->storage_type == ENUM_HEAP)
 						{
 							int k;
@@ -702,7 +702,7 @@ CA_BOOL find_object_refs(address_t obj_vaddr, size_t obj_sz, unsigned int iLevel
 								const struct object_reference* cursor = refs[k];
 								if (cursor->storage_type == ENUM_HEAP && cursor->where.heap.addr == aref->where.heap.addr)
 								{
-									dup_heap_block = CA_TRUE;
+									dup_heap_block = true;
 									break;
 								}
 							}
@@ -747,7 +747,7 @@ CA_BOOL find_object_refs(address_t obj_vaddr, size_t obj_sz, unsigned int iLevel
 			{
 				int next_referenced;
 				// no arrow, verbose
-				print_ref(ref, indent, CA_FALSE, CA_TRUE);
+				print_ref(ref, indent, false, true);
 				ref_cursor--;
 				next_referenced = (refs[ref_cursor])->target_index;
 				if (next_referenced != prev_target)
@@ -760,7 +760,7 @@ CA_BOOL find_object_refs(address_t obj_vaddr, size_t obj_sz, unsigned int iLevel
 						CA_PRINT("|--> searched target ["PRINT_FORMAT_POINTER", "PRINT_FORMAT_POINTER")\n", obj_vaddr, obj_vaddr+obj_sz);
 					}
 					else
-						print_ref(refs[prev_target], indent, CA_TRUE, CA_FALSE); // arrow/no verbose
+						print_ref(refs[prev_target], indent, true, false); // arrow/no verbose
 					prev_target = next_referenced;
 					CA_PRINT("\n");
 					//clear_addr_type_map();
@@ -786,8 +786,8 @@ CA_BOOL find_object_refs(address_t obj_vaddr, size_t obj_sz, unsigned int iLevel
 	free(refs);
 
 	if (ref_cnt > 1)
-		return CA_TRUE;
-	return CA_FALSE;
+		return true;
+	return false;
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -795,9 +795,9 @@ CA_BOOL find_object_refs(address_t obj_vaddr, size_t obj_sz, unsigned int iLevel
 //     Find a recognizable object to identify the type associated with
 //     the memory.
 /////////////////////////////////////////////////////////////////////////
-CA_BOOL find_object_type(address_t obj_vaddr)
+bool find_object_type(address_t obj_vaddr)
 {
-	CA_BOOL lbFound = CA_FALSE;
+	bool lbFound = false;
 	int i;
 	unsigned int n;
 	struct object_reference* ref;
@@ -812,7 +812,7 @@ CA_BOOL find_object_type(address_t obj_vaddr)
 	if (!get_segment(obj_vaddr, 1))
 	{
 		CA_PRINT("[Error] Address "PRINT_FORMAT_POINTER" is not in target's address space\n", obj_vaddr);
-		return CA_FALSE;
+		return false;
 	}
 
 	refs = (struct object_reference**) malloc(sizeof(struct object_reference*)*ref_buf_sz);
@@ -848,9 +848,9 @@ CA_BOOL find_object_type(address_t obj_vaddr)
 			|| ref->storage_type == ENUM_MODULE_TEXT
 			|| ref->storage_type == ENUM_MODULE_DATA
 			|| (ref->storage_type == ENUM_HEAP && ref->where.heap.inuse && is_heap_object_with_vptr(ref, NULL, 0)))
-		lbFound = CA_TRUE;
+		lbFound = true;
 	else if (ref->storage_type == ENUM_HEAP && !ref->where.heap.inuse)
-		lbFound = CA_FALSE;
+		lbFound = false;
 	else
 	{
 		ref_list = ca_list_new();
@@ -863,7 +863,7 @@ CA_BOOL find_object_type(address_t obj_vaddr)
 
 			for (i=vec_sz-1; !lbFound && i>=0 && refs[i]->level==n; i--)
 			{
-				CA_BOOL target_is_ptr = CA_TRUE;
+				bool target_is_ptr = true;
 				struct CA_LIST* targets = ca_list_new();
 				struct object_range target;
 				target.low = ref->vaddr;
@@ -877,7 +877,7 @@ CA_BOOL find_object_type(address_t obj_vaddr)
 				}
 				else if (ref->target_index < 0)
 				{
-					target_is_ptr = CA_FALSE;
+					target_is_ptr = false;
 					target.high = target.low + ref->where.target.size;
 				}
 				ca_list_push_front(targets, &target);
@@ -890,13 +890,13 @@ CA_BOOL find_object_type(address_t obj_vaddr)
 					ca_list_traverse_start(ref_list);
 					while ( (aref = (struct object_reference*) ca_list_traverse_next(ref_list)) )
 					{
-						int remove_heap_block = CA_FALSE;
+						int remove_heap_block = false;
 						if ( (aref->storage_type == ENUM_STACK && aref->where.stack.frame >= 0)
 							|| aref->storage_type == ENUM_REGISTER
 							|| aref->storage_type == ENUM_MODULE_DATA
 							|| (aref->storage_type==ENUM_HEAP && aref->where.heap.inuse && is_heap_object_with_vptr(aref, NULL, 0)) )
 						{
-							lbFound = CA_TRUE;
+							lbFound = true;
 						}
 						// remove self-reference or free heap block
 						if (!lbFound && aref->storage_type == ENUM_HEAP)
@@ -909,13 +909,13 @@ CA_BOOL find_object_type(address_t obj_vaddr)
 									const struct object_reference* cursor = refs[k];
 									if (cursor->storage_type == ENUM_HEAP && cursor->where.heap.addr == aref->where.heap.addr)
 									{
-										remove_heap_block = CA_TRUE;
+										remove_heap_block = true;
 										break;
 									}
 								}
 							}
 							else
-								remove_heap_block = CA_TRUE;
+								remove_heap_block = true;
 						}
 						if (remove_heap_block)
 							free(aref);
@@ -967,7 +967,7 @@ CA_BOOL find_object_type(address_t obj_vaddr)
 				while (next_ref_index >= 0)
 				{
 					ref = refs[next_ref_index];
-					print_ref(ref, indent, indent>0, CA_TRUE);	// verbose
+					print_ref(ref, indent, indent>0, true);	// verbose
 					next_ref_index = ref->target_index;
 					indent++;
 				}
@@ -996,12 +996,12 @@ static int address_comp_func(splay_tree_key a, splay_tree_key b)
 		return -1;
 }
 #else
-static CA_BOOL address_comp_func(void *lhs, void *rhs)
+static bool address_comp_func(void *lhs, void *rhs)
 {
 	if ((address_t)lhs < (address_t)rhs)
-		return CA_TRUE;
+		return true;
 	else
-		return CA_FALSE;
+		return false;
 }
 #endif
 
@@ -1023,7 +1023,7 @@ struct CA_LIST* search_cplusplus_objects_with_vptr(const char* exp)
 		struct CA_LIST*	ref_list;
 
 		ref_list = ca_list_new();
-    	if (search_value_internal(vtables, CA_TRUE, ENUM_UNKNOWN, ref_list) )
+    	if (search_value_internal(vtables, true, ENUM_UNKNOWN, ref_list) )
     	{
     		struct object_reference* ref;
     		struct CA_SET* unique_refs = ca_set_new(address_comp_func);
@@ -1034,7 +1034,7 @@ struct CA_LIST* search_cplusplus_objects_with_vptr(const char* exp)
     		while ( (ref = (struct object_reference*) ca_list_traverse_next(ref_list)) )
     		{
 				address_t obj_addr;
-    			CA_BOOL delete_ref = CA_TRUE;
+    			bool delete_ref = true;
 				// avoid slicing of heap object
 				if (ref->storage_type == ENUM_HEAP)
 					obj_addr = ref->where.heap.addr;
@@ -1072,7 +1072,7 @@ struct CA_LIST* search_cplusplus_objects_with_vptr(const char* exp)
 					{
 	    				ref->value = 0;
 						ca_list_push_front(result_list, ref);
-						delete_ref = CA_FALSE;
+						delete_ref = false;
 					}
 				}
     			if (delete_ref)
@@ -1096,9 +1096,9 @@ struct CA_LIST* search_cplusplus_objects_with_vptr(const char* exp)
 /////////////////////////////////////////////////////////////////////////
 // search C++ objects and references to them by the type of the input expression
 /////////////////////////////////////////////////////////////////////////
-CA_BOOL search_cplusplus_objects_and_references(const char* exp, CA_BOOL thread_scope)
+bool search_cplusplus_objects_and_references(const char* exp, bool thread_scope)
 {
-	CA_BOOL lbFound = CA_FALSE;
+	bool lbFound = false;
 	struct CA_LIST* vtables = ca_list_new();
 	char type_name[NAME_BUF_SZ];
 	size_t type_sz;
@@ -1124,7 +1124,7 @@ CA_BOOL search_cplusplus_objects_and_references(const char* exp, CA_BOOL thread_
 		}
 
 		ref_list = ca_list_new();
-    	if (search_value_internal(vtables, CA_TRUE, ENUM_UNKNOWN, ref_list) )
+    	if (search_value_internal(vtables, true, ENUM_UNKNOWN, ref_list) )
     	{
     		struct object_reference* ref;
     		struct CA_LIST* ref_targets = ca_list_new();
@@ -1173,7 +1173,7 @@ CA_BOOL search_cplusplus_objects_and_references(const char* exp, CA_BOOL thread_
     			{
 					// print out object
     				ref->value = 0;
-					print_ref(ref, 1, CA_FALSE, CA_FALSE);
+					print_ref(ref, 1, false, false);
 					// put object as the target for the search of its reference
 					target = (struct object_range*) malloc (sizeof(struct object_range));
 					target->low = ref->vaddr;
@@ -1193,13 +1193,13 @@ CA_BOOL search_cplusplus_objects_and_references(const char* exp, CA_BOOL thread_
     		{
 				// Search the references to found objects
 				CA_PRINT ("\nSearching references to above objects\n");
-				if (search_value_internal(ref_targets, CA_TRUE, ENUM_UNKNOWN, ref_list))
+				if (search_value_internal(ref_targets, true, ENUM_UNKNOWN, ref_list))
 				{
 		    		ca_list_traverse_start(ref_list);
 		    		while ( (ref = (struct object_reference*) ca_list_traverse_next(ref_list)) )
 					{
 						// print out reference
-						print_ref(ref, 1, CA_FALSE, CA_TRUE);
+						print_ref(ref, 1, false, true);
 						// release this reference
 						free (ref);
 					}
@@ -1235,7 +1235,7 @@ CA_BOOL search_cplusplus_objects_and_references(const char* exp, CA_BOOL thread_
 }
 
 static void
-find_shared_objects_one_thread(struct ca_segment* segment, CA_BOOL ignore_new_shrobj)
+find_shared_objects_one_thread(struct ca_segment* segment, bool ignore_new_shrobj)
 {
 	size_t ptr_sz = g_ptr_bit >> 3;
 	int k, nread;
@@ -1338,7 +1338,7 @@ void set_max_indirection_level(unsigned int level)
 //		threads is a list of threads that we are interested in
 // Return true or false
 /////////////////////////////////////////////////////////////////////////
-static CA_BOOL shared_objects_internal(struct CA_LIST* threads, CA_BOOL verbose)
+static bool shared_objects_internal(struct CA_LIST* threads, bool verbose)
 {
 	unsigned int i;
 	struct ca_segment* segment;
@@ -1355,7 +1355,7 @@ static CA_BOOL shared_objects_internal(struct CA_LIST* threads, CA_BOOL verbose)
 			{
 				if (verbose)
 					CA_PRINT("internal error: tid is negative %d\n", segment->m_thread.tid);
-				return CA_FALSE;
+				return false;
 			}
 			else if (max_tid < segment->m_thread.tid)
 				max_tid = segment->m_thread.tid;
@@ -1365,7 +1365,7 @@ static CA_BOOL shared_objects_internal(struct CA_LIST* threads, CA_BOOL verbose)
 	{
 		if (verbose)
 			CA_PRINT("internal error: tid %d is too big to handle\n", max_tid);
-		return CA_FALSE;
+		return false;
 	}
 	// convert the thread list into an array indexed by thread id
 	input_tid_map = (char*) malloc (max_tid + 1);
@@ -1386,7 +1386,7 @@ static CA_BOOL shared_objects_internal(struct CA_LIST* threads, CA_BOOL verbose)
 				if (verbose)
 					CA_PRINT("Input thread id is out of range %d\n", tid);
 				free (input_tid_map);
-				return CA_FALSE;
+				return false;
 			}
 		}
 	}
@@ -1408,7 +1408,7 @@ static CA_BOOL shared_objects_internal(struct CA_LIST* threads, CA_BOOL verbose)
 
 		segment = &g_segments[i];
 		if (segment->m_type == ENUM_STACK && input_tid_map[segment->m_thread.tid])
-			find_shared_objects_one_thread (segment, CA_FALSE);
+			find_shared_objects_one_thread (segment, false);
 	}
 	// Second search all other threads' registers/stacks,
 	// ignore all new shared objects, and append owner for previously found shared objects
@@ -1423,13 +1423,13 @@ static CA_BOOL shared_objects_internal(struct CA_LIST* threads, CA_BOOL verbose)
 
 		segment = &g_segments[i];
 		if (segment->m_type == ENUM_STACK && !input_tid_map[segment->m_thread.tid])
-			find_shared_objects_one_thread (segment, CA_TRUE);
+			find_shared_objects_one_thread (segment, true);
 	}
 
 	// clean up
 	free(input_tid_map);
 
-	return CA_TRUE;
+	return true;
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -1438,7 +1438,7 @@ static CA_BOOL shared_objects_internal(struct CA_LIST* threads, CA_BOOL verbose)
 /////////////////////////////////////////////////////////////////////////
 struct CA_LIST* search_shared_objects_by_threads(struct CA_LIST* threads)
 {
-	if (shared_objects_internal(threads, CA_FALSE))
+	if (shared_objects_internal(threads, false))
 	{
 		// Prepare result
 		struct shared_object* shrobj;
@@ -1472,24 +1472,24 @@ struct CA_LIST* search_shared_objects_by_threads(struct CA_LIST* threads)
 //		threads is a list of threads that we are interested in, i.e. any shared object referenced by them
 //		depth is the max level of indirect reference
 /////////////////////////////////////////////////////////////////////////
-CA_BOOL find_shared_objects_by_threads(struct CA_LIST* threads)
+bool find_shared_objects_by_threads(struct CA_LIST* threads)
 {
 
-	if (shared_objects_internal(threads, CA_TRUE))
+	if (shared_objects_internal(threads, true))
 	{
 		// Display result
 		print_shared_objects_by_threads();
-		return CA_TRUE;
+		return true;
 	}
 	else
-		return CA_FALSE;
+		return false;
 }
 
 /////////////////////////////////////////////////////////////////////////
 // Display a reference
 /////////////////////////////////////////////////////////////////////////
 void print_ref
-(const struct object_reference* ref, unsigned int indent, CA_BOOL print_arrow, CA_BOOL verbose)
+(const struct object_reference* ref, unsigned int indent, bool print_arrow, bool verbose)
 {
 	unsigned int i;
 	for (i=0; i<indent; i++)
@@ -1570,7 +1570,7 @@ static void print_ref_chain (struct CA_LIST* refs)
 		else if (ref->storage_type == ENUM_REGISTER)
 		{
 		}
-		print_ref(ref, i, CA_TRUE, CA_TRUE);
+		print_ref(ref, i, true, true);
 	}
 	CA_PRINT("\n");
 }
@@ -1585,8 +1585,8 @@ void print_memory_pattern(address_t lo, address_t hi)
 	for (next = ALIGN(lo,ptr_sz); next+ptr_sz <= hi; next += ptr_sz)
 	{
 		size_t value = 0;
-		int lbSearchString = CA_TRUE;
-		int lbIsPointer = CA_FALSE;
+		int lbSearchString = true;
+		int lbIsPointer = false;
 		struct object_reference ref;
 
 		if (!read_memory_wrapper(NULL, next, (void*)&value, ptr_sz))
@@ -1614,16 +1614,16 @@ void print_memory_pattern(address_t lo, address_t hi)
 		if (ref.storage_type == ENUM_STACK
 			|| ref.storage_type == ENUM_MODULE_DATA
 			|| ref.storage_type == ENUM_MODULE_TEXT)
-			lbSearchString = CA_FALSE;
+			lbSearchString = false;
 
 		if (ref.storage_type == ENUM_STACK
 			|| ref.storage_type == ENUM_MODULE_DATA
 			|| ref.storage_type == ENUM_MODULE_TEXT
 			|| ref.storage_type == ENUM_HEAP)
 		{
-			lbIsPointer = CA_TRUE;
+			lbIsPointer = true;
 			CA_PRINT(" => ");
-			print_ref(&ref, 0, CA_FALSE, CA_TRUE);	// no indent, no arrow decoration, verbose
+			print_ref(&ref, 0, false, true);	// no indent, no arrow decoration, verbose
 		}
 		else
 			CA_PRINT("\n");
@@ -1638,7 +1638,7 @@ void print_memory_pattern(address_t lo, address_t hi)
 			address_t prev_printed = next;
 			for (next2=next; next2<next+ptr_sz; next2++)
 			{
-				CA_BOOL lbWString;
+				bool lbWString;
 				long lStrLen;
 				lStrLen = is_string(next2, min_chars, &lbWString);
 				if (lStrLen)
@@ -1676,7 +1676,7 @@ void print_memory_pattern(address_t lo, address_t hi)
 		else	// Otherwise, check if this is a pointer to a string
 		{
 			address_t addr = value;
-			CA_BOOL lbWString;
+			bool lbWString;
 			long lStrLen = is_string(addr, min_chars, &lbWString);
 			if (lStrLen)
 			{
@@ -1739,7 +1739,7 @@ int ca_parse_options(char* arg, char** out)
 // addr is the place to search string
 // return string len in bytes if found
 static size_t
-is_string(address_t addr, int min_chars, CA_BOOL* orbWString)
+is_string(address_t addr, int min_chars, bool* orbWString)
 {
 	// search char[]
 	size_t len;
@@ -1758,7 +1758,7 @@ is_string(address_t addr, int min_chars, CA_BOOL* orbWString)
 		}
 		if (len >= min_chars)
 		{
-			*orbWString = CA_FALSE;
+			*orbWString = false;
 			return len;
 		}
 	}
@@ -1780,7 +1780,7 @@ is_string(address_t addr, int min_chars, CA_BOOL* orbWString)
 		}
 		if (len >= min_chars)
 		{
-			*orbWString = CA_TRUE;
+			*orbWString = true;
 			return len * sizeof(wchar_t);
 		}
 	}
@@ -1842,14 +1842,14 @@ print_wstring(address_t str)
 #ifdef CA_USE_SPLAY_TREE
 #define shared_object_comp_func address_comp_func
 #else
-static CA_BOOL shared_object_comp_func(void *lhs, void *rhs)
+static bool shared_object_comp_func(void *lhs, void *rhs)
 {
 	struct shared_object* shrobj1 = (struct shared_object*)lhs;
 	struct shared_object* shrobj2 = (struct shared_object*)rhs;
 	if (shrobj1->start < shrobj2->start)
-		return CA_TRUE;
+		return true;
 	else
-		return CA_FALSE;
+		return false;
 }
 #endif
 
@@ -1891,7 +1891,7 @@ static void init_shared_objects(void)
  * Return a new reference, which is attached to the object's owner list
  */
 static struct shared_object*
-find_or_insert_object(address_t obj_start, size_t obj_size, CA_BOOL ignore_new_shrobj)
+find_or_insert_object(address_t obj_start, size_t obj_size, bool ignore_new_shrobj)
 {
 	/* search previously found shared objects */
 	struct shared_object  anobj;
@@ -1942,12 +1942,12 @@ get_all_parents(struct CA_SET* parents, struct shared_object* shrobj, unsigned i
 	}
 }
 
-static CA_BOOL has_multiple_thread_owners(struct shared_object* shrobj)
+static bool has_multiple_thread_owners(struct shared_object* shrobj)
 {
 	int tid;
 	int first_seen_tid = -1;
 	struct object_reference* ref;
-	CA_BOOL rc = CA_FALSE;
+	bool rc = false;
 
 	// first check all thread owners
 	ca_list_traverse_start(shrobj->thread_owners);
@@ -1958,7 +1958,7 @@ static CA_BOOL has_multiple_thread_owners(struct shared_object* shrobj)
 		if (first_seen_tid >= 0)
 		{
 			if (first_seen_tid != tid)
-				return CA_TRUE;
+				return true;
 		}
 		else
 			first_seen_tid = tid;
@@ -1975,7 +1975,7 @@ static CA_BOOL has_multiple_thread_owners(struct shared_object* shrobj)
 		get_all_parents(parents, shrobj, 1);
 
 		ca_set_traverse_start(parents);
-		while ( rc == CA_FALSE && (obj = (struct shared_object*) ca_set_traverse_next(parents)) )
+		while ( rc == false && (obj = (struct shared_object*) ca_set_traverse_next(parents)) )
 		{
 			ca_list_traverse_start(obj->thread_owners);
 			while ( (ref = (struct object_reference*) ca_list_traverse_next(obj->thread_owners) ) )
@@ -1986,7 +1986,7 @@ static CA_BOOL has_multiple_thread_owners(struct shared_object* shrobj)
 				{
 					if (first_seen_tid != tid)
 					{
-						rc = CA_TRUE;
+						rc = true;
 						break;
 					}
 				}
@@ -2012,7 +2012,7 @@ print_one_shared_object(struct shared_object* shrobj, struct CA_LIST* child_chai
 	// first all thread owners
 	ca_list_traverse_start(shrobj->thread_owners);
 	while ( (ref = (struct object_reference*) ca_list_traverse_next(shrobj->thread_owners) ) )
-		print_ref(ref, 1, CA_FALSE, CA_TRUE);
+		print_ref(ref, 1, false, true);
 
 	// print the parent chain reaching this shared object
 	level = 1;
@@ -2022,7 +2022,7 @@ print_one_shared_object(struct shared_object* shrobj, struct CA_LIST* child_chai
 	while ( (child = (struct shared_object*) ca_list_traverse_next(child_chain) ) )
 	{
 		struct object_reference aref;
-		CA_BOOL lbfound = CA_FALSE;
+		bool lbfound = false;
 		address_t val = 0;
 		address_t cursor;
 		for (cursor = parent_obj_start; cursor + ptr_sz <= parent_obj_end; cursor += ptr_sz)
@@ -2034,7 +2034,7 @@ print_one_shared_object(struct shared_object* shrobj, struct CA_LIST* child_chai
 			}
 			if (val >= child->start && val < child->end)
 			{
-				lbfound = CA_TRUE;
+				lbfound = true;
 				aref.vaddr = cursor;
 				aref.value = val;
 				aref.target_index = -1;
@@ -2045,7 +2045,7 @@ print_one_shared_object(struct shared_object* shrobj, struct CA_LIST* child_chai
 		if (lbfound)
 		{
 			fill_ref_location(&aref);
-			print_ref(&aref, level, CA_TRUE, CA_TRUE);
+			print_ref(&aref, level, true, true);
 		}
 		else
 			CA_PRINT("internal error: impossible switch\n");
@@ -2102,7 +2102,7 @@ static void print_shared_objects_by_threads(void)
 				if (segment && !segment->m_write)
 					CA_PRINT("(read-only) ");
 			}
-			print_ref(&aref, 0, CA_FALSE, CA_TRUE);
+			print_ref(&aref, 0, false, true);
 			// then print the thread references to the shared object
 			ca_list_clear(child_chain);
 			print_one_shared_object(shrobj, child_chain);
@@ -2113,7 +2113,7 @@ static void print_shared_objects_by_threads(void)
 }
 
 static struct shared_object*
-add_one_shared_object(address_t addr, CA_BOOL ignore_new_shrobj, unsigned int level)
+add_one_shared_object(address_t addr, bool ignore_new_shrobj, unsigned int level)
 {
 	size_t ptr_sz = g_ptr_bit >> 3;
 	struct ca_segment* segment = get_segment(addr, 8);
@@ -2130,7 +2130,7 @@ add_one_shared_object(address_t addr, CA_BOOL ignore_new_shrobj, unsigned int le
 		struct heap_block blockinfo;
 		if (is_heap_block(addr)
 			&& get_heap_block_info(addr, &blockinfo)
-			&& blockinfo.inuse == CA_TRUE)
+			&& blockinfo.inuse == true)
 		{
 			obj_addr = blockinfo.addr;
 			obj_size = blockinfo.size;

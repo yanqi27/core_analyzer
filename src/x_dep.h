@@ -26,28 +26,28 @@ struct ca_debug_context
 	struct ca_segment* segment;
 };
 
-extern CA_BOOL update_memory_segments_and_heaps(void);
+extern bool update_memory_segments_and_heaps(void);
 
-extern CA_BOOL inferior_memory_read (address_t addr, void* buffer, size_t sz);
+extern bool inferior_memory_read (address_t addr, void* buffer, size_t sz);
 
 extern void print_register_ref(const struct object_reference* ref);
 extern void print_stack_ref(const struct object_reference* ref);
 extern void print_global_ref(const struct object_reference* ref);
 extern void print_heap_ref(const struct object_reference* ref);
 
-extern CA_BOOL known_global_sym(const struct object_reference* ref, address_t* sym_addr, size_t* sym_sz);
-extern CA_BOOL known_stack_sym(const struct object_reference* ref, address_t* sym_addr, size_t* sym_sz);
+extern bool known_global_sym(const struct object_reference* ref, address_t* sym_addr, size_t* sym_sz);
+extern bool known_stack_sym(const struct object_reference* ref, address_t* sym_addr, size_t* sym_sz);
 
-extern address_t get_var_addr_by_name(const char*, CA_BOOL);
+extern address_t get_var_addr_by_name(const char*, bool);
 
 extern void print_func_locals (void);
 extern void print_type_layout (char*);
 
-extern CA_BOOL get_vtable_from_exp(const char*, struct CA_LIST*, char*, size_t, size_t*);
+extern bool get_vtable_from_exp(const char*, struct CA_LIST*, char*, size_t, size_t*);
 
-extern CA_BOOL user_request_break(void);
+extern bool user_request_break(void);
 
-extern CA_BOOL g_debug_core;
+extern bool g_debug_core;
 
 extern unsigned int g_ptr_bit;
 
@@ -66,9 +66,9 @@ extern char ca_help_msg[];
 
 extern address_t ca_eval_address(const char*);
 
-extern CA_BOOL heap_command_impl(char* args);
-extern CA_BOOL ref_command_impl(char* args);
-extern CA_BOOL segment_command_impl(char* args);
-extern CA_BOOL pattern_command_impl(char* args);
+extern bool heap_command_impl(char* args);
+extern bool ref_command_impl(char* args);
+extern bool segment_command_impl(char* args);
+extern bool pattern_command_impl(char* args);
 
 #endif // X_DEP_H_

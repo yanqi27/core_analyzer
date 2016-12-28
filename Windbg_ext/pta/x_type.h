@@ -56,11 +56,6 @@ typedef ULONG size_t;
 #define snprintf _snprintf
 #define strdup   _strdup
 
-//typedef bool CA_BOOL;
-#define CA_BOOL  bool
-#define CA_TRUE  true
-#define CA_FALSE false
-
 enum SymTagEnum {
    SymTagNull,
    SymTagExe,

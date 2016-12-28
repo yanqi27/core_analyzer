@@ -77,7 +77,7 @@ static void print_struct_field(const struct object_reference*, struct win_type, 
 static bool get_typeinfo(struct win_type, ULONG64, EXT_TYPED_DATA&, bool);
 static struct addr_type_pair* lookup_type_by_addr(const struct object_reference*);
 static struct stack_symbol* get_stack_sym(const struct object_reference*);
-static CA_BOOL resolve_or_print_global_ref(const struct object_reference*, CA_BOOL, address_t*, size_t*);
+static bool resolve_or_print_global_ref(const struct object_reference*, bool, address_t*, size_t*);
 static bool is_process_segment_changed();
 static void release_cached_stack_symbols();
 static void release_frame_info_cache();
@@ -245,15 +245,15 @@ void print_stack_ref(const struct object_reference* ref)
 
 void print_global_ref (const struct object_reference* ref)
 {
-	resolve_or_print_global_ref (ref, CA_TRUE, NULL, NULL);
+	resolve_or_print_global_ref (ref, true, NULL, NULL);
 }
 
-CA_BOOL known_global_sym(const struct object_reference* ref, address_t* sym_addr, size_t* sym_sz)
+bool known_global_sym(const struct object_reference* ref, address_t* sym_addr, size_t* sym_sz)
 {
-	return resolve_or_print_global_ref(ref, CA_FALSE, sym_addr, sym_sz);
+	return resolve_or_print_global_ref(ref, false, sym_addr, sym_sz);
 }
 
-CA_BOOL known_stack_sym(const struct object_reference* ref, address_t* sym_addr, size_t* sym_sz)
+bool known_stack_sym(const struct object_reference* ref, address_t* sym_addr, size_t* sym_sz)
 {
 	struct stack_symbol* sym = get_stack_sym(ref);
 	if (sym)
@@ -269,18 +269,18 @@ CA_BOOL known_stack_sym(const struct object_reference* ref, address_t* sym_addr,
 									NULL,
 									NULL);
 		}
-		return CA_TRUE;
+		return true;
 	}
 	else
-		return CA_FALSE;
+		return false;
 }
 
 /*
  *  search C++ vtables of the type of the input expression
  */
-CA_BOOL get_vtable_from_exp(const char*exp, struct CA_LIST*vtables, char* type_name, size_t bufsz, size_t* type_sz)
+bool get_vtable_from_exp(const char*exp, struct CA_LIST*vtables, char* type_name, size_t bufsz, size_t* type_sz)
 {
-	CA_BOOL rc = CA_FALSE;
+	bool rc = false;
 	ULONG type_id;
 	ULONG64 module;
 	if (gDebugSymbols3->GetSymbolTypeId(exp, &type_id, &module) == S_OK
@@ -317,7 +317,7 @@ CA_BOOL get_vtable_from_exp(const char*exp, struct CA_LIST*vtables, char* type_n
 					vtbl->high = vtbl->low + 1;
 					ca_list_push_front(vtables, vtbl);
 					//dprintf("vtable address %p\n", vtbl_addr);
-					rc = CA_TRUE;
+					rc = true;
 				}
 				else
 					break;
@@ -549,7 +549,7 @@ bool update_memory_segments_and_heaps()
 	dprintf("\tThere are %ld threads\n", num_threads);
 
 	// dry run to mark heap segments
-	if (!init_heap() || !test_segments(CA_TRUE) || !alloc_bit_vec())
+	if (!init_heap() || !test_segments(true) || !alloc_bit_vec())
 		goto Fail;
 
 	//////////////////////////////////////////////////////////
@@ -738,7 +738,7 @@ int get_frame_number(const struct ca_segment* segment, address_t addr, int* offs
 	return frame;
 }
 
-address_t get_var_addr_by_name(const char* var_name, CA_BOOL ask)
+address_t get_var_addr_by_name(const char* var_name, bool ask)
 {
 	address_t rs = 0;
 	DEBUG_VALUE val;
@@ -763,11 +763,11 @@ void clear_addr_type_map()
 	addr_type_map_sz = 0;
 }
 
-CA_BOOL user_request_break()
+bool user_request_break()
 {
 	if (CheckControlC() )
-		return CA_TRUE;
-	return CA_FALSE;
+		return true;
+	return false;
 }
 
 /////////////////////////////////////////////////////
@@ -777,7 +777,7 @@ enum SymTagEnum get_type_code(struct win_type type, ULONG64 addr)
 {
 	EXT_TYPED_DATA typed_data;
 	// Get the type category, pointer/array/function/...
-	if (!get_typeinfo(type, addr, typed_data, CA_FALSE))
+	if (!get_typeinfo(type, addr, typed_data, false))
 		return SymTagNull;
 	else
 		return (enum SymTagEnum) typed_data.OutData.Tag;
@@ -853,7 +853,7 @@ get_struct_field_type_and_name(struct win_type type,
 	struct win_type field_type = type;
 	EXT_TYPED_DATA typed_data;
 	// Get the type category, pointer/array/function/...
-	if (!get_typeinfo(type, *sym_addr, typed_data, CA_FALSE))
+	if (!get_typeinfo(type, *sym_addr, typed_data, false))
 		return type;
 	enum SymTagEnum tag = get_type_code(type, *sym_addr);
 
@@ -895,7 +895,7 @@ get_struct_field_type_and_name(struct win_type type,
 					namebuf_sz -= name_sz;
 				}
 				field_type.type_id = field_type_id;
-				if (get_typeinfo(field_type, *sym_addr - field_offset, typed_data, CA_FALSE)
+				if (get_typeinfo(field_type, *sym_addr - field_offset, typed_data, false)
 					&& (enum SymTagEnum) typed_data.OutData.Tag == SymTagArrayType
 					&& gDebugSymbols3->GetTypeSize(type.mod_base, typed_data.OutData.BaseTypeId, &base_type_sz) == S_OK)
 				{
@@ -965,9 +965,9 @@ get_stack_sym(const struct object_reference* ref)
 		return NULL;
 }
 
-static CA_BOOL resolve_or_print_global_ref(const struct object_reference* ref, CA_BOOL printit, address_t* sym_addr, size_t* sym_sz)
+static bool resolve_or_print_global_ref(const struct object_reference* ref, bool printit, address_t* sym_addr, size_t* sym_sz)
 {
-	CA_BOOL rc = CA_FALSE;
+	bool rc = false;
 	HRESULT hr;
 	// Get symbol at the address
 	char sym_name[NAME_BUF_SZ];
@@ -992,7 +992,7 @@ static CA_BOOL resolve_or_print_global_ref(const struct object_reference* ref, C
 	{
 		if (displacement < type_sz)
 		{
-			rc = CA_TRUE;
+			rc = true;
 			if (sym_addr && sym_sz)
 			{
 				*sym_addr = ref->vaddr - displacement;
@@ -1014,7 +1014,7 @@ static CA_BOOL resolve_or_print_global_ref(const struct object_reference* ref, C
 			if (gDebugSymbols3->GetSymbolEntriesByOffset(ref->vaddr - displacement, 0, &id, &displacement2, 1, &num_entry) == S_OK
 				&& gDebugSymbols3->GetSymbolEntryInformation(&id, &sym_entry) == S_OK)
 			{
-				rc = CA_TRUE;
+				rc = true;
 				if (sym_addr && sym_sz)
 				{
 					*sym_addr = ref->vaddr - displacement;
@@ -1134,7 +1134,7 @@ static void release_cached_stack_symbols()
 /*
  * Collect all symbols(local variables) on this thread's stack
  */
-static CA_BOOL build_stack_sym_cache( int tid)
+static bool build_stack_sym_cache( int tid)
 {
 	// Cache symbols only once
 	if (g_all_stack_symbols.empty())
@@ -2015,21 +2015,21 @@ void print_op_value_context(size_t op_value, int op_size, address_t loc, int off
 		{
 			// global symbol
 			dprintf (" ");
-			print_ref(&aref, 0, CA_FALSE, CA_TRUE);
+			print_ref(&aref, 0, false, true);
 			return;
 		}
 		else if (aref.storage_type == ENUM_STACK && known_stack_sym(&aref, NULL, NULL))
 		{
 			// stack symbol
 			dprintf (" ");
-			print_ref(&aref, 0, CA_FALSE, CA_TRUE);
+			print_ref(&aref, 0, false, true);
 			return;
 		}
 		else if (aref.storage_type == ENUM_HEAP /*&& known_heap_block(&aref) !FIX! */)
 		{
 			// heap block with known type
 			dprintf (" ");
-			print_ref(&aref, 0, CA_FALSE, CA_TRUE);
+			print_ref(&aref, 0, false, true);
 			return;
 		}
 	}
@@ -2049,14 +2049,14 @@ void print_op_value_context(size_t op_value, int op_size, address_t loc, int off
 		{
 			// global symbol
 			dprintf (" SRC=");
-			print_ref(&loc_ref, 0, CA_FALSE, CA_TRUE);
+			print_ref(&loc_ref, 0, false, true);
 			return;
 		}
 		else if (loc_ref.storage_type == ENUM_STACK && known_stack_sym(&loc_ref, NULL, NULL))
 		{
 			// stack symbol
 			dprintf (" SRC=");
-			print_ref(&loc_ref, 0, CA_FALSE, CA_TRUE);
+			print_ref(&loc_ref, 0, false, true);
 			return;
 		}
 		else if (loc_ref.storage_type == ENUM_HEAP && (addr_type = lookup_type_by_addr(&loc_ref)) )
@@ -2078,7 +2078,7 @@ void print_op_value_context(size_t op_value, int op_size, address_t loc, int off
 		if (aref.storage_type != ENUM_UNKNOWN)
 		{
 			dprintf (" ");
-			print_ref(&aref, 0, CA_FALSE, CA_TRUE);
+			print_ref(&aref, 0, false, true);
 			return;
 		}
 	}
@@ -2172,9 +2172,9 @@ void calc_heap_usage(char *expr)
 			size_t aggr_size = 0;
 
 			CA_PRINT("Heap memory consumed by ");
-			print_ref(&ref, 0, CA_FALSE, CA_FALSE);
+			print_ref(&ref, 0, false, false);
 			// Include all reachable blocks
-			if (calc_aggregate_size(&ref, var_len, CA_TRUE, inuse_blocks, num_inuse_blocks, &aggr_size, &aggr_count))
+			if (calc_aggregate_size(&ref, var_len, true, inuse_blocks, num_inuse_blocks, &aggr_size, &aggr_count))
 			{
 				CA_PRINT("All reachable:\n");
 				CA_PRINT("    |--> ");
@@ -2184,7 +2184,7 @@ void calc_heap_usage(char *expr)
 			else
 				CA_PRINT("Failed to calculate heap usage\n");
 			// Directly referenced heap blocks only
-			if (calc_aggregate_size(&ref, var_len, CA_FALSE, inuse_blocks, num_inuse_blocks, &aggr_size, &aggr_count))
+			if (calc_aggregate_size(&ref, var_len, false, inuse_blocks, num_inuse_blocks, &aggr_size, &aggr_count))
 			{
 				CA_PRINT("Directly referenced:\n");
 				CA_PRINT("    |--> ");

@@ -57,11 +57,11 @@ bool PrintCoreInfo(MmapFile& irCore)
 					printf(" type: PRSTATUS\n");
 					struct elf_prstatus *prstat = (struct elf_prstatus *)desc;
 
-					printf("\t\tpid=%ld signal=%d user_time=%ld.%ldsec sys_time=%ld.%ldsec\n",
+					printf("\t\tpid=%d signal=%d user_time=%ld.%ldsec sys_time=%ld.%ldsec\n",
 						prstat->pr_pid, prstat->pr_cursig, prstat->pr_utime.tv_sec, prstat->pr_utime.tv_usec,
 						prstat->pr_stime.tv_sec, prstat->pr_stime.tv_usec);
 					printf("\t\t%%rip=0x%lx %%rsp=0x%lx\n",
-						prstat->pr_reg[CORE_RIP], prstat->pr_reg[CORE_RSP]);
+						(uintptr_t)prstat->pr_reg[CORE_RIP], (uintptr_t)prstat->pr_reg[CORE_RSP]);
 				}
 				// general process info
 				else if (elfnote->n_type == NT_PRPSINFO)
@@ -88,7 +88,7 @@ bool PrintCoreInfo(MmapFile& irCore)
 
 					while ((char*)pauxv + sizeof(Elf64_auxv_t) < (char*)desc + elfnote->n_descsz)
 					{
-						printf("\t\ttype=%d\t", pauxv->a_type);
+						printf("\t\ttype=%ld\t", pauxv->a_type);
 						switch(pauxv->a_type)
 						{
 						case AT_EXECFD:
@@ -219,7 +219,9 @@ bool PrintCoreInfo(MmapFile& irCore)
 	return true;
 }
 
-bool GetFunctionName(char* opBuf, size_t iBufSz, unsigned long iInstructionOffset, const char* ipModulePath)
+bool
+GetFunctionName(char* opBuf, size_t iBufSz, unsigned long iInstructionOffset,
+    const char* ipModulePath)
 {
 	*opBuf = '\0';
 	std::basic_string<char> cmd("addr2line -e ");
@@ -228,32 +230,27 @@ bool GetFunctionName(char* opBuf, size_t iBufSz, unsigned long iInstructionOffse
 	char lAddrBuf[32];
 	sprintf(lAddrBuf, "0x%lx", iInstructionOffset);
 	cmd += lAddrBuf;
-	//printf("[%s]", cmd.c_str());
 	FILE *lpFile = popen(cmd.c_str(), "r");
-	if (lpFile)
+	if (lpFile != NULL)
 	{
-		fgets( opBuf, iBufSz, lpFile );
-		// Skip if there is no func info in the binary
-		if (opBuf[0] == '?')
-		{
-			*opBuf = '\0';
-		}
-		else
-		{
-			RemoveLineReturn(opBuf);
-			//printf("\t%s", RemoveLineReturn(opBuf));
-			size_t len = strlen(opBuf);
-			// insert delimiters and reserve one for line return
-			if (len+1+4 < iBufSz)
-			{
-				opBuf[len] = ' ';
-				opBuf[len+1] = 'a';
-				opBuf[len+2] = 't';
-				opBuf[len+3] = ' ';
-				len += 4;
-				fgets(&opBuf[len], iBufSz-len, lpFile );
-				RemoveLineReturn(&opBuf[len]);
-				//printf("\t%s", RemoveLineReturn(&opBuf[len]));
+		if (fgets(opBuf, iBufSz, lpFile) != NULL) {
+			// Skip if there is no func info in the binary
+			if (opBuf[0] == '?') {
+				*opBuf = '\0';
+			} else {
+				RemoveLineReturn(opBuf);
+				size_t len = strlen(opBuf);
+				// insert delimiters and reserve one for line return
+				if (len+1+4 < iBufSz)
+				{
+					opBuf[len] = ' ';
+					opBuf[len+1] = 'a';
+					opBuf[len+2] = 't';
+					opBuf[len+3] = ' ';
+					len += 4;
+					if (fgets(&opBuf[len], iBufSz-len, lpFile) != NULL)
+						RemoveLineReturn(&opBuf[len]);
+				}
 			}
 		}
 		pclose(lpFile);

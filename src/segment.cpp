@@ -28,7 +28,7 @@ static void  sys_free(void* p, size_t sz);
 // Dismantle all segments previously built
 // but keep the buffer for reuse
 /////////////////////////////////////////////////////////
-CA_BOOL release_all_segments(void)
+bool release_all_segments(void)
 {
 	unsigned int i;
 	struct ca_segment* segment;
@@ -53,7 +53,7 @@ CA_BOOL release_all_segments(void)
 	// Since all ca_segments are on a big buffer, simply ground the indexes
 	g_segment_count = 0;
 
-	return CA_TRUE;
+	return true;
 }
 
 // Expand buffer for at least "inc" slots
@@ -130,7 +130,7 @@ static void split_segment(struct ca_segment* segment, address_t addr)
 /////////////////////////////////////////////////////////////////////
 struct ca_segment*
 add_one_segment(address_t vaddr, size_t size,
-		       CA_BOOL read, CA_BOOL write, CA_BOOL exec)
+		       bool read, bool write, bool exec)
 {
 	struct ca_segment* segment = NULL;
 
@@ -226,7 +226,7 @@ struct ca_segment* get_segment(address_t addr, size_t len)
 	return NULL;
 }
 
-CA_BOOL alloc_bit_vec(void)
+bool alloc_bit_vec(void)
 {
 	unsigned int i;
 	char* buffer;
@@ -252,10 +252,10 @@ CA_BOOL alloc_bit_vec(void)
 			buffer += ALIGN(seg_bits, 32) >> 3;
 		}
 	}
-	return CA_TRUE;
+	return true;
 }
 
-CA_BOOL test_segments(CA_BOOL verbose)
+bool test_segments(bool verbose)
 {
 	unsigned int i, len;
 	struct ca_segment* seg;
@@ -266,7 +266,7 @@ CA_BOOL test_segments(CA_BOOL verbose)
 	{
 		if (verbose)
 			CA_PRINT("There is not segments to test\n");
-		return CA_FALSE;
+		return false;
 	}
 	// make sure all segments are properly sorted by address and there is no overlap
 	for (i=0; i<g_segment_count-1; i++)
@@ -281,7 +281,7 @@ CA_BOOL test_segments(CA_BOOL verbose)
 				CA_PRINT("\t[%d] "PRINT_FORMAT_POINTER" -- "PRINT_FORMAT_POINTER"\n", i, seg1->m_vaddr, seg1->m_vaddr + seg1->m_vsize);
 				CA_PRINT("\t[%d] "PRINT_FORMAT_POINTER" -- "PRINT_FORMAT_POINTER"\n", i+1, seg2->m_vaddr, seg2->m_vaddr + seg2->m_vsize);
 			}
-			return CA_FALSE;
+			return false;
 		}
 	}
 	// make sure query segment function works well
@@ -296,7 +296,7 @@ CA_BOOL test_segments(CA_BOOL verbose)
 				CA_PRINT("An address less than the 1st segment returns a valid segment\n");
 				CA_PRINT("[0] "PRINT_FORMAT_POINTER" -- "PRINT_FORMAT_POINTER"\n", seg->m_vaddr, seg->m_vaddr + seg->m_vsize);
 			}
-			return CA_FALSE;
+			return false;
 		}
 		// high address
 		seg = &g_segments[g_segment_count-1];
@@ -307,7 +307,7 @@ CA_BOOL test_segments(CA_BOOL verbose)
 				CA_PRINT("An address higher than the last segment returns a valid segment\n");
 				CA_PRINT("[%d] "PRINT_FORMAT_POINTER" -- "PRINT_FORMAT_POINTER"\n", g_segment_count-1, seg->m_vaddr, seg->m_vaddr + seg->m_vsize);
 			}
-			return CA_FALSE;
+			return false;
 		}
 		for (i=0; i<g_segment_count; i++)
 		{
@@ -320,7 +320,7 @@ CA_BOOL test_segments(CA_BOOL verbose)
 					CA_PRINT("Segment's start address doesn't return this segment\n");
 					CA_PRINT("[%d] "PRINT_FORMAT_POINTER" -- "PRINT_FORMAT_POINTER"\n", i, seg->m_vaddr, seg->m_vaddr + seg->m_vsize);
 				}
-				return CA_FALSE;
+				return false;
 			}
 			// segment's end address
 			if (get_segment(seg->m_vaddr + seg->m_vsize, len) == seg)
@@ -330,7 +330,7 @@ CA_BOOL test_segments(CA_BOOL verbose)
 					CA_PRINT("Segment's end address returns this segment\n");
 					CA_PRINT("[%d] "PRINT_FORMAT_POINTER" -- "PRINT_FORMAT_POINTER"\n", i, seg->m_vaddr, seg->m_vaddr + seg->m_vsize);
 				}
-				return CA_FALSE;
+				return false;
 			}
 			if (get_segment(seg->m_vaddr + seg->m_vsize - 8, 8) != seg)
 			{
@@ -339,7 +339,7 @@ CA_BOOL test_segments(CA_BOOL verbose)
 					CA_PRINT("Segment's last block doesn't return this segment\n");
 					CA_PRINT("[%d] "PRINT_FORMAT_POINTER" -- "PRINT_FORMAT_POINTER"\n", i, seg->m_vaddr, seg->m_vaddr + seg->m_vsize);
 				}
-				return CA_FALSE;
+				return false;
 			}
 			// segment's mid address
 			if (get_segment(seg->m_vaddr + seg->m_vsize/2, len) != seg)
@@ -349,7 +349,7 @@ CA_BOOL test_segments(CA_BOOL verbose)
 					CA_PRINT("Segment's middle address doesn't return this segment\n");
 					CA_PRINT("[%d] "PRINT_FORMAT_POINTER" -- "PRINT_FORMAT_POINTER"\n", i, seg->m_vaddr, seg->m_vaddr + seg->m_vsize);
 				}
-				return CA_FALSE;
+				return false;
 			}
 			// segments' gap
 			if (i < g_segment_count - 1)
@@ -364,12 +364,12 @@ CA_BOOL test_segments(CA_BOOL verbose)
 						CA_PRINT("\t[%d] "PRINT_FORMAT_POINTER" -- "PRINT_FORMAT_POINTER"\n", i, seg->m_vaddr, seg->m_vaddr + seg->m_vsize);
 						CA_PRINT("\t[%d] "PRINT_FORMAT_POINTER" -- "PRINT_FORMAT_POINTER"\n", i+1, seg2->m_vaddr, seg2->m_vaddr + seg2->m_vsize);
 					}
-					return CA_FALSE;
+					return false;
 				}
 			}
 		}
 	}
-	return CA_TRUE;
+	return true;
 }
 
 //////////////////////////////////////////////////////////////
@@ -377,7 +377,7 @@ CA_BOOL test_segments(CA_BOOL verbose)
 //		use a bitvec to indicate whether a data in target's
 //		address space is a pointer or not.
 //////////////////////////////////////////////////////////////
-CA_BOOL set_addressable_bit_vec(struct ca_segment* segment)
+bool set_addressable_bit_vec(struct ca_segment* segment)
 {
 	if (segment->m_fsize>0 && !segment->m_bitvec_ready)
 	{
@@ -420,7 +420,7 @@ CA_BOOL set_addressable_bit_vec(struct ca_segment* segment)
 		// done
 		segment->m_bitvec_ready = 1;
 	}
-	return CA_TRUE;
+	return true;
 }
 
 //////////////////////////////////////////////////////////////
@@ -480,7 +480,7 @@ void print_set_values (void)
 	}
 }
 
-static CA_BOOL get_preset_value (address_t addr, void* buffer, size_t sz)
+static bool get_preset_value (address_t addr, void* buffer, size_t sz)
 {
 	size_t ptr_sz = g_ptr_bit >> 3;
 	struct temp_value* pval = g_set_values;
@@ -495,16 +495,16 @@ static CA_BOOL get_preset_value (address_t addr, void* buffer, size_t sz)
 		}
 		pval = pval->next;
 	}
-	return CA_TRUE;
+	return true;
 }
 
 //////////////////////////////////////////////////////////////
 // segment may be cached by for better performance
 //////////////////////////////////////////////////////////////
-CA_BOOL read_memory_wrapper (struct ca_segment* segment, address_t addr, void* buffer, size_t sz)
+bool read_memory_wrapper (struct ca_segment* segment, address_t addr, void* buffer, size_t sz)
 {
 	size_t ptr_sz = g_ptr_bit >> 3;
-	CA_BOOL rc = CA_FALSE;
+	bool rc = false;
 	if (g_debug_core && g_segment_count)
 	{
 		char* mapped_addr;
@@ -524,7 +524,7 @@ CA_BOOL read_memory_wrapper (struct ca_segment* segment, address_t addr, void* b
 			else
 #endif
 				memcpy(buffer, mapped_addr, sz);
-			rc = CA_TRUE;
+			rc = true;
 		}
 		// Otherwise, find the belonging segment and cache it
 		else if (!last_seg || addr < last_seg->m_vaddr || addr+sz > last_seg->m_vaddr+last_seg->m_fsize)
@@ -544,7 +544,7 @@ CA_BOOL read_memory_wrapper (struct ca_segment* segment, address_t addr, void* b
 			else
 #endif
 				memcpy(buffer, mapped_addr, sz);
-			rc = CA_TRUE;
+			rc = true;
 		}
 #if defined(__MACH__)
 		if (!rc)
@@ -560,7 +560,7 @@ CA_BOOL read_memory_wrapper (struct ca_segment* segment, address_t addr, void* b
 					mapped_addr = (char*)(segment->m_faddr + (addr - segment->m_vaddr));
 					memcpy(buffer, mapped_addr, copy_sz);
 					memcpy((char*)buffer + copy_sz, next_segment->m_faddr, sz - copy_sz);
-					rc = CA_TRUE;
+					rc = true;
 				}
 			}
 		}

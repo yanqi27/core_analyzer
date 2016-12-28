@@ -4,8 +4,7 @@
  *  Created on: August 27, 2016
  *      Author: myan
  * 
- * This Implementation uses gdb specific types. Hence not portable to non-Linux
- * platforms
+ * Limitation: This Implementation uses gdb Internal APIs
  */
 
 #include "heap_tcmalloc.h"
@@ -534,7 +533,7 @@ gdb_symbol_prelude(void)
 	 * template <int BITS>
 	 *     class TCMalloc_PageMap3 
 	 */
-	pagemap3 = lookup_symbol("TCMalloc_PageMap3<35>", 0, VAR_DOMAIN, 0);
+	pagemap3 = lookup_symbol("TCMalloc_PageMap3<35>", 0, VAR_DOMAIN, 0).symbol;
 	if (pagemap3 == NULL) {
 		CA_PRINT_DBG("Failed to lookup type \"TCMalloc_PageMap3<35>\""
 		    "\n");
@@ -570,7 +569,7 @@ parse_config(void)
 	 * Global var
 	 * static const size_t kPageShift;
 	 */
-	pageshift_ = lookup_symbol("kPageShift", 0, VAR_DOMAIN, 0);
+	pageshift_ = lookup_symbol("kPageShift", 0, VAR_DOMAIN, 0).symbol;
 	if (pageshift_ == NULL) {
 		CA_PRINT("Failed to lookup gv \"kPageShift\"\n");
 		return false;
@@ -582,7 +581,7 @@ parse_config(void)
 	 * tcmalloc::Static::sizemap_
 	 */
 	sizemap_ = lookup_symbol_global("tcmalloc::Static::sizemap_", 0,
-	    VAR_DOMAIN);
+	    VAR_DOMAIN).symbol;
 	if (sizemap_ == NULL) {
 		CA_PRINT("Failed to lookup gv "
 		    "\"tcmalloc::Static::sizemap_\"\n");
@@ -669,7 +668,7 @@ parse_pagemap(void)
 	 * tcmalloc::PageHeap *tcmalloc::Static::pageheap_;
 	 */
 	pageheap_ = lookup_symbol_global("tcmalloc::Static::pageheap_", 0,
-	    VAR_DOMAIN);
+	    VAR_DOMAIN).symbol;
 	if (pageheap_ == NULL) {
 		CA_PRINT("Failed to lookup gv "
 		    "\"tcmalloc::Static::pageheap_\"\n");

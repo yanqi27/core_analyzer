@@ -1,3 +1,7 @@
+Version 2.18 upgrade gdb to 7.11.1
+
+Version 2.17 add support to tcmalloc
+
 Version 2.16 adds functions to display top variables that consume the most heap memory, and how much heap memory a variable references directly or indirectly, which helps identify memory hogs in a program. Function "decode" is rewritten to enhance relationship of symbols and types with a register table. Commands are streamlined for easier use, e.g., "tref" is replaced by "ref /t" and "block" is now "heap /b".
 
 Version 2.15 adds functions to display memory histogram and memory leaks, as well as miscellaneous buf fixes.

@@ -4,7 +4,8 @@
  *  Created on: August 27, 2016
  *      Author: myan
  * 
- * Limitation: This Implementation uses gdb Internal APIs
+ * This Implementation uses gdb specific types. Hence not portable to non-Linux
+ * platforms
  */
 
 #include "heap_tcmalloc.h"
@@ -86,6 +87,28 @@ init_heap(void)
 {
 	unsigned long i;
 
+	/*
+	 * Start with a clean slate
+	 */
+	g_initialized = false;
+	if (g_config.sizemap.class_to_pages != NULL)
+		free(g_config.sizemap.class_to_pages);
+	if (g_config.sizemap.class_to_size != NULL)
+		free(g_config.sizemap.class_to_size);
+	if (g_config.sizemap.num_objects_to_move != NULL)
+		free(g_config.sizemap.num_objects_to_move);
+	memset(&g_config, 0, sizeof(g_config));
+	for (i = 0; i < g_spans_count; i++) {
+		struct ca_span *span = &g_spans[i];
+		if (span->bitmap != NULL)
+			free(span->bitmap);
+		memset(span, 0, sizeof *span);
+	}
+	g_spans_count = 0;
+	skip_npage = 0;
+	g_cached_blocks_count = 0;
+
+	/* Trigger gdb symbol resolution */
 	gdb_symbol_prelude();
 
 	if (parse_config() == false ||
@@ -580,7 +603,7 @@ parse_config(void)
 	 * Global var
 	 * tcmalloc::Static::sizemap_
 	 */
-	sizemap_ = lookup_symbol_global("tcmalloc::Static::sizemap_", 0,
+	sizemap_ = lookup_global_symbol("tcmalloc::Static::sizemap_", 0,
 	    VAR_DOMAIN).symbol;
 	if (sizemap_ == NULL) {
 		CA_PRINT("Failed to lookup gv "
@@ -667,7 +690,7 @@ parse_pagemap(void)
 	 * Global var
 	 * tcmalloc::PageHeap *tcmalloc::Static::pageheap_;
 	 */
-	pageheap_ = lookup_symbol_global("tcmalloc::Static::pageheap_", 0,
+	pageheap_ = lookup_global_symbol("tcmalloc::Static::pageheap_", 0,
 	    VAR_DOMAIN).symbol;
 	if (pageheap_ == NULL) {
 		CA_PRINT("Failed to lookup gv "
@@ -768,8 +791,8 @@ parse_central_cache(void)
 	 * Global var
 	 * tcmalloc::CentralFreeListPadded tcmalloc::Static::central_cache_[88]
 	 */
-	central_cache_ = lookup_symbol_global("tcmalloc::Static::central_cache_",
-	    0, VAR_DOMAIN);
+	central_cache_ = lookup_global_symbol("tcmalloc::Static::central_cache_",
+	    0, VAR_DOMAIN).symbol;
 	if (central_cache_ == NULL) {
 		CA_PRINT("Failed to lookup gv "
 		    "\"tcmalloc::Static::central_cache_\"\n");
@@ -1280,8 +1303,8 @@ parse_thread_cache(void)
 	 * Global var
 	 * tcmalloc::ThreadCache *tcmalloc::ThreadCache::thread_heaps_
 	 */
-	thread_heaps_ = lookup_symbol_global("tcmalloc::ThreadCache::thread_heaps_",
-	    0, VAR_DOMAIN);
+	thread_heaps_ = lookup_global_symbol("tcmalloc::ThreadCache::thread_heaps_",
+	    0, VAR_DOMAIN).symbol;
 	if (thread_heaps_ == NULL) {
 		CA_PRINT("Failed to lookup gv "
 		    "\"tcmalloc::ThreadCache::thread_heaps_\"\n");

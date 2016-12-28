@@ -49,42 +49,42 @@ struct ca_region_stats {
 /***************************************************************************
  * Globals
  ***************************************************************************/
-static CA_BOOL g_heap_initialized = CA_FALSE;
+static bool g_heap_initialized = false;
 static struct ca_zones g_ca_zones;
 
 /***************************************************************************
  * Forward declaration
  ***************************************************************************/
-static CA_BOOL szone_walk(szone_t*, CA_BOOL, struct ca_region_stats*);
-static CA_BOOL build_szones(void);
+static bool szone_walk(szone_t*, bool, struct ca_region_stats*);
+static bool build_szones(void);
 static struct ca_region* search_sorted_regions(address_t);
-static CA_BOOL find_block_in_region(struct ca_region*, address_t,
+static bool find_block_in_region(struct ca_region*, address_t,
 		struct heap_block*);
 static void add_one_big_block(struct heap_block*, unsigned int,
 		struct heap_block*);
 static void build_region_blocks(struct ca_region* regionp);
-static CA_BOOL tiny_region_walk(szone_t*, region_t, CA_BOOL, struct ca_region_stats*);
-static CA_BOOL small_region_walk(szone_t*, region_t, CA_BOOL, struct ca_region_stats*);
+static bool tiny_region_walk(szone_t*, region_t, bool, struct ca_region_stats*);
+static bool small_region_walk(szone_t*, region_t, bool, struct ca_region_stats*);
 static msize_t get_tiny_meta_header(const void *, boolean_t *, tiny_header_inuse_pair_t*);
 static void check_sorted_region_blocks(struct ca_region*);
 
 /***************************************************************************
  * Exposed functions
  ***************************************************************************/
-CA_BOOL init_heap(void)
+bool init_heap(void)
 {
-	CA_BOOL rc = build_szones();
+	bool rc = build_szones();
 	return rc;
 }
 
-CA_BOOL heap_walk(address_t addr, CA_BOOL verbose)
+bool heap_walk(address_t addr, bool verbose)
 {
-	CA_BOOL rc = CA_TRUE;
+	bool rc = true;
 	unsigned int zone_index;
 	struct ca_region_stats stats = {0, 0, 0, 0};
 
 	if (!g_heap_initialized)
-		return CA_FALSE;
+		return false;
 
 	if (addr)
 	{
@@ -96,12 +96,12 @@ CA_BOOL heap_walk(address_t addr, CA_BOOL verbose)
 			if (regionp->type == ENUM_TINY_REGION)
 			{
 				region = TINY_REGION_FOR_PTR(regionp->start);
-				tiny_region_walk(szonep, region, CA_TRUE, &stats);
+				tiny_region_walk(szonep, region, true, &stats);
 			}
 			else if (regionp->type == ENUM_SMALL_REGION)
 			{
 				region = SMALL_REGION_FOR_PTR(regionp->start);
-				small_region_walk(szonep, region, CA_TRUE, &stats);
+				small_region_walk(szonep, region, true, &stats);
 			}
 			else if (regionp->type == ENUM_LARGE_REGION)
 			{
@@ -122,7 +122,7 @@ CA_BOOL heap_walk(address_t addr, CA_BOOL verbose)
 			}
 		}
 		else
-			rc = CA_FALSE;
+			rc = false;
 	}
 	else
 	{
@@ -139,8 +139,8 @@ CA_BOOL heap_walk(address_t addr, CA_BOOL verbose)
 			else
 				zone_name[0] = '\0';
 			CA_PRINT("zone[%d] name={%s}\n", zone_index, zone_name);
-			if (!szone_walk(szonep, CA_FALSE, &stats))
-				rc = CA_FALSE;
+			if (!szone_walk(szonep, false, &stats))
+				rc = false;
 		}
 		CA_PRINT("Total Heap Memory ");
 		print_size(stats.inuse_bytes + stats.free_bytes);
@@ -161,48 +161,48 @@ CA_BOOL heap_walk(address_t addr, CA_BOOL verbose)
 	return rc;
 }
 
-/* Return CA_TRUE if the block belongs to a heap */
-CA_BOOL is_heap_block(address_t addr)
+/* Return true if the block belongs to a heap */
+bool is_heap_block(address_t addr)
 {
 	struct ca_region* regionp;
 
 	if (!g_heap_initialized)
-		return CA_FALSE;
+		return false;
 
 	regionp = search_sorted_regions(addr);
 	if (regionp)
-		return CA_TRUE;
+		return true;
 	else
-		return CA_FALSE;
+		return false;
 }
 
 /*
  * Return true and detail info if the input addr belongs to a heap memory block
  */
-CA_BOOL get_heap_block_info(address_t addr, struct heap_block* blk)
+bool get_heap_block_info(address_t addr, struct heap_block* blk)
 {
 	struct ca_region* regionp;
 
 	if (!g_heap_initialized)
-		return CA_FALSE;
+		return false;
 
 	regionp = search_sorted_regions(addr);
 	if (regionp)
 		return find_block_in_region(regionp, addr, blk);
 	else
-		return CA_FALSE;
+		return false;
 }
 
 /*
  * Return true and detail info of the heap block after the input addr
  */
-CA_BOOL get_next_heap_block(address_t addr, struct heap_block* blk)
+bool get_next_heap_block(address_t addr, struct heap_block* blk)
 {
 	struct ca_region* regionp = NULL;
 	address_t next_addr = 0;
 
 	if (!g_heap_initialized)
-		return CA_FALSE;
+		return false;
 
 	if (addr)
 	{
@@ -247,12 +247,12 @@ CA_BOOL get_next_heap_block(address_t addr, struct heap_block* blk)
 	// Hopefully we have locate the next heap block's address by now
 	if (regionp && next_addr && find_block_in_region(regionp, next_addr, blk)
 			&& blk->addr > addr)
-		return CA_TRUE;
+		return true;
 	else
-		return CA_FALSE;
+		return false;
 }
 
-CA_BOOL get_biggest_blocks(struct heap_block* blks, unsigned int num)
+bool get_biggest_blocks(struct heap_block* blks, unsigned int num)
 {
 	unsigned int i;
 	struct heap_block* smallest = &blks[num - 1];
@@ -260,7 +260,7 @@ CA_BOOL get_biggest_blocks(struct heap_block* blks, unsigned int num)
 	struct heap_block blk;
 
 	if (!g_heap_initialized)
-		return CA_FALSE;
+		return false;
 
 	// large region/block should be bigger than any other block in tiny/small regions
 	for (i = 0; i < g_ca_zones.num_regions; i++)
@@ -272,13 +272,13 @@ CA_BOOL get_biggest_blocks(struct heap_block* blks, unsigned int num)
 			if (blk.size > smallest->size)
 			{
 				blk.addr = block_addr(regionp->start);
-				blk.inuse = CA_TRUE;
+				blk.inuse = true;
 				add_one_big_block(blks, num, &blk);
 			}
 		}
 	}
 	if (smallest->size > 0)
-		return CA_TRUE;
+		return true;
 
 	// if user requests more big blocks than in-used large region, walk through tiny/small regions
 	for (i = 0; i < g_ca_zones.num_regions; i++)
@@ -299,7 +299,7 @@ CA_BOOL get_biggest_blocks(struct heap_block* blks, unsigned int num)
 					if (blk.size > smallest->size)
 					{
 						blk.addr = block_addr(regionp->blocks[k]);
-						blk.inuse = CA_TRUE;
+						blk.inuse = true;
 						add_one_big_block(blks, num, &blk);
 					}
 				}
@@ -307,17 +307,17 @@ CA_BOOL get_biggest_blocks(struct heap_block* blks, unsigned int num)
 		}
 	}
 
-	return CA_TRUE;
+	return true;
 }
 
-CA_BOOL walk_inuse_blocks(struct inuse_block* opBlocks, unsigned long* opCount)
+bool walk_inuse_blocks(struct inuse_block* opBlocks, unsigned long* opCount)
 {
 	unsigned int i;
 	struct inuse_block* pBlockinfo = opBlocks;
 	*opCount = 0;
 
 	if (!g_heap_initialized)
-		return CA_FALSE;
+		return false;
 
 	for (i = 0; i < g_ca_zones.num_regions; i++)
 	{
@@ -362,18 +362,18 @@ CA_BOOL walk_inuse_blocks(struct inuse_block* opBlocks, unsigned long* opCount)
 			continue;
 		}
 	}
-	return CA_TRUE;
+	return true;
 }
 
 /*
-CA_BOOL walk_inuse_blocks_old(struct inuse_block* opBlocks, unsigned long* opCount)
+bool walk_inuse_blocks_old(struct inuse_block* opBlocks, unsigned long* opCount)
 {
 	unsigned int zone_index;
 	struct inuse_block* pBlockinfo = opBlocks;
 	*opCount = 0;
 
 	if (!g_heap_initialized)
-		return CA_FALSE;
+		return false;
 
 	// walk each zone
 	for (zone_index = 0; zone_index < g_ca_zones.malloc_num_zone; zone_index++)
@@ -596,7 +596,7 @@ CA_BOOL walk_inuse_blocks_old(struct inuse_block* opBlocks, unsigned long* opCou
 		}
 	}
 
-	return CA_TRUE;
+	return true;
 }
 */
 
@@ -759,12 +759,12 @@ free_list_unchecksum_ptr(szone_t *szone, ptr_union *ptr_addr)
 	return p.p;
 }
 
-static CA_BOOL small_region_walk(szone_t* szonep,
+static bool small_region_walk(szone_t* szonep,
 								region_t region,
-								CA_BOOL display_each_block,
+								bool display_each_block,
 								struct ca_region_stats* stats)
 {
-	CA_BOOL rc = CA_TRUE;
+	bool rc = true;
 	unsigned int num_inuse = 0, num_free = 0;
 	size_t inuse_bytes = 0, free_bytes = 0;
 	address_t ptr = (address_t) SMALL_REGION_ADDRESS(region);
@@ -788,7 +788,7 @@ static CA_BOOL small_region_walk(szone_t* szonep,
 		CA_PRINT(
 				"Failed to read small_meta_words of small region "PRINT_FORMAT_POINTER"\n",
 				(address_t) region);
-		return CA_FALSE;
+		return false;
 	}
 	if (!read_memory_wrapper(NULL, (address_t) &(((small_region_t) region)->trailer).mag_index,
 			&mag_index, sizeof(mag_index)))
@@ -796,7 +796,7 @@ static CA_BOOL small_region_walk(szone_t* szonep,
 		CA_PRINT(
 				"Failed to read mag_index of small region "PRINT_FORMAT_POINTER"\n",
 				(address_t) region);
-		return CA_FALSE;
+		return false;
 	}
 	// read magzine_t of this region
 	mag_addr = (address_t) szonep->small_magazines + sizeof(magazine_t) * mag_index;
@@ -804,7 +804,7 @@ static CA_BOOL small_region_walk(szone_t* szonep,
 	{
 		CA_PRINT("Failed to read szone's small_magazines[%d] at "PRINT_FORMAT_POINTER"\n",
 				mag_index, mag_addr);
-		return CA_FALSE;
+		return false;
 	}
 
 	// establish region limits
@@ -834,14 +834,14 @@ static CA_BOOL small_region_walk(szone_t* szonep,
 			{
 				CA_PRINT("invariant broken: null msize ptr="PRINT_FORMAT_POINTER" num_small_regions=%ld end="PRINT_FORMAT_POINTER"\n",
 						ptr, szonep->num_small_regions, region_end);
-				rc = CA_FALSE;
+				rc = false;
 				break;
 			}
 			if (SMALL_BYTES_FOR_MSIZE(msize) > szonep->large_threshold)
 			{
 				CA_PRINT("invariant broken for "PRINT_FORMAT_POINTER" this small msize=%d - size is too large\n",
 						ptr, msize_and_free);
-				rc = CA_FALSE;
+				rc = false;
 				break;
 			}
 			if (display_each_block)
@@ -852,7 +852,7 @@ static CA_BOOL small_region_walk(szone_t* szonep,
 			}
 			num_inuse++;
 			inuse_bytes += SMALL_BYTES_FOR_MSIZE(msize);
-			add_block_mem_histogram(SMALL_BYTES_FOR_MSIZE(msize), CA_TRUE, 1);
+			add_block_mem_histogram(SMALL_BYTES_FOR_MSIZE(msize), true, 1);
 			// move to next block
 			ptr += SMALL_BYTES_FOR_MSIZE(msize);
 			prev_free = 0;
@@ -867,13 +867,13 @@ static CA_BOOL small_region_walk(szone_t* szonep,
 			{
 				CA_PRINT("invariant broken for free block "PRINT_FORMAT_POINTER" this msize=%d\n",
 						ptr, msize);
-				rc = CA_FALSE;
+				rc = false;
 				break;
 			}
 			if (prev_free)
 			{
 				CA_PRINT("invariant broken for "PRINT_FORMAT_POINTER" (2 free in a row)\n",	ptr);
-				rc = CA_FALSE;
+				rc = false;
 				break;
 			}
 			// validate prev/next pointers of free node
@@ -884,14 +884,14 @@ static CA_BOOL small_region_walk(szone_t* szonep,
 			{
 				CA_PRINT("invariant broken for "PRINT_FORMAT_POINTER" (previous "PRINT_FORMAT_POINTER" is not a free pointer)\n",
 						ptr, (address_t) free_head->previous.p);
-				rc = CA_FALSE;
+				rc = false;
 				break;
 			}
 			//if (next && !SMALL_PTR_IS_FREE(next))
 			if (next && !(meta_headers[SMALL_META_INDEX_FOR_PTR(next)] & SMALL_IS_FREE))
 			{
 				CA_PRINT("invariant broken for "PRINT_FORMAT_POINTER" (next is not a free pointer)\n", ptr);
-				rc = CA_FALSE;
+				rc = false;
 				break;
 			}
 			read_memory_wrapper(NULL, (address_t) &follower[-1], &prev_msize, sizeof(prev_msize));
@@ -901,7 +901,7 @@ static CA_BOOL small_region_walk(szone_t* szonep,
 						"(end marker incorrect) should be %d; in fact %d\n",
 						ptr, (address_t) follower, (address_t) SMALL_REGION_ADDRESS(region), region_end,
 						msize, prev_msize);
-				rc = CA_FALSE;
+				rc = false;
 				break;
 			}
 
@@ -912,7 +912,7 @@ static CA_BOOL small_region_walk(szone_t* szonep,
 			}
 			num_free++;
 			free_bytes += SMALL_BYTES_FOR_MSIZE(msize);
-			add_block_mem_histogram(SMALL_BYTES_FOR_MSIZE(msize), CA_FALSE, 1);
+			add_block_mem_histogram(SMALL_BYTES_FOR_MSIZE(msize), false, 1);
 			// move to next block
 			ptr = (address_t) follower;
 			prev_free = SMALL_IS_FREE;
@@ -987,10 +987,10 @@ static msize_t get_tiny_previous_free_msize(const void *ptr, tiny_header_inuse_p
 	return 0;
 }
 
-static CA_BOOL
-tiny_region_walk(szone_t* szonep, region_t region, CA_BOOL display_each_block, struct ca_region_stats* stats)
+static bool
+tiny_region_walk(szone_t* szonep, region_t region, bool display_each_block, struct ca_region_stats* stats)
 {
-	CA_BOOL rc = CA_TRUE;
+	bool rc = true;
 	unsigned int num_inuse = 0, num_free = 0;
 	size_t inuse_bytes = 0, free_bytes = 0;
 
@@ -1009,20 +1009,20 @@ tiny_region_walk(szone_t* szonep, region_t region, CA_BOOL display_each_block, s
 	{
 		CA_PRINT("Failed to read pairs of tiny region "PRINT_FORMAT_POINTER"\n",
 				(address_t) region);
-		return CA_FALSE;
+		return false;
 	}
 	else if (!read_memory_wrapper(NULL,	(address_t) &(((tiny_region_t) region)->trailer).mag_index,
 			&mag_index, sizeof(mag_index)))		// MAGAZINE_INDEX_FOR_TINY_REGION(region);
 	{
 		CA_PRINT("Failed to read mag_index of tiny region "PRINT_FORMAT_POINTER"\n",
 				(address_t) region);
-		return CA_FALSE;
+		return false;
 	}
 	else if (mag_index > szonep->num_tiny_magazines - 1)
 	{
 		CA_PRINT("Error: Region "PRINT_FORMAT_POINTER" mag_index %d is out of szone's range [0...%d]\n",
 				(address_t) region, mag_index, szonep->num_tiny_magazines - 1);
-		return CA_FALSE;
+		return false;
 	}
 	// read magzine_t of the region
 	// &(szone->tiny_magazines[mag_index]);
@@ -1031,7 +1031,7 @@ tiny_region_walk(szone_t* szonep, region_t region, CA_BOOL display_each_block, s
 	{
 		CA_PRINT("Failed to read szone's tiny_magazines[%d] at "PRINT_FORMAT_POINTER"\n",
 				mag_index, mag_addr);
-		return CA_FALSE;
+		return false;
 	}
 
 	// establish region limits
@@ -1047,7 +1047,7 @@ tiny_region_walk(szone_t* szonep, region_t region, CA_BOOL display_each_block, s
 			{
 				CA_PRINT("invariant broken for leader block "PRINT_FORMAT_POINTER" - %d %d\n",
 						ptr - TINY_QUANTUM, msize, is_free);
-				return CA_FALSE;
+				return false;
 			}
 		}
 	}
@@ -1076,7 +1076,7 @@ tiny_region_walk(szone_t* szonep, region_t region, CA_BOOL display_each_block, s
 		{
 			CA_PRINT("invariant broken for tiny block "PRINT_FORMAT_POINTER" this msize=%d - size is too small\n",
 					ptr, msize);
-			rc = CA_FALSE;
+			rc = false;
 			break;
 		}
 		if (!is_free)
@@ -1087,7 +1087,7 @@ tiny_region_walk(szone_t* szonep, region_t region, CA_BOOL display_each_block, s
 			{
 				CA_PRINT("invariant broken for "PRINT_FORMAT_POINTER" this tiny msize=%d - size is too large\n",
 						ptr, msize);
-				rc = CA_FALSE;
+				rc = false;
 				break;
 			}
 			if (display_each_block)
@@ -1098,7 +1098,7 @@ tiny_region_walk(szone_t* szonep, region_t region, CA_BOOL display_each_block, s
 			}
 			num_inuse++;
 			inuse_bytes += TINY_BYTES_FOR_MSIZE(msize);
-			add_block_mem_histogram(TINY_BYTES_FOR_MSIZE(msize), CA_TRUE, 1);
+			add_block_mem_histogram(TINY_BYTES_FOR_MSIZE(msize), true, 1);
 			// move to next block
 			ptr += TINY_BYTES_FOR_MSIZE(msize);
 		}
@@ -1109,7 +1109,7 @@ tiny_region_walk(szone_t* szonep, region_t region, CA_BOOL display_each_block, s
 			{
 				CA_PRINT("invariant broken for free block "PRINT_FORMAT_POINTER" this tiny msize=%d: two free blocks in a row\n",
 						ptr, msize);
-				rc = CA_FALSE;
+				rc = false;
 				break;
 			}
 			prev_free = 1;
@@ -1122,13 +1122,13 @@ tiny_region_walk(szone_t* szonep, region_t region, CA_BOOL display_each_block, s
 			{
 				CA_PRINT("invariant broken for "PRINT_FORMAT_POINTER" (previous "PRINT_FORMAT_POINTER" is not a free pointer)\n",
 						(address_t) ptr, (address_t) previous);
-				rc = CA_FALSE;
+				rc = false;
 			}
 			if (next && !tiny_meta_header_is_free(next,	region == TINY_REGION_FOR_PTR(next) ? pairs : NULL))
 			{
 				CA_PRINT("invariant broken for "PRINT_FORMAT_POINTER" (next in free list "PRINT_FORMAT_POINTER" is not a free pointer)\n",
 						(address_t) ptr, (address_t) next);
-				rc = CA_FALSE;
+				rc = false;
 				//break;
 			}
 			// Check the free block's trailing size value.
@@ -1141,7 +1141,7 @@ tiny_region_walk(szone_t* szonep, region_t region, CA_BOOL display_each_block, s
 						(address_t) ptr, (address_t) follower,
 						(address_t) TINY_REGION_ADDRESS(region), region_end,
 						msize, get_tiny_previous_free_msize(follower, pairs));
-				rc = CA_FALSE;
+				rc = false;
 				//break;
 			}
 			if (display_each_block)
@@ -1151,7 +1151,7 @@ tiny_region_walk(szone_t* szonep, region_t region, CA_BOOL display_each_block, s
 			}
 			num_free++;
 			free_bytes += TINY_BYTES_FOR_MSIZE(msize);
-			add_block_mem_histogram(TINY_BYTES_FOR_MSIZE(msize), CA_FALSE, 1);
+			add_block_mem_histogram(TINY_BYTES_FOR_MSIZE(msize), false, 1);
 			// move to next block
 			ptr = (uintptr_t) follower;
 		}
@@ -1162,7 +1162,7 @@ tiny_region_walk(szone_t* szonep, region_t region, CA_BOOL display_each_block, s
 	{
 		CA_PRINT("invariant broken for region end "PRINT_FORMAT_POINTER" - "PRINT_FORMAT_POINTER"\n",
 				ptr, region_end);
-		rc = CA_FALSE;
+		rc = false;
 	}
 	// Check the trailing block's integrity.
 	if (region == tiny_mag.mag_last_region)
@@ -1174,7 +1174,7 @@ tiny_region_walk(szone_t* szonep, region_t region, CA_BOOL display_each_block, s
 			{
 				CA_PRINT("invariant broken for blocker block "PRINT_FORMAT_POINTER" - %d %d\n",
 						ptr, msize, is_free);
-				rc = CA_FALSE;
+				rc = false;
 			}
 		}
 	}
@@ -1199,8 +1199,8 @@ tiny_region_walk(szone_t* szonep, region_t region, CA_BOOL display_each_block, s
 	return rc;
 }
 
-static CA_BOOL
-szone_walk(szone_t* szonep, CA_BOOL display_each_block, struct ca_region_stats* statsp)
+static bool
+szone_walk(szone_t* szonep, bool display_each_block, struct ca_region_stats* statsp)
 {
 	darwin_size_t num_regions, index;
 	region_hash_generation_t region_hash_gen;
@@ -1214,7 +1214,7 @@ szone_walk(szone_t* szonep, CA_BOOL display_each_block, struct ca_region_stats* 
 	{
 		CA_PRINT("Failed to read zone's tiny_region_generation at "PRINT_FORMAT_POINTER"\n",
 				(address_t) szonep->tiny_region_generation);
-		return CA_FALSE;
+		return false;
 	}
 	num_regions = region_hash_gen.num_regions_allocated;
 	if (num_regions > 0)
@@ -1225,7 +1225,7 @@ szone_walk(szone_t* szonep, CA_BOOL display_each_block, struct ca_region_stats* 
 		{
 			CA_PRINT("Failed to read zone's tiny_region_generation->hashed_regions at "PRINT_FORMAT_POINTER"\n",
 					(address_t) region_hash_gen.hashed_regions);
-			return CA_FALSE;
+			return false;
 		}
 		for (index = 0; index < num_regions; index++)
 		{
@@ -1250,7 +1250,7 @@ szone_walk(szone_t* szonep, CA_BOOL display_each_block, struct ca_region_stats* 
 	{
 		CA_PRINT("Failed to read zone's tiny_region_generation at "PRINT_FORMAT_POINTER"\n",
 				(address_t) szonep->small_region_generation);
-		return CA_FALSE;
+		return false;
 	}
 	num_regions = region_hash_gen.num_regions_allocated;
 	if (num_regions > 0)
@@ -1261,7 +1261,7 @@ szone_walk(szone_t* szonep, CA_BOOL display_each_block, struct ca_region_stats* 
 		{
 			CA_PRINT("Failed to read zone's tiny_region_generation->hashed_regions at "PRINT_FORMAT_POINTER"\n",
 					(address_t) region_hash_gen.hashed_regions);
-			return CA_FALSE;
+			return false;
 		}
 		for (index = 0; index < num_regions; index++)
 		{
@@ -1324,7 +1324,7 @@ szone_walk(szone_t* szonep, CA_BOOL display_each_block, struct ca_region_stats* 
 		statsp->free_bytes  += stats.free_bytes;
 	}
 
-	return CA_TRUE;
+	return true;
 }
 
 static void
@@ -1356,10 +1356,10 @@ add_one_region(unsigned int zone_index, enum REGION_TYPE type, address_t start, 
 	regionp->corrupt = 0;
 }
 
-static CA_BOOL
+static bool
 build_small_region(unsigned int zone_index, szone_t* szonep, region_t region)
 {
-	CA_BOOL rc = CA_TRUE;
+	bool rc = true;
 	address_t ptr = (address_t) SMALL_REGION_ADDRESS(region);
 	address_t region_end = (address_t) SMALL_REGION_END(region);
 	mag_index_t mag_index;
@@ -1368,11 +1368,11 @@ build_small_region(unsigned int zone_index, szone_t* szonep, region_t region)
 
 	if (!read_memory_wrapper(NULL, (address_t) &(((small_region_t) region)->trailer).mag_index,
 			&mag_index, sizeof(mag_index)))		//MAGAZINE_INDEX_FOR_SMALL_REGION(SMALL_REGION_FOR_PTR(ptr))
-		return CA_FALSE;
+		return false;
 	// &(szone->small_magazines[mag_index])
 	mag_addr = (address_t) szonep->small_magazines + sizeof(magazine_t) * mag_index;
 	if (!read_memory_wrapper(NULL, mag_addr, &small_mag, sizeof(magazine_t)))
-		return CA_FALSE;
+		return false;
 
 	// establish region limits
 	if (region == small_mag.mag_last_region)
@@ -1386,10 +1386,10 @@ build_small_region(unsigned int zone_index, szone_t* szonep, region_t region)
 	return rc;
 }
 
-static CA_BOOL
+static bool
 build_tiny_region(unsigned int zone_index, szone_t* szonep, region_t region)
 {
-	CA_BOOL rc = CA_TRUE;
+	bool rc = true;
 
 	address_t start, region_end, ptr;
 	mag_index_t mag_index;
@@ -1403,20 +1403,20 @@ build_tiny_region(unsigned int zone_index, szone_t* szonep, region_t region)
 	{
 		CA_PRINT("Failed to read pairs of tiny region "PRINT_FORMAT_POINTER"\n",
 				(address_t) region);
-		return CA_FALSE;
+		return false;
 	}
 	else if (!read_memory_wrapper(NULL, (address_t) &(((tiny_region_t) region)->trailer).mag_index,
 			&mag_index, sizeof(mag_index)))		// MAGAZINE_INDEX_FOR_TINY_REGION(region)
 	{
 		CA_PRINT("Failed to read mag_index of tiny region "PRINT_FORMAT_POINTER"\n",
 				(address_t) region);
-		return CA_FALSE;
+		return false;
 	}
 	else if (mag_index > szonep->num_tiny_magazines - 1)
 	{
 		CA_PRINT("Error: Region "PRINT_FORMAT_POINTER" mag_index %d is out of szone's range [0...%d]\n",
 				(address_t) region, mag_index, szonep->num_tiny_magazines - 1);
-		return CA_FALSE;
+		return false;
 	}
 	// read magazine_t of this region
 	// &(szone->tiny_magazines[mag_index])
@@ -1425,7 +1425,7 @@ build_tiny_region(unsigned int zone_index, szone_t* szonep, region_t region)
 	{
 		CA_PRINT("Failed to read szone's tiny_magazines[%d] at "PRINT_FORMAT_POINTER"\n",
 				mag_index, mag_addr);
-		return CA_FALSE;
+		return false;
 	}
 
 	// establish region limits
@@ -1443,7 +1443,7 @@ build_tiny_region(unsigned int zone_index, szone_t* szonep, region_t region)
 	return rc;
 }
 
-static CA_BOOL
+static bool
 build_regions(unsigned int zone_index, szone_t* szonep)
 {
 	darwin_size_t num_regions, index;
@@ -1457,7 +1457,7 @@ build_regions(unsigned int zone_index, szone_t* szonep)
 	{
 		CA_PRINT("Failed to read zone's tiny_region_generation at "PRINT_FORMAT_POINTER"\n",
 				(address_t) szonep->tiny_region_generation);
-		return CA_FALSE;
+		return false;
 	}
 	num_regions = region_hash_gen.num_regions_allocated;
 	if (num_regions > 0)
@@ -1468,7 +1468,7 @@ build_regions(unsigned int zone_index, szone_t* szonep)
 		{
 			CA_PRINT("Failed to read zone's tiny_region_generation->hashed_regions at "PRINT_FORMAT_POINTER"\n",
 					(address_t) region_hash_gen.hashed_regions);
-			return CA_FALSE;
+			return false;
 		}
 		for (index = 0; index < num_regions; index++)
 		{
@@ -1486,7 +1486,7 @@ build_regions(unsigned int zone_index, szone_t* szonep)
 	{
 		CA_PRINT("Failed to read zone's tiny_region_generation at "PRINT_FORMAT_POINTER"\n",
 				(address_t) szonep->small_region_generation);
-		return CA_FALSE;
+		return false;
 	}
 	num_regions = region_hash_gen.num_regions_allocated;
 	if (num_regions > 0)
@@ -1497,7 +1497,7 @@ build_regions(unsigned int zone_index, szone_t* szonep)
 		{
 			CA_PRINT("Failed to read zone's tiny_region_generation->hashed_regions at "PRINT_FORMAT_POINTER"\n",
 					(address_t) region_hash_gen.hashed_regions);
-			return CA_FALSE;
+			return false;
 		}
 		for (index = 0; index < num_regions; index++)
 		{
@@ -1537,7 +1537,7 @@ build_regions(unsigned int zone_index, szone_t* szonep)
 		}
 	}
 
-	return CA_TRUE;
+	return true;
 }
 
 // release old and possibly stale data structures
@@ -1584,24 +1584,24 @@ static int compare_ca_region(const void* lhs, const void* rhs)
 	}
 }
 
-static CA_BOOL build_szones(void)
+static bool build_szones(void)
 {
-	CA_BOOL rc = CA_TRUE;
+	bool rc = true;
 	unsigned int zone_index, region_index;
 	address_t malloc_zone_vaddr = 0;
 	address_t malloc_num_zone_vaddr = 0;
 	address_t szone_array_addr;
 
-	g_heap_initialized = CA_FALSE;
+	g_heap_initialized = false;
 	destruct_ca_zones();
 
 	// Get the address of global variable malloc_zones/malloc_num_zone
-	malloc_zone_vaddr = get_var_addr_by_name("malloc_zones", CA_TRUE);
-	malloc_num_zone_vaddr = get_var_addr_by_name("malloc_num_zones", CA_TRUE);
+	malloc_zone_vaddr = get_var_addr_by_name("malloc_zones", true);
+	malloc_num_zone_vaddr = get_var_addr_by_name("malloc_num_zones", true);
 	if (!malloc_zone_vaddr || !malloc_num_zone_vaddr)
 	{
 		CA_PRINT("Address of global variable malloc_zones/malloc_num_zone is zero\n");
-		return CA_FALSE;
+		return false;
 	}
 
 	// read the value of malloc_num_zone
@@ -1610,25 +1610,25 @@ static CA_BOOL build_szones(void)
 	{
 		CA_PRINT("Failed to read global variable malloc_num_zone at "PRINT_FORMAT_POINTER"\n",
 				malloc_num_zone_vaddr);
-		return CA_FALSE;
+		return false;
 	}
 	if (g_ca_zones.malloc_num_zone == 0)
 	{
 		CA_PRINT("Error global variable malloc_num_zone = 0\n");
-		return CA_FALSE;
+		return false;
 	}
 	// read the value of malloc_zones
 	if (!read_memory_wrapper(NULL, malloc_zone_vaddr, &szone_array_addr, sizeof(szone_array_addr)))
 	{
 		CA_PRINT("Failed to read global variable malloc_zones at "PRINT_FORMAT_POINTER"\n",
 				malloc_zone_vaddr);
-		return CA_FALSE;
+		return false;
 	}
 
 	// allocate buffer for all szones
 	g_ca_zones.malloc_zones = (szone_t*) malloc(sizeof(szone_t) * g_ca_zones.malloc_num_zone);
 	if (!g_ca_zones.malloc_zones)
-		return CA_FALSE;
+		return false;
 	// read all szone_t into local copy
 	for (zone_index = 0; zone_index < g_ca_zones.malloc_num_zone; zone_index++)
 	{
@@ -1640,14 +1640,14 @@ static CA_BOOL build_szones(void)
 		{
 			CA_PRINT("Failed to read global variable malloc_zones[%d] at "PRINT_FORMAT_POINTER"\n",
 					zone_index,	szone_array_addr + sizeof(szone_t*) * zone_index);
-			rc = CA_FALSE;
+			rc = false;
 			break;
 		}
 		if (!read_memory_wrapper(NULL, szone_addr, szonep, sizeof(szone_t)))
 		{
 			CA_PRINT("Failed to read szone_t at "PRINT_FORMAT_POINTER"\n",
 					szone_addr);
-			rc = CA_FALSE;
+			rc = false;
 			break;
 		}
 		// regions of the zone
@@ -1658,7 +1658,7 @@ static CA_BOOL build_szones(void)
 	if (!rc)
 	{
 		destruct_ca_zones();
-		return CA_FALSE;
+		return false;
 	}
 
 	// sort the regions in ascending address
@@ -1676,8 +1676,8 @@ static CA_BOOL build_szones(void)
 	}
 
 	// Now we are ready
-	g_heap_initialized = CA_TRUE;
-	return CA_TRUE;
+	g_heap_initialized = true;
+	return true;
 }
 
 static struct ca_region* search_sorted_regions(address_t addr)
@@ -2016,7 +2016,7 @@ static int search_block_index(struct ca_region* regionp, address_t addr)
  * Locate the memory block containing addr
  * We have verified that "addr" falls within this region
  */
-static CA_BOOL
+static bool
 find_block_in_region(struct ca_region* regionp, address_t addr,	struct heap_block* blk)
 {
 	int index;
@@ -2026,7 +2026,7 @@ find_block_in_region(struct ca_region* regionp, address_t addr,	struct heap_bloc
 		blk->addr = block_addr(regionp->start);
 		blk->size = regionp->end - blk->addr;
 		blk->inuse = block_inuse(regionp->start);
-		return CA_TRUE;
+		return true;
 	}
 
 	// tiny/small regions
@@ -2043,10 +2043,10 @@ find_block_in_region(struct ca_region* regionp, address_t addr,	struct heap_bloc
 		else
 			blk->size = regionp->end - blk->addr;
 		blk->inuse = block_inuse(regionp->blocks[index]);
-		return CA_TRUE;
+		return true;
 	}
 
-	return CA_FALSE;
+	return false;
 }
 
 // The input array blks is assumed to be sorted by size already

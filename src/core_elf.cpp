@@ -424,8 +424,11 @@ static bool BuildSegments_32(MmapFile& irCore)
 			}
 		}
 		// Warn if core is truncated
-		if (lMaxOffset > irCore.GetFileSize())
-			printf("\n!!Warning!! Process image has %ld bytes while core file is only %ld bytes\n", lMaxOffset, irCore.GetFileSize());
+		if (lMaxOffset > irCore.GetFileSize()) {
+			printf("\n!!Warning!! Process image has %d bytes "
+			    "while core file is only %ld bytes\n", lMaxOffset,
+			    irCore.GetFileSize());
+		}
 
 		// now set all segments that are thread stacks.
 		for (int tindex=0; tindex<gThreadVec.size(); tindex++)
@@ -799,7 +802,7 @@ bool InitCoreAnalyzer(MmapFile& irExec, MmapFile& irCore)
 	if (!rc)
 		return false;
 
-	if (!test_segments(CA_TRUE))
+	if (!test_segments(true))
 		return false;
 
 
@@ -969,9 +972,8 @@ int read_registers(const struct ca_segment* segment, struct reg_value* regs, int
 	return 0;
 }
 
-CA_BOOL search_registers(const struct ca_segment*segment,
-						struct CA_LIST* targets,
-						struct CA_LIST* refs)
+bool search_registers(const struct ca_segment*segment,
+    struct CA_LIST* targets, struct CA_LIST* refs)
 {
 	int ptr_sz = g_ptr_bit >> 3;
 
@@ -998,7 +1000,7 @@ CA_BOOL search_registers(const struct ca_segment*segment,
 				ref->vaddr        = 0;
 				ref->value        = r_val;
 				ca_list_push_back(refs, ref);
-				lbFound = CA_TRUE;
+				lbFound = true;
 				break;
 			}
 		}

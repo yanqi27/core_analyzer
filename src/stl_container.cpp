@@ -57,14 +57,14 @@ void* ca_set_find(struct CA_SET* iset, void* val)
 		return NULL;
 }
 
-CA_BOOL ca_set_insert(struct CA_SET* iset, void* val)
+bool ca_set_insert(struct CA_SET* iset, void* val)
 {
 	std::pair<std::set<void*,CA_CompareFunctionType>::iterator,bool> ret;
 	ret = iset->m_set->insert (val);
 	if (ret.second == false)
-		return CA_FALSE;
+		return false;
 	else
-		return CA_TRUE;
+		return true;
 }
 
 void  ca_set_traverse_start(struct CA_SET* iset)
@@ -155,7 +155,7 @@ void ca_list_delete(struct CA_LIST* ilist)
 	delete ilist;
 }
 
-CA_BOOL ca_list_empty(struct CA_LIST* ilist)
+bool ca_list_empty(struct CA_LIST* ilist)
 {
 	return ilist->m_list->empty();
 }
@@ -223,15 +223,15 @@ void* ca_set_find(struct CA_SET* iset, void* key)
 		return (void*)node->value;
 }
 
-CA_BOOL ca_set_insert_key_and_val(struct CA_SET* iset, void* key, void* val)
+bool ca_set_insert_key_and_val(struct CA_SET* iset, void* key, void* val)
 {
 	if (!splay_tree_lookup (iset->tree, (splay_tree_key)key))
 	{
 		splay_tree_insert (iset->tree, (splay_tree_key)key, (splay_tree_value) val);
-		return CA_TRUE;
+		return true;
 	}
 	else
-		return CA_FALSE;
+		return false;
 }
 
 void  ca_set_traverse_start(struct CA_SET* iset)
@@ -304,7 +304,7 @@ void* ca_set_find(struct CA_SET* iset, void* val)
 	return NULL;
 }
 
-CA_BOOL ca_set_insert(struct CA_SET* iset, void* val)
+bool ca_set_insert(struct CA_SET* iset, void* val)
 {
 	if (!ca_set_find(iset, val))
 	{
@@ -313,10 +313,10 @@ CA_BOOL ca_set_insert(struct CA_SET* iset, void* val)
 		node->next = iset->_head;
 		iset->_head = node;
 		iset->_size++;
-		return CA_TRUE;
+		return true;
 	}
 	else
-		return CA_FALSE;
+		return false;
 }
 
 void  ca_set_traverse_start(struct CA_SET* iset)
@@ -452,7 +452,7 @@ void ca_list_delete(struct CA_LIST* ilist)
 	free(ilist);
 }
 
-CA_BOOL ca_list_empty(struct CA_LIST* ilist)
+bool ca_list_empty(struct CA_LIST* ilist)
 {
 	return (ilist->_size <= 0);
 }

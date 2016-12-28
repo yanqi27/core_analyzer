@@ -38,19 +38,19 @@ struct ca_segment
  * Exposed functions, global variables
  */
 extern struct ca_segment*
-add_one_segment(address_t vaddr, size_t size, CA_BOOL read, CA_BOOL write, CA_BOOL exec);
+add_one_segment(address_t vaddr, size_t size, bool read, bool write, bool exec);
 
-extern CA_BOOL release_all_segments(void);
+extern bool release_all_segments(void);
 
-extern CA_BOOL alloc_bit_vec(void);
+extern bool alloc_bit_vec(void);
 
-extern CA_BOOL test_segments(CA_BOOL verbose);
+extern bool test_segments(bool verbose);
 
 extern struct ca_segment* get_segment(address_t addr, size_t len);
 
-extern CA_BOOL set_addressable_bit_vec(struct ca_segment*);
+extern bool set_addressable_bit_vec(struct ca_segment*);
 
-extern CA_BOOL read_memory_wrapper (struct ca_segment*, address_t, void*, size_t);
+extern bool read_memory_wrapper (struct ca_segment*, address_t, void*, size_t);
 
 extern void* core_to_mmap_addr(address_t vaddr);
 

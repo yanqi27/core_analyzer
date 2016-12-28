@@ -5,68 +5,9 @@
  *      Author: myan
  */
 #include "decode.h"
+#include "dis-asm.h"
 #include "search.h"
 #include "segment.h"
-
-#ifdef _WIN32	// wrapper of gdb utilities
-
-typedef void bfd_byte;
-typedef void gdb_byte;
-
-static void
-ui_out_message(void* uiout, int, const char* format, ...)
-{
-	static char msg_buf[NAME_BUF_SZ];
-	va_list args;
-	va_start (args, format);
-	vsprintf(msg_buf, format, args);
-	dprintf(msg_buf);
-	va_end (args);
-}
-
-static void
-ui_out_text(void* uiout, const char* text)
-{
-	dprintf(text);
-}
-
-static void
-ui_out_spaces(void* uiout, int nspace)
-{
-	int i;
-	for (i = 0; i < nspace; i++)
-		dprintf(" ");
-}
-
-static void
-ui_out_field_core_addr(void* uiout, const char* field_name, void* gdbarch, CORE_ADDR addr)
-{
-	return;
-}
-
-static void
-ui_out_field_int(void* uiout, const char* field_name, int offset)
-{
-	dprintf("%d", offset);
-}
-
-static const char *
-pc_prefix(CORE_ADDR addr)
-{
-	static char pc_buf[32];
-	snprintf(pc_buf, 32, "%p", addr);
-	return pc_buf;
-}
-
-static int
-build_address_symbolic(void* gdbarch, CORE_ADDR addr,
-    int, char**name, int* offset, char**filename, int* line, int*unmapped)
-{
-	// Not implemented
-	return -1;
-}
-
-#endif
 
 enum CA_OPERATOR
 {
@@ -86,28 +27,28 @@ enum CA_OPERATOR
 	ROTATE_LEFT
 };
 
-// A local variable on stack, its value can always be queried given its address
+/* A local variable on stack, its value can always be queried given its address */
 struct ca_stack_var
 {
 	address_t stack_addr;
 	char* sym_name;
-	struct win_type type;
+	struct type* type;
 };
 
 /*
  * Globals
  */
-// register table
+/* register table */
 #define INIT_REG_ARRAY_SZ 32
 static struct ca_reg_table g_reg_table;
 
-// stack variables
+/* stack variables */
 #define STACK_ARRAY_INIT_CAP 32
 static struct ca_stack_var* g_stack_vars = NULL;
 static unsigned int g_num_stack_vars = 0;
 static unsigned int g_stack_vars_capacity = 0;
 
-// disassembled instructions
+/* disassembled instructions */
 #define INSN_BUFFER_INIT_CAP 32
 static struct ca_dis_insn* g_insns_buffer = NULL;
 static unsigned int g_insns_buffer_capacity = 0;
@@ -118,7 +59,7 @@ static unsigned int g_num_insns = 0;
  */
 static int dump_insns(struct decode_control_block* decode_cb);
 
-// Instruction array
+/* Instruction array */
 static void init_dis_insn_buffer(void);
 static struct ca_dis_insn* get_new_dis_insn(void);
 static void process_one_insn(struct ca_dis_insn* insn, int current);
@@ -130,7 +71,7 @@ static void process_unary_op_insn(struct ca_dis_insn* insn,
     struct ca_operand* dst_op, enum CA_OPERATOR op);
 static void print_one_insn(struct ca_dis_insn* insn, struct ui_out* uiout);
 
-// Instruction Operand
+/* Instruction Operand */
 static void print_one_operand(struct ui_out* uiout, struct ca_operand* op, size_t op_size);
 static int known_op_value(struct ca_operand* op);
 static bfd_vma get_address(struct ca_operand* op);
@@ -138,15 +79,16 @@ static size_t get_op_value(struct ca_operand* op, size_t op_size);
 static void set_op_value(struct ca_operand* op, size_t val, CORE_ADDR pc);
 static void set_op_unknown(struct ca_operand* op, CORE_ADDR pc);
 static void get_op_symbol_type(struct ca_operand* op, int lea,
-    char** psymname, struct win_type* ptype, int* pvptr);
+							char** psymname, struct type** ptype, int* pvptr);
 static void set_dst_op(struct ca_dis_insn* insn, struct ca_operand* dst_op,
-    int has_value, size_t val, char* symname, struct win_type type, int is_vptr);
+    int has_value, size_t val, char* symname, struct type* type, int is_vptr);
 static size_t bit_rotate(size_t val, size_t nbits, enum CA_OPERATOR dir, int size);
 static int is_stack_address(struct ca_operand* op);
 static void set_op_value_symbol_type(struct ca_dis_insn* insn,
-    struct ca_operand* sym_op, struct ca_operand* dst_op, int has_value, size_t val);
+    struct ca_operand* sym_op, struct ca_operand* dst_op,
+    int has_value, size_t val);
 
-// Register table
+/* Register table */
 static void init_reg_table(struct ca_reg_value* regs);
 static void reset_reg_table(void);
 static void validate_reg_table(void);
@@ -159,14 +101,14 @@ static void set_reg_unknown_at_pc(unsigned int reg_idx, CORE_ADDR pc);
 static void set_reg_value_at_pc(unsigned int reg_idx, size_t val, CORE_ADDR pc);
 static void set_cur_reg_value(unsigned int reg_idx, size_t val);
 
-// Stack values
+/* Stack values */
 static void init_stack_vars(void);
 static void reset_stack_vars(void);
 static struct ca_stack_var* get_new_stack_var(address_t saddr);
 static struct ca_stack_var* get_stack_var(address_t saddr);
-static void set_stack_sym_type(char* sym_name, struct win_type type, address_t saddr);
+static void set_stack_sym_type(char* sym_name, struct type* type, address_t saddr);
 
-// Misc
+/* Misc */
 static int is_same_string(const char* str1, const char* str2);
 
 /*
@@ -182,29 +124,36 @@ decode_insns(struct decode_control_block* decode_cb)
 	struct gdbarch *gdbarch = decode_cb->gdbarch;
 	struct ui_out *uiout = decode_cb->uiout;
 
-	// Disassemble the whole function even if user chooses
-	// only a subset of it
+	/*
+	 * Disassemble the whole function even if user chooses
+	 * only a subset of it
+	 */
 	num_insns += dump_insns(decode_cb);
 
-	// copy known function parameters
+	/* copy known function parameters */
 	init_reg_table(decode_cb->param_regs);
 	init_stack_vars();
 
 	g_reg_table.cur_regs[RIP]->has_value = 1;
-	// Annotate the context of each instruction
-	for (insn_index = 0; insn_index < g_num_insns; insn_index++) {
+	/* Annotate the context of each instruction */
+	for (insn_index = 0; insn_index < g_num_insns; insn_index++)
+	{
 		int cur_insn = 0;
 		struct ca_dis_insn* insn = &g_insns_buffer[insn_index];
 
-		// update program counter for RIP-relative instruction
-		// RIP points to the address of the next instruction before executing current one
+		/* update program counter for RIP-relative instruction
+		 * RIP points to the address of the next instruction before
+		 * executing current one
+		 */
 		if (insn_index + 1 < g_num_insns)
 			set_reg_value_at_pc(RIP, (insn+1)->pc, insn->pc);
 
-		// user may set some register values deliberately
-		if (decode_cb->user_regs) {
+		/* user may set some register values deliberately */
+		if (decode_cb->user_regs)
+		{
 			if (insn->pc == decode_cb->low ||
-			    (insn_index + 1 < g_num_insns && g_insns_buffer[insn_index + 1].pc > decode_cb->low)) {
+			    (insn_index + 1 < g_num_insns && g_insns_buffer[insn_index + 1].pc > decode_cb->low) )
+			{
 				if (insn->pc == decode_cb->func_start)
 					set_reg_table_at_pc(decode_cb->user_regs, 0);
 				else
@@ -212,21 +161,29 @@ decode_insns(struct decode_control_block* decode_cb)
 			}
 		}
 
-		// analyze and update register context affected by this instruction
-		if (decode_cb->innermost_frame) {
+		/* analyze and update register context affected by this instruction */
+		if (decode_cb->innermost_frame)
+		{
 			if (insn->pc == decode_cb->current)
 				cur_insn = 1;
-		} else if (insn_index + 1 < g_num_insns && g_insns_buffer[insn_index + 1].pc == decode_cb->current)
+		}
+		else if (insn_index + 1 < g_num_insns && g_insns_buffer[insn_index + 1].pc == decode_cb->current)
 			cur_insn = 1;
 
 		process_one_insn(insn, cur_insn);
 
-		if (cur_insn) {
-			// return the register context back to caller
-			for (i = 0; i < TOTAL_REGS; i++) {
+		if (cur_insn)
+		{
+			/* return the register context back to caller */
+			for (i = 0; i < TOTAL_REGS; i++)
+			{
 				struct ca_reg_value* reg = g_reg_table.cur_regs[i];
-				if (reg->has_value) {
-					// only pass on values, symbol may be out of context in another function
+				if (reg->has_value)
+				{
+					/*
+					 * only pass on values, symbol may be out
+					 * of context in another function
+					 */
 					struct ca_reg_value* dst = &decode_cb->param_regs[i];
 					memcpy(dst, reg, sizeof(struct ca_reg_value));
 					dst->sym_name = NULL;
@@ -237,10 +194,11 @@ decode_insns(struct decode_control_block* decode_cb)
 	if (decode_cb->verbose)
 		validate_reg_table();
 
-	// display disassembled insns
-	for (insn_index = 0; insn_index < g_num_insns; insn_index++) {
+	/* display disassembled insns */
+	for (insn_index = 0; insn_index < g_num_insns; insn_index++)
+	{
 		struct ca_dis_insn* insn = &g_insns_buffer[insn_index];
-		// parts of the symbolic representation of the address
+		/* parts of the symbolic representation of the address */
 		int unmapped;
 		int offset;
 		int line;
@@ -249,29 +207,29 @@ decode_insns(struct decode_control_block* decode_cb)
 
 		if (insn->pc >= decode_cb->high)
 			break;
-		else if (insn->pc >= decode_cb->low) {
-			// instruction address + offset
+		else if (insn->pc >= decode_cb->low)
+		{
+			/* instruction address + offset */
 			ui_out_text(uiout, pc_prefix(insn->pc));
 			ui_out_field_core_addr(uiout, "address", gdbarch, insn->pc);
 
 			if (!build_address_symbolic(gdbarch, insn->pc, 0, &name, &offset, &filename,
-			    &line, &unmapped)) {
+					&line, &unmapped))
+			{
 				ui_out_text(uiout, " <");
-				//if (decode_cb->verbose)
-				//	ui_out_field_string(uiout, "func-name", name);
 				ui_out_text(uiout, "+");
 				ui_out_field_int(uiout, "offset", offset);
 				ui_out_text(uiout, ">:\t");
 			} else
-				ui_out_message(uiout, 0, "<+%ld>:\t", insn->pc - decode_cb->func_start);
+				ui_out_text(uiout, ":\t");
 
-			// disassembled instruction with annotation
+			/* disassembled instruction with annotation */
 			print_one_insn(insn, uiout);
 
 			if (filename != NULL)
-				free(filename);
+				xfree(filename);
 			if (name != NULL)
-				free(name);
+				xfree(name);
 		}
 	}
 
@@ -281,7 +239,7 @@ decode_insns(struct decode_control_block* decode_cb)
 	return num_insns;
 }
 
-#define MAX_SPACING 34
+#define MAX_SPACING 31
 /*
  * Display a disassembled instruction with annotation
  */
@@ -298,46 +256,51 @@ print_one_insn(struct ca_dis_insn* insn, struct ui_out* uiout)
 		ui_out_spaces(uiout, MAX_SPACING - pos);
 	ui_out_text(uiout, " ## ");
 
-	if (insn->num_operand == 0) {
+	if (insn->num_operand == 0)
+	{
 		ui_out_text(uiout, "\n");
 		return;
 	}
 
-	// special case
-	/*if (insn->call)
-	{
-		// reminder that $rax is set to return value after a "call" instruction
-		// if the called function has an integer return value
-		// (unfortunately return type is not known for a function)
-		ui_out_text(uiout, "(%rax=? on return) ");
-	}*/
+	/*
+	 * TODO
+	 * $rax is set to return value after a "call" instruction
+	 * if the called function has an integer return value
+	 * (unfortunately return type is not known for a function)
+	 */
 
 	dst_op = &insn->operands[0];
-	// annotation of object context
-	if (insn->annotate) {
+	/* annotation of object context */
+	if (insn->annotate)
+	{
 		size_t ptr_sz = g_ptr_bit >> 3;
 		int has_value = 0;
 		size_t val = 0xcdcdcdcd;
 		int op_size = insn->op_size;
 		const char* symname = NULL;
-		struct win_type type = {0,0};
+		struct type* type   = NULL;
 		int is_vptr         = 0;
 		char* name_to_free = NULL;
 
-		// update register context by "pc"
+		/* update register context by "pc" */
 		set_current_reg_pointers(insn);
 
-		// Get the instruction's destination value/symbol/type
-		if (dst_op->type == CA_OP_MEMORY) {
-			// if the destination is a known local variable
-			if (is_stack_address(dst_op)) {
+		/* Get the instruction's destination value/symbol/type */
+		if (dst_op->type == CA_OP_MEMORY)
+		{
+			/* if the destination is a known local variable */
+			if (is_stack_address(dst_op))
+			{
 				address_t addr = get_address(dst_op);
 				struct ca_stack_var* sval = get_stack_var(addr);
-				if (sval) {
+				if (sval)
+				{
 					symname = sval->sym_name;
 					type = sval->type;
-				} else {
-					/*struct symbol* sym;
+				}
+				else
+				{
+					struct symbol* sym;
 					struct object_reference aref;
 					memset(&aref, 0, sizeof(aref));
 					aref.vaddr = addr;
@@ -348,62 +311,71 @@ print_one_insn(struct ca_dis_insn* insn, struct ui_out* uiout)
 					{
 						symname = SYMBOL_PRINT_NAME (sym);
 						type = SYMBOL_TYPE(sym);
-					}*/
-					get_stack_sym_and_type(addr, &symname, &type);
+					}
 				}
 			}
-			// could it be a known heap object
-			if (!symname && !type.mod_base) {
-				// this function will allocate buffer for the symbol name if any, remember to free it
+			/* could it be a known heap object */
+			if (!symname && !type)
+			{
+				/*
+				 * this function will allocate buffer for the
+				 * symbol name if any, remember to free it
+				 */
 				get_op_symbol_type(dst_op, 0, &name_to_free, &type, NULL);
 				symname = name_to_free;
 			}
-			// Since flag insn->annotate is set, dst_op's value should be calculated
+			/* Since flag insn->annotate is set, dst_op's value should be calculated */
 			val = get_op_value(dst_op, op_size);
 			has_value = 1;
-		} else if (dst_op->type == CA_OP_REGISTER) {
+		}
+		else if (dst_op->type == CA_OP_REGISTER)
+		{
 			struct ca_reg_value* dst_reg = get_reg_at_pc(dst_op->reg.index, insn->pc);
-			if (dst_reg) {
+			if (dst_reg)
+			{
 				symname = dst_reg->sym_name;
 				type    = dst_reg->type;
 				is_vptr = dst_reg->vptr;
-				if (dst_reg->has_value) {
+				if (dst_reg->has_value)
+				{
 					has_value = 1;
 					val = dst_reg->value;
 				}
 			}
-		} else if (dst_op->type == CA_OP_IMMEDIATE) {
-			val = get_op_value(dst_op, op_size);
-			has_value = 1;
 		}
 
-		if (dst_op->type != CA_OP_IMMEDIATE) {
-			// Name and value (if known) of destination
-			print_one_operand(uiout, dst_op, op_size);
-			if (has_value)
-				ui_out_message(uiout, 0, "="PRINT_FORMAT_POINTER, val);
-			else
-				ui_out_text(uiout, "=?");
-		}
+		/* Name and value (if known) of destination */
+		print_one_operand(uiout, dst_op, op_size);
+		if (has_value)
+			ui_out_message(uiout, 0, "=0x%lx", val);
+		else
+			ui_out_text(uiout, "=?");
 
-		// Symbol or type of destination
-		if (dst_op->type == CA_OP_REGISTER && dst_op->reg.index == RSP) {
+		/* Symbol or type of destination */
+		if (dst_op->type == CA_OP_REGISTER
+			&& dst_op->reg.index == RSP)
+		{
 			if (val == g_debug_context.sp)
 				ui_out_text(uiout, " End of function prologue");
 			ui_out_text(uiout, "\n");
-		} else {
-			// symbol or type is known
-			if (symname || type.mod_base) {
+		}
+		else
+		{
+			/* symbol or type is known */
+			if (symname || type)
+			{
 				ui_out_text(uiout, "(");
-				if (symname) {
+				if (symname)
+				{
 					ui_out_message(uiout, 0, "symbol=\"%s\"", symname);
 				}
-				if (type.mod_base) {
-					//CHECK_TYPEDEF(type);
+				if (type)
+				{
+					check_typedef(type);
 					if (symname)
 						ui_out_text(uiout, " ");
 					ui_out_text(uiout, "type=\"");
-					/*if (is_vptr)
+					if (is_vptr)
 					{
 						const char * type_name = type_name_no_tag(type);
 						if (type_name)
@@ -411,36 +383,38 @@ print_one_insn(struct ca_dis_insn* insn, struct ui_out* uiout)
 						else
 						{
 							ui_out_text(uiout, "vtable for ");
-							print_type_name (type);
+							print_type_name (type, NULL, NULL, NULL);
 						}
 					}
-					else*/
-						print_type_name (type);
+					else
+						print_type_name (type, NULL, NULL, NULL);
 					ui_out_text(uiout, "\"");
 				}
 				ui_out_text(uiout, ")\n");
-			} else {
-				// whatever we can get form the value
+			}
+			/* whatever we can get form the value */
+			else
+			{
 				address_t location = 0;
 				int offset = 0;
 
-				//if (insn->num_operand > 1)
-				//{
-				//	struct ca_operand* src_op = &insn->operands[1];
-				//	get_location(src_op, &location, &offset);
-				//}
-
 				print_op_value_context (val,
-						op_size > 0 ? op_size : ptr_sz,
-						location, offset, insn->lea);
+				    op_size > 0 ? op_size : ptr_sz,
+				    location, offset, insn->lea);
 			}
 		}
 		if (name_to_free)
 			free (name_to_free);
-	} else {
-		if (dst_op->type == CA_OP_REGISTER) {
+	}
+	else
+	{
+		if (dst_op->type == CA_OP_REGISTER)
+		{
 			struct ca_reg_value* dst_reg = get_reg_at_pc(dst_op->reg.index, insn->pc);
-			// The destination register is changed from known to unknown state at this instruction
+			/*
+			 * The destination register is changed from known to
+			 * unknown state at this instruction
+			 */
 			if (dst_reg)
 				ui_out_message(uiout, 0, "%s=?", dst_op->reg.name);
 		}
@@ -468,25 +442,32 @@ process_one_insn(struct ca_dis_insn* insn, int current)
 	if (op_size > 0)
 		mask = mask >> ((8 - op_size) * 8);
 
-	// this instruction is the target of a previous "jmp" instruction
+	/* this instruction is the target of a previous "jmp" instruction */
 	if (insn->jmp_target)
 		adjust_table_after_absolute_branch(insn->pc);
 
-	// 1st operand(insn->operands[0]) is the destination
-	// (and possibly source) in most cases
+	/*
+	 * 1st operand(insn->operands[0]) is the destination
+	 * (and possibly source) in most cases
+	 */
 	dst_op = &insn->operands[0];
 	src_op = &insn->operands[1];
 
-	// Switch on op_code
-	// roughly in the order of most popular to least likely
-	if (strncmp(insn->opcode_name, "mov", 3) == 0 ||
-	    strncmp(insn->opcode_name, "cvt", 3) == 0) {
-		//   "movd"  move doubleword or quadword
-		//   "movnti" move non-temporal doubleword or quadword
-		//   "movs" "movs[b/w/d/q] move string
-		//   "movsx" move with sign-extension
-		//   "movsxd" move with sign-extend doubleword
-		//   "movzx" move with zero-extension
+	/*
+	 * Switch on op_code
+	 * roughly in the order of most popular to least likely
+	 */
+	if (strncmp(insn->opcode_name, "mov", 3) == 0
+			|| strncmp(insn->opcode_name, "cvt", 3) == 0)
+	{
+		/*
+		 * "movd"  move doubleword or quadword
+		 * "movnti" move non-temporal doubleword or quadword
+		 * "movs" "movs[b/w/d/q] move string
+		 * "movsx" move with sign-extension
+		 * "movsxd" move with sign-extend doubleword
+		 * "movzx" move with zero-extension
+		 */
 		process_mov_insn(insn, dst_op, src_op);
 	}
 	/*else if (strncmp(insn->opcode_name, "test", 4) == 0)
@@ -495,23 +476,23 @@ process_one_insn(struct ca_dis_insn* insn, int current)
 			&& insn->operands[0].reg.index == insn->operands[1].reg.index)
 		{
 			// test zero
-			//print_one_operand(&insn->operands[1], uiout, true);
+			//print_one_operand(&insn->operands[1], uiout, CA_TRUE);
 			//ui_out_text(uiout, "==0");
 		}
 		else if (known_op_value(&insn->operands[1]) && known_op_value(&insn->operands[0]))
 		{
-			//print_one_operand(&insn->operands[1], uiout, true);
+			//print_one_operand(&insn->operands[1], uiout, CA_TRUE);
 			//ui_out_text(uiout, "==");
-			//print_one_operand(&insn->operands[0], uiout, true);
+			//print_one_operand(&insn->operands[0], uiout, CA_TRUE);
 		}
 	}
 	else if (strncmp(insn->opcode_name, "cmp", 3) == 0)
 	{
 		if (known_op_value(&insn->operands[1]) && known_op_value(&insn->operands[0]))
 		{
-			//print_one_operand(&insn->operands[1], uiout, true);
+			//print_one_operand(&insn->operands[1], uiout, CA_TRUE);
 			//ui_out_text(uiout, "<=>");
-			//print_one_operand(&insn->operands[0], uiout, true);
+			//print_one_operand(&insn->operands[0], uiout, CA_TRUE);
 		}
 	}
 	else if (strncmp(insn->opcode_name, "leave", 5) == 0)
@@ -521,17 +502,22 @@ process_one_insn(struct ca_dis_insn* insn, int current)
 		//     mov rbp, rsp
 		//     pop rbp
 	}*/
-	else if (strncmp(insn->opcode_name, "lea", 3) == 0) {
+	else if (strncmp(insn->opcode_name, "lea", 3) == 0)
+	{
 		// load effective address
 		// source must be memory and destination must be register
 		insn->lea = 1;
 		process_mov_insn(insn, dst_op, src_op);
-	} else if (strncmp(insn->opcode_name, "call", 4) == 0) {
+	}
+	else if (strncmp(insn->opcode_name, "call", 4) == 0)
+	{
 		insn->call = 1;
-		if (dst_op->type != CA_OP_IMMEDIATE && known_op_value(dst_op)) {
+		if (dst_op->type != CA_OP_IMMEDIATE && known_op_value(dst_op))
+		{
 			insn->annotate = 1;
 		}
-		if (!current) {
+		if (!current)
+		{
 			// rax is used for return value most of the time
 			set_reg_unknown_at_pc(RAX, insn->pc+1);
 			// when the function returns, all volatile registers may have been changed
@@ -549,20 +535,28 @@ process_one_insn(struct ca_dis_insn* insn, int current)
 			set_reg_unknown_at_pc(R10, insn->pc+1);
 			set_reg_unknown_at_pc(R11, insn->pc+1);
 		}
-	} else if (strncmp(insn->opcode_name, "jmp", 3) == 0) {
+	}
+	else if (strncmp(insn->opcode_name, "jmp", 3) == 0)
+	{
 		// Non-conditional branch, need to adjust register context
 		insn->jmp = 1;
-		if (known_op_value(dst_op)) {
+		if (known_op_value(dst_op))
+		{
 			insn->branch_pc = get_op_value(dst_op, op_size);
-			if (insn->branch_pc < insn->pc) {
+			if (insn->branch_pc < insn->pc)
+			{
 				// Get previous register context if jmp back
 				adjust_table_after_absolute_branch(insn->pc);
-			} else {
+			}
+			else
+			{
 				// Prepare for the target-addressed instruction if jmp forward
 				struct ca_dis_insn* last_insn = &g_insns_buffer[g_num_insns];
 				struct ca_dis_insn* cursor = insn + 1;
-				while (cursor < last_insn) {
-					if (cursor->pc == insn->branch_pc) {
+				while (cursor < last_insn)
+				{
+					if (cursor->pc == insn->branch_pc)
+					{
 						cursor->jmp_target = 1;
 						break;
 					}
@@ -571,7 +565,8 @@ process_one_insn(struct ca_dis_insn* insn, int current)
 				if (cursor == last_insn)	// jmp target is not within current function
 					adjust_table_after_absolute_branch(insn->pc);
 			}
-		} else
+		}
+		else
 			adjust_table_after_absolute_branch(insn->pc);
 	} else if (insn->opcode_name[0] == 'j' &&
 	    (insn->opcode_name[1] == 'e' ||
@@ -593,7 +588,9 @@ process_one_insn(struct ca_dis_insn* insn, int current)
 		insn->branch = 1;
 		if (known_op_value(dst_op))
 			insn->branch_pc = get_op_value(dst_op, op_size);
-	} else if (strncmp(insn->opcode_name, "push", 4) == 0) {
+	}
+	else if (strncmp(insn->opcode_name, "push", 4) == 0)
+	{
 		// "push" is equivalent to "sub 8, %rsp" and "mov src, (%rsp)"
 		// update RSP value
 		size_t rsp = g_reg_table.cur_regs[RSP]->value - ptr_sz;
@@ -604,7 +601,7 @@ process_one_insn(struct ca_dis_insn* insn, int current)
 		memcpy(src_op, dst_op, sizeof(struct ca_operand));	// dst_op(operand[0]) is actually src
 		dst_op->type = CA_OP_MEMORY;
 		dst_op->mem.base_reg.index = RSP;
-		dst_op->mem.base_reg.name = "rsp";
+		dst_op->mem.base_reg.name = "%rsp";
 		dst_op->mem.base_reg.size = ptr_sz;
 		dst_op->mem.disp.immediate = 0;
 		dst_op->mem.index_reg.name = NULL;
@@ -612,14 +609,16 @@ process_one_insn(struct ca_dis_insn* insn, int current)
 		process_mov_insn(insn, dst_op, src_op);
 
 		insn->annotate = 1;
-	} else if (strncmp(insn->opcode_name, "pop", 3) == 0) {
+	}
+	else if (strncmp(insn->opcode_name, "pop", 3) == 0)
+	{
 		// "pop" is equivalent to "mov (%rsp), dst" and "add 8, %rsp"
 		size_t rsp = g_reg_table.cur_regs[RSP]->value;
 
 		insn->num_operand = 2;
 		src_op->type = CA_OP_MEMORY;
 		src_op->mem.base_reg.index = RSP;
-		src_op->mem.base_reg.name = "rsp";
+		src_op->mem.base_reg.name = "%rsp";
 		src_op->mem.base_reg.size = ptr_sz;
 		src_op->mem.disp.immediate = 0;
 		src_op->mem.index_reg.name = NULL;
@@ -629,104 +628,150 @@ process_one_insn(struct ca_dis_insn* insn, int current)
 		// update RSP value
 		set_reg_value_at_pc(RSP, rsp +  ptr_sz, insn->pc);
 		insn->annotate = 1;
-	} else if (strncmp(insn->opcode_name, "cmov", 4) == 0) {
+	}
+	else if (strncmp(insn->opcode_name, "cmov", 4) == 0)
+	{
 		// conditional move
 		set_op_unknown(dst_op, insn->pc);
-	} else if (strncmp(insn->opcode_name, "add", 3) == 0 ||
-	    strncmp(insn->opcode_name, "adc", 3) == 0) {
+	}
+	else if (strncmp(insn->opcode_name, "add", 3) == 0
+			|| strncmp(insn->opcode_name, "adc", 3) == 0)
+	{
 		process_binary_op_insn(insn, dst_op, src_op, ADD);
-	} else if (strncmp(insn->opcode_name, "sub", 3) == 0 ||
-	    strncmp(insn->opcode_name, "sbb", 3) == 0) {
-		if (dst_op->type == CA_OP_REGISTER &&
-		    src_op->type == CA_OP_REGISTER &&
-		    dst_op->reg.index == src_op->reg.index) {
+	}
+	else if (strncmp(insn->opcode_name, "sub", 3) == 0
+			|| strncmp(insn->opcode_name, "sbb", 3) == 0)
+	{
+		if (dst_op->type == CA_OP_REGISTER && src_op->type == CA_OP_REGISTER
+				&& dst_op->reg.index == src_op->reg.index)
+		{
 			insn->annotate = 1;
 			val = 0;
 			set_op_value(dst_op, 0, insn->pc);
 		}
 		else
 			process_binary_op_insn(insn, dst_op, src_op, SUBTRACT);
-	} else if (strncmp(insn->opcode_name, "imul", 4) == 0) {
+	}
+	else if (strncmp(insn->opcode_name, "imul", 4) == 0)
+	{
 		// two operands multiplication
-		if (insn->num_operand == 2) {
+		if (insn->num_operand == 2)
+		{
 			process_binary_op_insn(insn, dst_op, src_op, MULTIPLY);
-		} else {
-			if (insn->num_operand == 3 &&
-			    known_op_value(&insn->operands[1]) &&
-			    known_op_value(&insn->operands[2])) {
+		}
+		else
+		{
+			if (insn->num_operand == 3 && known_op_value(&insn->operands[1]) && known_op_value(&insn->operands[2]))
+			{
 				insn->annotate = 1;
 				val = get_op_value(&insn->operands[1], op_size) * get_op_value(&insn->operands[2], op_size);
 				val &= mask;
 				set_op_value(dst_op, val, insn->pc);
-			} else if (insn->num_operand == 1 &&
-			    known_op_value(dst_op) &&
-			    g_reg_table.cur_regs[RAX]->has_value) {
+			}
+			else if (insn->num_operand == 1 && known_op_value(dst_op) && g_reg_table.cur_regs[RAX]->has_value)
+			{
 				// rax instead of operands[0] is the destination
 				insn->annotate = 1;
 				val = g_reg_table.cur_regs[RAX]->value * get_op_value(dst_op, op_size);
 				val &= mask;
 				set_reg_value_at_pc(RAX, val, insn->pc);
-			} else {
+			}
+			else
+			{
 				if (insn->num_operand == 1)
 					set_reg_unknown_at_pc(RAX, insn->pc);
 				else
 					set_op_unknown(dst_op, insn->pc);
 			}
 		}
-	} else if (strncmp(insn->opcode_name, "idiv", 4) == 0) {
+	}
+	else if (strncmp(insn->opcode_name, "idiv", 4) == 0)
+	{
 		process_binary_op_insn(insn, dst_op, src_op, DIVIDE);
-	} else if (strncmp(insn->opcode_name, "inc", 3) == 0) {
+	}
+	else if (strncmp(insn->opcode_name, "inc", 3) == 0)
+	{
 		process_unary_op_insn(insn, dst_op, INCREMENT);
-	} else if (strncmp(insn->opcode_name, "dec", 3) == 0) {
+	}
+	else if (strncmp(insn->opcode_name, "dec", 3) == 0)
+	{
 		process_unary_op_insn(insn, dst_op, DECREMENT);
-	} else if (strncmp(insn->opcode_name, "and", 3) == 0) {
+	}
+	else if (strncmp(insn->opcode_name, "and", 3) == 0)
+	{
 		process_binary_op_insn(insn, dst_op, src_op, BITWISE_AND);
-	} else if (strncmp(insn->opcode_name, "or", 2) == 0) {
+	}
+	else if (strncmp(insn->opcode_name, "or", 2) == 0)
+	{
 		process_binary_op_insn(insn, dst_op, src_op, BITWISE_OR);
-	} else if (strncmp(insn->opcode_name, "not", 3) == 0) {
+	}
+	else if (strncmp(insn->opcode_name, "not", 3) == 0)
+	{
 		process_unary_op_insn(insn, dst_op, BITWISE_NOT);
-	} else if (strncmp(insn->opcode_name, "xor", 3) == 0) {
-		if (insn->operands[0].type == CA_OP_REGISTER &&
-		    insn->operands[1].type == CA_OP_REGISTER &&
-		    insn->operands[0].reg.index == insn->operands[1].reg.index) {
+	}
+	else if (strncmp(insn->opcode_name, "xor", 3) == 0)
+	{
+		if (insn->operands[0].type == CA_OP_REGISTER && insn->operands[1].type == CA_OP_REGISTER
+			&& insn->operands[0].reg.index == insn->operands[1].reg.index)
+		{
 			insn->annotate = 1;
 			val = 0;
 			set_op_value(dst_op, 0, insn->pc);
-		} else
+		}
+		else
 			process_binary_op_insn(insn, dst_op, src_op, BITWISE_XOR);
-	} else if (strncmp(insn->opcode_name, "shr", 3) == 0 ||
-	    strncmp(insn->opcode_name, "sar", 3) == 0) {
+	}
+	else if (strncmp(insn->opcode_name, "shr", 3) == 0
+			|| strncmp(insn->opcode_name, "sar", 3) == 0)
+	{
 		// shift right
 		process_binary_op_insn(insn, dst_op, src_op, BITWISE_SHIFT_RIGHT);
-	} else if (strncmp(insn->opcode_name, "shl", 3) == 0 ||
-	    strncmp(insn->opcode_name, "sal", 3) == 0) {
+	}
+	else if (strncmp(insn->opcode_name, "shl", 3) == 0
+			|| strncmp(insn->opcode_name, "sal", 3) == 0)
+	{
 		// shift left
 		process_binary_op_insn(insn, dst_op, src_op, BITWISE_SHIFT_LEFT);
-	} else if (strncmp(insn->opcode_name, "rol", 3) == 0) {
+	}
+	else if (strncmp(insn->opcode_name, "rol", 3) == 0)
+	{
 		// rotate left
 		process_binary_op_insn(insn, dst_op, src_op, ROTATE_LEFT);
-	} else if (strncmp(insn->opcode_name, "ror", 3) == 0) {
+	}
+	else if (strncmp(insn->opcode_name, "ror", 3) == 0)
+	{
 		// rotate right
 		process_binary_op_insn(insn, dst_op, src_op, ROTATE_RIGHT);
-	} else if (strncmp(insn->opcode_name, "rcl", 3) == 0 ||
-	    strncmp(insn->opcode_name, "rcr", 3) == 0) {
+	}
+	else if (strncmp(insn->opcode_name, "rcl", 3) == 0
+			|| strncmp(insn->opcode_name, "rcr", 3) == 0)
+	{
 		// rotate through carry left/right
 		set_op_unknown(dst_op, insn->pc);
-	} else if (strncmp(insn->opcode_name, "set", 3) == 0) {
+	}
+	else if (strncmp(insn->opcode_name, "set", 3) == 0)
+	{
 		// conditional set instruction
 		if (insn->operands[0].type == CA_OP_MEMORY && known_op_value(dst_op))
+		{
 			insn->annotate = 1;
+		}
 		set_op_unknown(dst_op, insn->pc);
-	} else if (strncmp(insn->opcode_name, "ret", 3) == 0) {
+	}
+	else if (strncmp(insn->opcode_name, "ret", 3) == 0)
+	{
 		// If we are here, this "ret" can't be the last instruction of the function
 		// i.e. there are multiple exits, we need to find out how we are branched here
 		adjust_table_after_absolute_branch(insn->pc);
-	} else if (strncmp(insn->opcode_name, "enter", 5) == 0) {
+	}
+	else if (strncmp(insn->opcode_name, "enter", 5) == 0)
+	{
 		// it is equivelent to three instructions
 		//     push rbp
 		//     mov rbp, rsp
 		//     sub nbytes, rsp
-		if (insn->operands[0].type == CA_OP_IMMEDIATE) {
+		if (insn->operands[0].type == CA_OP_IMMEDIATE)
+		{
 			size_t rsp = g_reg_table.cur_regs[RSP]->value;
 			val = get_op_value(&insn->operands[0], op_size);
 			set_reg_value_at_pc(RSP, rsp - val, insn->pc);
@@ -745,18 +790,13 @@ process_one_insn(struct ca_dis_insn* insn, int current)
 /*
  * Callback functions for disassembler
  */
-static char dis_text[NAME_BUF_SZ];
-static int  dis_text_pos;
-
-static int
+static int ATTRIBUTE_PRINTF (2, 3)
 fprintf_disasm (void *stream, const char *format, ...)
 {
 	va_list args;
 
 	va_start (args, format);
-	//dprintf(format, args);
-	vsprintf(&dis_text[dis_text_pos], format, args);
-	dis_text_pos = strlen(dis_text);
+	vfprintf_filtered (stream, format, args);
 	va_end (args);
 	/* Something non -ve.  */
 	return 0;
@@ -766,35 +806,25 @@ static void
 dis_asm_memory_error (int status, bfd_vma memaddr,
 		      struct disassemble_info *info)
 {
-	//memory_error (status, memaddr);
-	sprintf(&dis_text[dis_text_pos], "Failed to read memory at %p (status=%d)\n", memaddr, status);
-	dis_text_pos = strlen(dis_text);
+	memory_error (status, memaddr);
 }
 
 static void
 dis_asm_print_address (bfd_vma addr, struct disassemble_info *info)
 {
-	//struct gdbarch *gdbarch = info->application_data;
-	//print_address (gdbarch, addr, info->stream);
-	sprintf(&dis_text[dis_text_pos], "0x%I64x  ", addr);
-	dis_text_pos = strlen(dis_text);
-	print_func_address(addr, &dis_text[dis_text_pos], NAME_BUF_SZ - dis_text_pos);
-	dis_text_pos = strlen(dis_text);
+	struct gdbarch *gdbarch = info->application_data;
+
+	print_address (gdbarch, addr, info->stream);
 }
 
 static int
-dis_asm_read_memory (ULONG64 memaddr,
-		unsigned char *myaddr,
-		unsigned int length,
-		struct disassemble_info *dinfo)
+dis_asm_read_memory (bfd_vma memaddr, gdb_byte *myaddr, unsigned int len,
+		     struct disassemble_info *info)
 {
-	ULONG cb;
-	if (!ReadMemory(memaddr, myaddr, length, &cb) || cb != length)
-		return -1;
-	return 0;
+	return target_read_memory (memaddr, myaddr, len);
 }
 
-/*static void
+static void
 mem_ui_file_put (void *object, const char *buffer, long length)
 {
 	char** strp = (char**) object;
@@ -802,15 +832,15 @@ mem_ui_file_put (void *object, const char *buffer, long length)
 	strncpy(dupstr, buffer, length);
 	dupstr[length] = '\0';
 	*strp = dupstr;
-}*/
+}
 
 /*
- * 	Return number of instructions disassembled
+ * Return number of instructions disassembled
  */
 static int
 dump_insns(struct decode_control_block* decode_cb)
 {
-	//struct gdbarch *gdbarch = decode_cb->gdbarch;
+	struct gdbarch *gdbarch = decode_cb->gdbarch;
 	CORE_ADDR low = decode_cb->func_start;
 	CORE_ADDR high = decode_cb->func_end;
 	bool verbose = decode_cb->verbose;
@@ -819,7 +849,7 @@ dump_insns(struct decode_control_block* decode_cb)
 	CORE_ADDR pc;
 
 	struct disassemble_info di;
-	/*struct ui_file *mem_file = mem_fileopen();
+	struct ui_file *mem_file = mem_fileopen();
 
 	init_disassemble_info (&di, mem_file, fprintf_disasm);
 	di.flavour = bfd_target_unknown_flavour;
@@ -832,13 +862,7 @@ dump_insns(struct decode_control_block* decode_cb)
 	di.endian_code = gdbarch_byte_order_for_code (gdbarch);
 	di.application_data = gdbarch;
 	di.disassembler_options = "att"; //att_flavor;
-	disassemble_init_for_target (&di);*/
-	di.fprintf_func = fprintf_disasm;
-	di.stream = NULL;
-	di.disassembler_options = "intel"; //att_flavor;
-	di.read_memory_func  = dis_asm_read_memory;
-	di.memory_error_func = dis_asm_memory_error;
-	di.print_address_func = dis_asm_print_address;
+	disassemble_init_for_target (&di);
 	decode_cb->di = &di;
 
 	// Set to initial state
@@ -857,18 +881,15 @@ dump_insns(struct decode_control_block* decode_cb)
 		decode_cb->insn = insn;
 		insn->pc = pc;
 		// disassemble one instruction
-		dis_text_pos = 0;
 		pc += ca_print_insn_i386 (pc, decode_cb);
-		dis_text[dis_text_pos] = '\0';
-		insn->dis_string = strdup(dis_text);
 		// record the result
-		//ui_file_put (mem_file, mem_ui_file_put, &insn->dis_string);
-		//ui_file_rewind(mem_file);
+		ui_file_put (mem_file, mem_ui_file_put, &insn->dis_string);
+		ui_file_rewind(mem_file);
 		num_insns++;
 	}
 
 	// clean up
-	//ui_file_delete(mem_file);
+	ui_file_delete(mem_file);
 
 	return num_insns;
 }
@@ -898,7 +919,7 @@ reset_stack_vars(void)
 	g_num_stack_vars = 0;
 }
 
-static struct ca_stack_var*
+static struct ca_stack_var *
 get_stack_var(address_t saddr)
 {
 	unsigned int i;
@@ -911,7 +932,7 @@ get_stack_var(address_t saddr)
 	return NULL;
 }
 
-static struct ca_stack_var*
+static struct ca_stack_var *
 get_new_stack_var(address_t saddr)
 {
 	struct ca_stack_var* sval = get_stack_var(saddr);
@@ -925,16 +946,16 @@ get_new_stack_var(address_t saddr)
 			g_stack_vars_capacity = STACK_ARRAY_INIT_CAP;
 		else
 			g_stack_vars_capacity *= 2;
-		g_stack_vars = (struct ca_stack_var*)realloc(g_stack_vars, g_stack_vars_capacity * sizeof(struct ca_stack_var));
+		g_stack_vars = realloc(g_stack_vars, g_stack_vars_capacity * sizeof(struct ca_stack_var));
 		memset(g_stack_vars + g_num_stack_vars, 0, (g_stack_vars_capacity - g_num_stack_vars) * sizeof(struct ca_stack_var));
 	}
 	return &g_stack_vars[g_num_stack_vars++];
 }
 
 static void
-set_stack_sym_type(char* sym_name, struct win_type type, address_t saddr)
+set_stack_sym_type(char* sym_name, struct type* type, address_t saddr)
 {
-	if (sym_name || type.mod_base)
+	if (sym_name || type)
 	{
 		// get_new_stack_var may return an existing one
 		struct ca_stack_var* sval = get_new_stack_var(saddr);
@@ -944,7 +965,7 @@ set_stack_sym_type(char* sym_name, struct win_type type, address_t saddr)
 		// Note: this is a simplistic approach for now
 		if (sym_name && !sval->sym_name)
 			sval->sym_name = strdup(sym_name);
-		if (type.mod_base && !sval->type.mod_base)
+		if (type && !sval->type)
 			sval->type = type;
 	}
 }
@@ -1061,7 +1082,7 @@ set_reg_unknown_at_pc(unsigned int reg_idx, CORE_ADDR pc)
 /*
  * Return a register's value structure at given instruction address "pc"
  */
-static struct ca_reg_value*
+static struct ca_reg_value *
 get_reg_at_pc(unsigned int reg_idx, CORE_ADDR pc)
 {
 	struct ca_reg_vector* vec = &g_reg_table.vecs[reg_idx];
@@ -1082,7 +1103,7 @@ get_reg_at_pc(unsigned int reg_idx, CORE_ADDR pc)
  * Create a new value at the end of given reigister's vector in table
  * 	handle buffer expansion; update current register pointer as well
  */
-static struct ca_reg_value*
+static struct ca_reg_value *
 get_new_reg(unsigned int reg_idx)
 {
 	struct ca_reg_value* reg;
@@ -1160,7 +1181,7 @@ adjust_table_after_absolute_branch(CORE_ADDR pc)
 		struct ca_reg_value* latest = vec->finish - 1;
 		// adjust only the old value is different from current one
 		if (reg_index != RIP && reg != latest &&
-			(reg->type.type_id != latest->type.type_id || reg->type.mod_base != latest->type.mod_base || !is_same_string(reg->sym_name, latest->sym_name)))
+			(reg->type != latest->type || !is_same_string(reg->sym_name, latest->sym_name)))
 		{
 			// Register value has changed since branch spot, revert it
 			struct ca_reg_value* new_reg = get_new_reg(reg_index);
@@ -1235,7 +1256,7 @@ set_reg_table_at_pc(struct ca_reg_value* regs, CORE_ADDR pc)
 /*
  * Instruction buffer
  */
-static struct ca_dis_insn*
+static struct ca_dis_insn *
 get_new_dis_insn(void)
 {
 	struct ca_dis_insn* insn;
@@ -1246,7 +1267,7 @@ get_new_dis_insn(void)
 			g_insns_buffer_capacity = INSN_BUFFER_INIT_CAP;
 		else
 			g_insns_buffer_capacity *= 2;
-		g_insns_buffer = (struct ca_dis_insn*) realloc(g_insns_buffer, g_insns_buffer_capacity * sizeof(struct ca_dis_insn));
+		g_insns_buffer = realloc(g_insns_buffer, g_insns_buffer_capacity * sizeof(struct ca_dis_insn));
 	}
 	if (!g_insns_buffer)
 	{
@@ -1313,6 +1334,23 @@ get_address(struct ca_operand* op)
 	return 0;
 }
 
+// return the operand in the form of [base_reg + offset]
+/*static void get_location(struct ca_operand* op, address_t* location, int* offset)
+{
+	if (op->type == CA_OP_MEMORY)
+	{
+		if (op->mem.base_reg.name && !op->mem.index_reg.name)
+		{
+			struct ca_reg_value* base_reg = g_reg_table.cur_regs[op->mem.base_reg.index];
+			if (base_reg->has_value)
+			{
+				*location = base_reg->value;
+				*offset = op->mem.disp.immediate;
+			}
+		}
+	}
+}*/
+
 // return true if the operand's value is known
 static int
 known_op_value(struct ca_operand* op)
@@ -1329,7 +1367,7 @@ known_op_value(struct ca_operand* op)
 		if (mem_addr)
 		{
 			char val;
-			if (read_memory_wrapper(NULL, mem_addr, (bfd_byte*)&val, sizeof(val)))
+			if (target_read_memory(mem_addr, (bfd_byte*)&val, sizeof(val)) == 0)
 				rc = 1;
 		}
 	}
@@ -1352,7 +1390,7 @@ is_stack_address(struct ca_operand* op)
 // Return symbol/type of the operand if known
 static void
 get_op_symbol_type(struct ca_operand* op, int lea,
-				char** psymname, struct win_type* ptype, int* pvptr)
+				char** psymname, struct type** ptype, int* pvptr)
 {
 	if (op->type == CA_OP_REGISTER)
 	{
@@ -1376,23 +1414,21 @@ get_op_symbol_type(struct ca_operand* op, int lea,
 		else if (op->mem.base_reg.name && !op->mem.index_reg.name)
 		{
 			struct ca_reg_value* base_reg = g_reg_table.cur_regs[op->mem.base_reg.index];
-			struct win_type type = base_reg->type;
-			enum SymTagEnum tag = get_type_code(type, base_reg->value);
+			struct type* type = base_reg->type;
 			// operand should be a pointer type
-			if (type.mod_base && tag == SymTagPointerType)
+			if (type
+				&& (TYPE_CODE(type) == TYPE_CODE_PTR || TYPE_CODE(type) == TYPE_CODE_REF))
 			{
 				int is_vptr = 0;
 				char namebuf[NAME_BUF_SZ];
-				address_t base_addr = base_reg->has_value ? base_reg->value : 0;
-				size_t    sym_sz = 0;
-				struct win_type field_type = get_struct_field_type_and_name(type, op->mem.disp.immediate, &base_addr, &sym_sz, namebuf, NAME_BUF_SZ);
-				if (field_type.mod_base)
+				struct type* field_type = get_struct_field_type_and_name(TYPE_TARGET_TYPE(type), op->mem.disp.immediate, lea, namebuf, NAME_BUF_SZ, &is_vptr);
+				if (field_type)
 				{
 					if (pvptr)
 						*pvptr = is_vptr;
 					// type
-					//if (lea)
-					//	field_type = lookup_pointer_type(field_type);
+					if (lea)
+						field_type = lookup_pointer_type(field_type);
 					*ptype = field_type;
 					// symbol name
 					if (psymname && base_reg->sym_name)
@@ -1400,13 +1436,13 @@ get_op_symbol_type(struct ca_operand* op, int lea,
 						// new symbol is '&' + base_name + "->" + field_name + '\0'
 						size_t baselen = strlen(base_reg->sym_name);
 						size_t namelen = (lea ? 1 : 0) + baselen + 2 + strlen(namebuf) + 1;
-						char* cursor = (char*) malloc(namelen);
+						char* cursor = malloc(namelen);
 						*psymname = cursor;
 						if (lea)
 							*cursor++ = '&';
 						strncpy(cursor, base_reg->sym_name, baselen);
 						cursor += baselen;
-						if (tag == SymTagPointerType)
+						if (TYPE_CODE(base_reg->type) == TYPE_CODE_PTR)
 						{
 							*cursor++ = '-';
 							*cursor++ = '>';
@@ -1444,7 +1480,7 @@ get_op_value(struct ca_operand* op, size_t op_size)
 		bfd_vma mem_addr = get_address(op);
 		if (g_ptr_bit == 32)
 			sz = 4;
-		read_memory_wrapper(NULL, mem_addr, (bfd_byte*)&rs, sz);
+		target_read_memory(mem_addr, (bfd_byte*)&rs, sz);
 	}
 	return rs;
 }
@@ -1479,7 +1515,8 @@ set_op_unknown(struct ca_operand* op, CORE_ADDR pc)
  */
 static void
 process_mov_insn(struct ca_dis_insn* insn,
-    struct ca_operand* dst_op, struct ca_operand* src_op)
+				struct ca_operand* dst_op,
+				struct ca_operand* src_op)
 {
 	size_t val = 0;
 	size_t op_size = insn->op_size;
@@ -1540,7 +1577,7 @@ set_op_value_symbol_type(struct ca_dis_insn* insn,
 		size_t val)
 {
 	char* sym_name = NULL;
-	struct win_type type = {0, 0};
+	struct type* type = NULL;
 	int is_vptr = 0;
 
 	// source symbol/type
@@ -1602,7 +1639,7 @@ process_binary_op_insn(struct ca_dis_insn* insn,
 	int has_value = 0;
 	struct ca_reg_value* dst_reg = NULL;
 	char* sym_name = NULL;
-	struct win_type type = {0, 0};
+	struct type* type = NULL;
 	int is_vptr = 0;
 
 	if (dst_op->type == CA_OP_REGISTER)
@@ -1657,7 +1694,7 @@ process_binary_op_insn(struct ca_dis_insn* insn,
 	}
 
 	// Special cases
-	if (dst_reg && dst_reg->type.mod_base)	// dst is a register with known type
+	if (dst_reg && dst_reg->type)	// dst is a register with known type
 	{
 		if (op == ADD && src_op->type == CA_OP_IMMEDIATE)
 		{
@@ -1687,10 +1724,9 @@ process_binary_op_insn(struct ca_dis_insn* insn,
 
 static void
 set_dst_op(struct ca_dis_insn* insn, struct ca_operand* dst_op,
-    int has_value, size_t val, char* symname, struct win_type type,
-    int is_vptr)
+    int has_value, size_t val, char* symname, struct type* type, int is_vptr)
 {
-	if (has_value || symname || type.mod_base)
+	if (has_value || symname || type)
 	{
 		insn->annotate = 1;
 		if (dst_op->type == CA_OP_REGISTER)
@@ -1719,14 +1755,24 @@ static void
 print_displacement(char *buf, bfd_vma disp)
 {
 	bfd_signed_vma val = disp;
-	int j = 0;
+	char tmp[30];
+	int i, j = 0;
 
 	if (val < 0)
 	{
 		buf[j++] = '-';
-		val = -val;
+		val = -disp;
 	}
-	snprintf(buf + j, 30, PRINT_FORMAT_LONG_OFFSET, (bfd_vma) val);
+
+	buf[j++] = '0';
+	buf[j++] = 'x';
+
+	sprintf_vma(tmp, (bfd_vma) val);
+	for (i = 0; tmp[i] == '0'; i++)
+		continue;
+	if (tmp[i] == '\0')
+		i--;
+	strcpy(buf + j, tmp + i);
 }
 
 static void

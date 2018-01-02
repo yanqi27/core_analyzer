@@ -3,7 +3,7 @@
  *
  *  Created on: August 27, 2016
  *      Author: myan
- * 
+ *
  * This Implementation uses gdb specific types. Hence not portable to non-Linux
  * platforms
  */
@@ -82,6 +82,12 @@ static void add_one_big_block(struct heap_block *, unsigned int,
 /******************************************************************************
  * Exposed functions
  *****************************************************************************/
+const char *
+heap_version(void)
+{
+	return "TCmalloc";
+}
+
 bool
 init_heap(void)
 {
@@ -384,7 +390,7 @@ heap_walk(address_t heapaddr, bool verbose)
 		total.inuse_count += stats[i].inuse_count;
 		total.inuse_bytes += stats[i].inuse_bytes;
 		total.free_count += stats[i].free_count;
-		total.free_bytes += stats[i].free_bytes;		
+		total.free_bytes += stats[i].free_bytes;
 	}
 	CA_PRINT("------------------------------------------------------------------------------------\n");
 	CA_PRINT("       Total");
@@ -554,7 +560,7 @@ gdb_symbol_prelude(void)
 
 	/*
 	 * template <int BITS>
-	 *     class TCMalloc_PageMap3 
+	 *     class TCMalloc_PageMap3
 	 */
 	pagemap3 = lookup_symbol("TCMalloc_PageMap3<35>", 0, VAR_DOMAIN, 0).symbol;
 	if (pagemap3 == NULL) {
@@ -1118,7 +1124,7 @@ span_populate_free_bitmap(struct ca_span *span)
 	 */
 	for (i = 0; i < g_cached_blocks_count; i++) {
 		address_t addr = g_cached_blocks[i];
-	
+
 		if (addr < base)
 			continue;
 		else if (addr >= end)

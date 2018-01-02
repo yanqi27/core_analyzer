@@ -273,7 +273,13 @@ _initialize_heapcmd (void)
 	add_cmd("obj", class_info, obj_command, _("Search for object and reference to object of the same type as the input expression\nobj <type|variable>"), &cmdlist);
 	add_cmd("shrobj", class_info, shrobj_command, _("Find objects that currently referenced from multiple threads\nshrobj [tid0] [tid1] [...]"), &cmdlist);
 
-	add_cmd("heap", class_info, heap_command, _("Heap walk, heap data validation, memory usage statistics, etc.\nheap [/verbose or /v] [/leak or /l]\nheap [/block or /b] [/cluster or /c] <addr_exp>\nheap [/usage or /u] <var_exp>\nheap [/topblock or /tb] [/topuser or /tu] <num>\n"), &cmdlist);
+	add_cmd("heap", class_info, heap_command, _("Heap walk, heap data validation, memory usage statistics, etc.\n"
+		"heap [/verbose or /v] [/leak or /l]\n"
+		"heap [/block or /b] [/cluster or /c] <addr_exp>\n"
+		"heap [/usage or /u] <var_exp>\n"
+		"heap [/topblock or /tb] [/topuser or /tu] <num>\n"
+		"heap [/m]\n"),
+		&cmdlist);
 
 	add_cmd("pattern", class_info, pattern_command, _("Reveal memory pattern\npattern <start> <end>"), &cmdlist);
 	add_cmd("segment", class_info, segment_command, _("Display memory segments"), &cmdlist);

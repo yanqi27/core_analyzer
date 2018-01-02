@@ -3,7 +3,7 @@ PLATFORM = Linux_x86_64
 COMPILER = g++
 LINKER   = $(COMPILER)
 
-PLATFORM_OBJ = core_elf.o core_elf_linux_x86_64.o heap_ptmalloc.o
+PLATFORM_OBJ = core_elf.o core_elf_linux_x86_64.o heap_sh.o
 
 COMP_OPT = -g -O -fpermissive -c -m64 -I$(INC)
 

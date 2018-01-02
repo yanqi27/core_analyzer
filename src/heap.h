@@ -12,6 +12,8 @@
 /*
  * Exposed functions
  */
+extern const char *heap_version(void);
+
 extern bool init_heap(void);
 
 extern bool heap_walk(address_t addr, bool verbose);

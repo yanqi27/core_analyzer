@@ -256,6 +256,12 @@ static size_t get_mstate_size(void);
 /***************************************************************************
 * Exposed functions
 ***************************************************************************/
+const char *
+heap_version(void)
+{
+	return "Ptmalloc 2.7";
+}
+
 bool init_heap(void)
 {
 	bool rc = build_heaps();
@@ -2036,7 +2042,7 @@ static bool get_glibc_version(void)
 
 /*
  * Helper functions that depends on the glibc version
- * 
+ *
  */
 static size_t get_mstate_size(void)
 {
@@ -2056,4 +2062,3 @@ static size_t get_mstate_size(void)
 
 	return mstate_size;
 }
-

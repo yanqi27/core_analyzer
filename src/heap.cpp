@@ -45,7 +45,7 @@ static struct MemHistogram g_mem_hist;
 static struct inuse_block *g_inuse_blocks = NULL;
 static unsigned long       g_num_inuse_blocks = 0;
 
-char ca_help_msg[] = "Commands of core_analyzer "CA_VERSION_STRING"\n"
+char ca_help_msg[] = "Commands of core_analyzer " CA_VERSION_STRING "\n"
 	"   ref <addr_exp>\n"
 	"           Find a symbol/type associated with the input address directly or indirectly\n"
 	"   ref [/thread or /t] <addr_exp> <size> [level]\n"

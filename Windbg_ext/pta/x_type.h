@@ -26,7 +26,7 @@
 #pragma warning(disable:4244) // '=' : conversion from 'address_t' to 'ptr_t_32', possible loss of data
 #pragma warning(disable:4334) // '<<' : result of 32-bit shift implicitly converted to 64 bits (was 64-bit shift intended?)
 
-#include <extsfns.h>
+//#include <extsfns.h>
 
 typedef DWORD ptr_t_32;
 

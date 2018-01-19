@@ -256,7 +256,7 @@ obj(PDEBUG_CLIENT4 Client, PCSTR args)
 		return E_FAIL;
 	}
 
-	search_cplusplus_objects_and_references (args);
+	search_cplusplus_objects_and_references (args, false);
 
 	leave_command();
     return S_OK;
@@ -411,11 +411,11 @@ set_alignment(PDEBUG_CLIENT4 Client, PCSTR args)
     	value = GetExpression(args);
 
     if (value == 0)
-    	dprintf("Current alignment is "PRINT_FORMAT_SIZE"\n", g_align);
+    	dprintf("Current alignment is " PRINT_FORMAT_SIZE "\n", g_align);
     else if (value==4 || value==8 || value==16)
 		g_align = value;
 	else
-		dprintf("Invalid setting for alignment "PRINT_FORMAT_SIZE"\n", value);
+		dprintf("Invalid setting for alignment " PRINT_FORMAT_SIZE "\n", value);
 
     return S_OK;
 }
@@ -525,7 +525,7 @@ info_local(PDEBUG_CLIENT4 Client, PCSTR args)
 		hr = gDebugSymbols3->SetScopeFrameByIndex(frame_num);
 		if (FAILED(hr))
 			break;
-		dprintf("-------- frame %d fp="PRINT_FORMAT_POINTER" sp="PRINT_FORMAT_POINTER" --------\n",
+		dprintf("-------- frame %d fp=" PRINT_FORMAT_POINTER " sp=" PRINT_FORMAT_POINTER " --------\n",
 				frame_num, frames[frame_num].FrameOffset, frames[frame_num].StackOffset);
 		// Get the function name
 		dprintf("Function:\n");
@@ -702,7 +702,7 @@ static void print_sym_group(PDEBUG_SYMBOL_GROUP2 symbolGroup2)
 		ULONG64 location;
 		hr = symbolGroup2->GetSymbolOffset(i, &location);
 		if (SUCCEEDED(hr))
-			dprintf(" @"PRINT_FORMAT_POINTER"", location);
+			dprintf(" @" PRINT_FORMAT_POINTER "", location);
 		ULONG reg_index;
 		hr = symbolGroup2->GetSymbolRegister(i, &reg_index);
 		if (SUCCEEDED(hr))

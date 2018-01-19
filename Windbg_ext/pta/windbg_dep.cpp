@@ -205,9 +205,9 @@ void print_register_ref(const struct object_reference* ref)
 	char reg_name[NAME_BUF_SZ];
 	HRESULT hr = gDebugRegisters2->GetDescription(ref->where.reg.reg_num, reg_name, NAME_BUF_SZ, NULL, NULL);
 	if (SUCCEEDED(hr))
-		CA_PRINT(" %s="PRINT_FORMAT_POINTER, reg_name, ref->value);
+		CA_PRINT(" %s=" PRINT_FORMAT_POINTER, reg_name, ref->value);
 	else
-		CA_PRINT(" reg[%d]="PRINT_FORMAT_POINTER, ref->where.reg.reg_num, ref->value);
+		CA_PRINT(" reg[%d]=" PRINT_FORMAT_POINTER, ref->where.reg.reg_num, ref->value);
 }
 
 void print_stack_ref(const struct object_reference* ref)
@@ -240,7 +240,7 @@ void print_stack_ref(const struct object_reference* ref)
 		dprintf(" SP+0x%lx", ref->where.stack.offset);
 	}
 	if (ref->value)
-		dprintf(" @"PRINT_FORMAT_POINTER": "PRINT_FORMAT_POINTER"", ref->vaddr, ref->value);
+		dprintf(" @" PRINT_FORMAT_POINTER ": " PRINT_FORMAT_POINTER "", ref->vaddr, ref->value);
 }
 
 void print_global_ref (const struct object_reference* ref)
@@ -1030,9 +1030,9 @@ NormalExit:
 	if (printit)
 	{
 		if (!rc || ref->value)
-			dprintf(" @"PRINT_FORMAT_POINTER, ref->vaddr);
+			dprintf(" @" PRINT_FORMAT_POINTER, ref->vaddr);
 		if (ref->value)
-			dprintf(": "PRINT_FORMAT_POINTER, ref->value);
+			dprintf(": " PRINT_FORMAT_POINTER, ref->value);
 	}
 
 	return rc;
@@ -1988,7 +1988,7 @@ void print_func_address(address_t addr, char* buf, int buf_sz)
 	hr = gDebugSymbols3->GetNameByOffset(addr, buf, buf_sz, &name_sz, &displacement);
 	if (hr == S_OK && displacement)
 	{
-		sprintf(buf + name_sz - 1, "+"PRINT_FORMAT_SIZE, displacement);
+		sprintf(buf + name_sz - 1, "+" PRINT_FORMAT_SIZE, displacement);
 	}
 }
 

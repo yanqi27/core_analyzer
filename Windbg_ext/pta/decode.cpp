@@ -381,7 +381,7 @@ print_one_insn(struct ca_dis_insn* insn, struct ui_out* uiout)
 			// Name and value (if known) of destination
 			print_one_operand(uiout, dst_op, op_size);
 			if (has_value)
-				ui_out_message(uiout, 0, "="PRINT_FORMAT_POINTER, val);
+				ui_out_message(uiout, 0, "=" PRINT_FORMAT_POINTER, val);
 			else
 				ui_out_text(uiout, "=?");
 		}
@@ -1012,7 +1012,7 @@ validate_reg_table(void)
 				if (cursor->pc <= (cursor - 1)->pc)
 				{
 					CA_PRINT("Internal error: register table is inconsistent\n");
-					CA_PRINT("\tregister(%d) pc="PRINT_FORMAT_POINTER"\n", i, cursor->pc);
+					CA_PRINT("\tregister(%d) pc=" PRINT_FORMAT_POINTER "\n", i, cursor->pc);
 					break;
 				}
 			}

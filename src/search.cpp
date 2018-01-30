@@ -1745,7 +1745,7 @@ is_string(address_t addr, int min_chars, bool* orbWString)
 	size_t len;
 	address_t str_addr;
 	{
-		char c;
+		unsigned char c;
 		len = 0;
 		for (str_addr = addr; ; str_addr++)
 		{

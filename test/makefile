@@ -24,8 +24,11 @@ check: all
 check_verbose: all
 	$(GDB) -q -x verify.py
 
-mallocTest_tcmalloc: mallocTest.cpp
-	$(CXX) $(COMP_OPT) -DTCMALLOC_TEST -o $@ $^ $(LIBS) -ltcmalloc
+mallocTest_tcmalloc.o: mallocTest.cpp
+	$(CXX) $(COMP_OPT) -DTCMALLOC_TEST -c -o $@ $^
+
+mallocTest_tcmalloc: mallocTest_tcmalloc.o
+	$(CXX) $(COMP_OPT) -o $@ $^ $(LIBS) -ltcmalloc
 
 check_tcmalloc: mallocTest_tcmalloc
 	$(GDB_TC) mallocTest_tcmalloc -q -x verify.py | grep ca_test

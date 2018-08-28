@@ -3,8 +3,9 @@
  *
  *  Created on: August 27, 2016
  *      Author: myan
- * 
- * Limitation: This Implementation uses gdb Internal APIs
+ *
+ * This Implementation uses gdb specific types. Hence not portable to non-Linux
+ * platforms
  */
 
 #include "heap_tcmalloc.h"
@@ -81,11 +82,39 @@ static void add_one_big_block(struct heap_block *, unsigned int,
 /******************************************************************************
  * Exposed functions
  *****************************************************************************/
+const char *
+heap_version(void)
+{
+	return "TCmalloc";
+}
+
 bool
 init_heap(void)
 {
 	unsigned long i;
 
+	/*
+	 * Start with a clean slate
+	 */
+	g_initialized = false;
+	if (g_config.sizemap.class_to_pages != NULL)
+		free(g_config.sizemap.class_to_pages);
+	if (g_config.sizemap.class_to_size != NULL)
+		free(g_config.sizemap.class_to_size);
+	if (g_config.sizemap.num_objects_to_move != NULL)
+		free(g_config.sizemap.num_objects_to_move);
+	memset(&g_config, 0, sizeof(g_config));
+	for (i = 0; i < g_spans_count; i++) {
+		struct ca_span *span = &g_spans[i];
+		if (span->bitmap != NULL)
+			free(span->bitmap);
+		memset(span, 0, sizeof *span);
+	}
+	g_spans_count = 0;
+	skip_npage = 0;
+	g_cached_blocks_count = 0;
+
+	/* Trigger gdb symbol resolution */
 	gdb_symbol_prelude();
 
 	if (parse_config() == false ||
@@ -361,7 +390,7 @@ heap_walk(address_t heapaddr, bool verbose)
 		total.inuse_count += stats[i].inuse_count;
 		total.inuse_bytes += stats[i].inuse_bytes;
 		total.free_count += stats[i].free_count;
-		total.free_bytes += stats[i].free_bytes;		
+		total.free_bytes += stats[i].free_bytes;
 	}
 	CA_PRINT("------------------------------------------------------------------------------------\n");
 	CA_PRINT("       Total");
@@ -531,7 +560,7 @@ gdb_symbol_prelude(void)
 
 	/*
 	 * template <int BITS>
-	 *     class TCMalloc_PageMap3 
+	 *     class TCMalloc_PageMap3
 	 */
 	pagemap3 = lookup_symbol("TCMalloc_PageMap3<35>", 0, VAR_DOMAIN, 0).symbol;
 	if (pagemap3 == NULL) {
@@ -580,7 +609,7 @@ parse_config(void)
 	 * Global var
 	 * tcmalloc::Static::sizemap_
 	 */
-	sizemap_ = lookup_symbol_global("tcmalloc::Static::sizemap_", 0,
+	sizemap_ = lookup_global_symbol("tcmalloc::Static::sizemap_", 0,
 	    VAR_DOMAIN).symbol;
 	if (sizemap_ == NULL) {
 		CA_PRINT("Failed to lookup gv "
@@ -638,6 +667,9 @@ parse_config(void)
 bool
 parse_pagemap(void)
 {
+        char *exp;
+        struct expression *expr;
+        struct value *val;
 	struct symbol *pageheap_;
 	struct value *pageheap_p, *pageheap;
 	struct value *pagemap;
@@ -645,17 +677,26 @@ parse_pagemap(void)
 	struct value *ptrs;
 	int fieldno;
 	LONGEST low_bound, high_bound, index;
-	struct type *leaf_type, *span_type;
+	struct type *leaf_type, *span_type, *my_type;
 
 	/*
 	 * We need to cast a void* to this type later
 	 */
-	leaf_type = lookup_transparent_type("TCMalloc_PageMap3<35>::Leaf");
-	span_type = lookup_transparent_type("tcmalloc::Span");
-	if (leaf_type == NULL || span_type == NULL) {
-		CA_PRINT("Failed to lookup type "
-		    "\"TCMalloc_PageMap3<35>::Leaf\" and "
-		    "\"tcmalloc::Span\"\n");
+        exp = "\"TCMalloc_PageMap3<35>::Leaf\"";
+        expr = parse_expression(exp);
+        val = evaluate_type(expr);
+	leaf_type = value_type(val);
+        if (leaf_type == NULL) {
+                CA_PRINT("Failed to lookup type \"TCMalloc_PageMap3<35>::Leaf\"\n");
+                 CA_PRINT("Do you forget to download debug symbol of "
+                    "libtcmalloc?\n");
+                return false;
+        }
+
+        exp = "tcmalloc::Span";
+	span_type = lookup_transparent_type(exp);
+	if (span_type == NULL) {
+                CA_PRINT("Failed to lookup type \"tcmalloc::Span\"\n");
 		CA_PRINT("Do you forget to download debug symbol of "
 		    "libtcmalloc?\n");
 		return false;
@@ -667,13 +708,18 @@ parse_pagemap(void)
 	 * Global var
 	 * tcmalloc::PageHeap *tcmalloc::Static::pageheap_;
 	 */
-	pageheap_ = lookup_symbol_global("tcmalloc::Static::pageheap_", 0,
+	pageheap_ = lookup_global_symbol("tcmalloc::Static::pageheap_", 0,
 	    VAR_DOMAIN).symbol;
 	if (pageheap_ == NULL) {
 		CA_PRINT("Failed to lookup gv "
 		    "\"tcmalloc::Static::pageheap_\"\n");
 		return false;
 	}
+        my_type = SYMBOL_TYPE(pageheap_);
+        if (TYPE_NAME(my_type) && strcmp(TYPE_NAME(my_type), "tcmalloc::Static::PageHeapStorage") == 0) {
+                CA_PRINT("TCMalloc 2.6 and later is not supported\n");
+                return false;
+        } 
 	pageheap_p = value_of_variable(pageheap_, 0);
 	pageheap = value_ind(pageheap_p);
 
@@ -768,8 +814,8 @@ parse_central_cache(void)
 	 * Global var
 	 * tcmalloc::CentralFreeListPadded tcmalloc::Static::central_cache_[88]
 	 */
-	central_cache_ = lookup_symbol_global("tcmalloc::Static::central_cache_",
-	    0, VAR_DOMAIN);
+	central_cache_ = lookup_global_symbol("tcmalloc::Static::central_cache_",
+	    0, VAR_DOMAIN).symbol;
 	if (central_cache_ == NULL) {
 		CA_PRINT("Failed to lookup gv "
 		    "\"tcmalloc::Static::central_cache_\"\n");
@@ -1095,7 +1141,7 @@ span_populate_free_bitmap(struct ca_span *span)
 	 */
 	for (i = 0; i < g_cached_blocks_count; i++) {
 		address_t addr = g_cached_blocks[i];
-	
+
 		if (addr < base)
 			continue;
 		else if (addr >= end)
@@ -1280,8 +1326,8 @@ parse_thread_cache(void)
 	 * Global var
 	 * tcmalloc::ThreadCache *tcmalloc::ThreadCache::thread_heaps_
 	 */
-	thread_heaps_ = lookup_symbol_global("tcmalloc::ThreadCache::thread_heaps_",
-	    0, VAR_DOMAIN);
+	thread_heaps_ = lookup_global_symbol("tcmalloc::ThreadCache::thread_heaps_",
+	    0, VAR_DOMAIN).symbol;
 	if (thread_heaps_ == NULL) {
 		CA_PRINT("Failed to lookup gv "
 		    "\"tcmalloc::ThreadCache::thread_heaps_\"\n");

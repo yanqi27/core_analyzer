@@ -1,6 +1,6 @@
-
-import sys
 import gdb
+import os
+import sys
 
 class Block:
 	def __init__(self, address, size, inuse):
@@ -16,6 +16,8 @@ def check_heap_blocks(known_blks, count):
 	i = 0
 	while i < count:
 		blk = known_blks + i
+		if not blk:
+			raise Exception('block[%d] is unexpectedly NIL' % i)
 		blk_addr = int(blk['p'].cast(ulong_type))
 		blk_size = int(blk['size'].cast(ulong_type))
 		my_blk = gdb.heap_block(blk_addr)
@@ -35,7 +37,7 @@ def check_heap_blocks(known_blks, count):
 				% (blk['p'], blk['size'], blk['inuse'])
 			print "[ca_test] \twrong: addr=0x%x size=%u inuse=%d" \
 				% (my_blk.address, my_blk.size, my_blk.inuse)
-			raise Exception('Test Failed')
+			raise Exception('Failed to check block at %x' % blk_addr)
 
 		i = i + 1
 	print "[ca_test]\tVerified %d heap blocks" % (count)
@@ -107,10 +109,12 @@ def check_ref():
 	if obj_addr == 0:
 		print "[ca_test] Object address is NULL"
 		raise Exception('Test Failed')
+	# "hidden_object" is a gloval variable that points to a heap object
 	blk = gdb.heap_block(obj_addr)
 	if blk == None or blk.address != obj_addr:
 		print "[ca_test] Failed to query heap object of address 0x%x" % (obj_addr)
 		raise Exception('Test Failed')
+	# Search in global sections
 	refs = gdb.ref(obj_addr, 1, gdb.ENUM_MODULE_TEXT | gdb.ENUM_MODULE_DATA)
 	if refs == None or len(refs) != 1 or refs[0].address != var_addr:
 		print "[ca_test] Failed to find the global reference (var \"hidden_object\" " \
@@ -118,60 +122,54 @@ def check_ref():
 		raise Exception('Test Failed')
 	print "[ca_test]\tFound the global reference: var \"hidden_object\" " \
 		"at 0x%x" % (var_addr)
+	# Search in heap
 	refs = gdb.ref(obj_addr, 1, gdb.ENUM_HEAP)
-	if refs == None or len(refs) != 1 or not refs[0].heap_inuse:
+	if (refs == None or not refs[0].heap_inuse):
 		print "[ca_test] Failed to find the heap reference to object at address 0x%x" \
 			% (obj_addr)
 		raise Exception('Test Failed')
+	if len(refs) != 1:
+		print("[ca_test]\tFound %d references in heap" % len(refs))
 	print "[ca_test]\tFound heap reference: addr=0x%x size=%u to object at address 0x%x" \
 		% (refs[0].heap_addr, refs[0].heap_size, obj_addr)
+
+def run_tests():
+	# Retrieve global variables defined in mallocTest
+	count = gdb.parse_and_eval("num_regions")
+	known_blks = gdb.parse_and_eval("regions")
+	big_count = int(gdb.parse_and_eval("num_big_regions"))
+	object_count = int(gdb.parse_and_eval("num_derived"))
+	# Tests
+	user_blks = check_heap_blocks(known_blks, count)
+	big_blks = gdb.big_block(big_count)
+	check_big_blocks(big_blks, big_count, user_blks)
+	check_heap_walk(user_blks)
+	check_cplusplus_object("Derived", object_count)
+	check_ref()
 
 #
 # Fun starts here
 #
-#gdb.execute('file ./mallocTest')
-gdb.execute('break last_call')
-gdb.execute ('set confirm off')
-gdb.execute('run')
+core_name = None
+try:
+	print "[ca_test] ==== Test Agaisnt Live Process ===="
+	gdb.execute('break last_call')
+	gdb.execute ('set confirm off')
+	gdb.execute('run')
+	run_tests()
 
-# Retrieve global variables defined in mallocTest
-count = gdb.parse_and_eval("num_regions")
-known_blks = gdb.parse_and_eval("regions")
-big_count = int(gdb.parse_and_eval("num_big_regions"))
-big_blks = gdb.big_block(big_count)
-object_count = int(gdb.parse_and_eval("num_derived"))
+	print "[ca_test] ==== Test Agaisnt Core Dump ===="
+	core_name = 'core.' + str(gdb.inferiors()[0].pid)
+	gdb.execute ('gcore ' + core_name)
+	gdb.execute ('kill')
+	gdb.execute ('core ' + core_name)
+	run_tests()
 
-print "[ca_test] ==== Test Agaisnt Live Process ===="
+	print "[ca_test] Pass"
+except Exception as e:
+	print("[ca_test] " + e.message)
+	print("[ca_test] Test failed")
 
-user_blks = check_heap_blocks(known_blks, count)
-
-check_big_blocks(big_blks, big_count, user_blks)
-
-check_heap_walk(user_blks)
-
-check_cplusplus_object("Derived", object_count)
-
-check_ref()
-
-core_name = 'core.' + str(gdb.inferiors()[0].pid)
-gdb.execute ('gcore ' + core_name)
-gdb.execute ('kill')
-
-print "[ca_test] ==== Test Agaisnt Core Dump ===="
-gdb.execute ('core ' + core_name)
-
-user_blks = check_heap_blocks(known_blks, count)
-
-check_big_blocks(big_blks, big_count, user_blks)
-
-check_heap_walk(user_blks)
-
-check_cplusplus_object("Derived", object_count)
-
-check_ref()
-
-gdb.execute ('shell rm ' + core_name)
-
-print "[ca_test] Pass"
+if core_name and os.path.isfile(core_name):
+	os.unlink(core_name)
 gdb.execute ('quit')
-

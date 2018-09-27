@@ -30,7 +30,7 @@ mallocTest_tcmalloc.o: mallocTest.cpp
 mallocTest_tcmalloc: mallocTest_tcmalloc.o
 	$(CXX) $(COMP_OPT) -o $@ $^ $(LIBS) -ltcmalloc
 
-check_tcmalloc: mallocTest_tcmalloc
+check-tcmalloc: mallocTest_tcmalloc
 	$(GDB_TC) mallocTest_tcmalloc -q -x verify.py | grep ca_test
 
 clean:

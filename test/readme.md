@@ -18,5 +18,5 @@ make check
 
 By default, ptmalloc is tested. For tcmalloc
 ```
-make check_tcmalloc
+make check-tcmalloc
 ```

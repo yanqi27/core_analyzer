@@ -184,6 +184,8 @@ static bool in_fastbins_or_remainder(struct ca_malloc_state*, mchunkptr, size_t)
 
 static size_t get_mstate_size(void);
 
+static bool get_field_value(struct value *, const char *, size_t *, bool);
+
 /***************************************************************************
 * Exposed functions
 ***************************************************************************/
@@ -831,9 +833,56 @@ static void release_all_ca_arenas(void)
 }
 
 static bool
-read_malloc_state_by_symbol(address_t arena_vaddr, struct ca_malloc_state *state)
+read_malloc_state_by_symbol(address_t arena_vaddr, struct ca_malloc_state *mstate)
 {
-	struct type *ms_type = NULL;
+	static struct type *ms_type = NULL;
+	struct value *val;
+	size_t data;
+
+	if (ms_type == NULL) {
+		struct symbol *ma;
+		/*
+		* Global var
+		* File malloc.c: static struct malloc_state main_arena;
+		*/
+		ma = lookup_symbol("main_arena", 0, VAR_DOMAIN, 0).symbol;
+		if (ma == NULL) {
+			CA_PRINT("Failed to lookup gv \"main_arena\"\n");
+			return false;
+		}
+		val = value_of_variable(ma, 0);
+		ms_type = value_type(val);
+		ms_type = lookup_pointer_type(ms_type);
+	}
+	val = value_at(ms_type, arena_vaddr);
+	// Extract data members of the arena metadata (struct malloc_state)
+	if(!get_field_value(val, "flags", &data, false))
+		return false;
+	mstate->flags = data;
+	if(!get_field_value(val, "nfastbins", &data, false))
+		return false;
+	mstate->nfastbins = data;
+	//fastbins
+	if(!get_field_value(val, "top", &data, false))
+		return false;
+	mstate->top = (void *)data;
+	if(!get_field_value(val, "last_remainder", &data, false))
+		return false;
+	mstate->last_remainder = (void *)data;
+	//bins
+	//binmap
+	if(!get_field_value(val, "next", &data, false))
+		return false;
+	mstate->next = (void *)data;
+	if(!get_field_value(val, "next_free", &data, true))
+		return false;
+	if (data == ULONG_MAX)
+		mstate->next_free = NULL;
+	else
+		mstate->next_free = (void *)data;
+	if(!get_field_value(val, "system_mem", &data, false))
+		return false;
+	mstate->system_mem = data;
 
 	return true;
 }
@@ -1151,46 +1200,6 @@ static void version_warning(void)
 	}
 }
 
-static int
-type_field_name2no(struct type *type, const char *field_name)
-{
-	int n;
-
-	if (type == NULL)
-		return -1;
-
-	type = check_typedef (type);
-
-	for (n = 0; n < TYPE_NFIELDS (type); n++) {
-		if (strcmp (field_name, TYPE_FIELD_NAME (type, n)) == 0)
-			return n;
-	}
-	return -1;
-}
-
-static bool
-get_field_value(struct symbol *sym, struct value *val, const char *fieldname,
-				size_t *data, bool optional)
-{
-	size_t r = 0;
-	int fieldno;
-	struct value *fieldval;
-
-	*data = ULONG_MAX;
-	fieldno = type_field_name2no(value_type(val), fieldname);
-	if (fieldno < 0) {
-		if (optional) {
-			return true;
-		} else {
-			CA_PRINT("Failed to find member \"%s\"\n", fieldname);
-			return false;
-		}
-	}
-	fieldval = value_field(val, fieldno);
-	*data = value_as_long(fieldval);
-	return true;
-}
-
 static bool
 read_mp_by_symbol(void)
 {
@@ -1207,29 +1216,29 @@ read_mp_by_symbol(void)
 		return false;
 	}
 	val = value_of_variable(mp_, 0);
-	if(!get_field_value(mp_, val, "mmap_threshold", &data, false))
+	if(!get_field_value(val, "mmap_threshold", &data, false))
 		return false;
 	mparams.mmap_threshold = data;
-	if (!get_field_value(mp_, val, "n_mmaps", &data, false))
+	if (!get_field_value(val, "n_mmaps", &data, false))
 		return false;
 	mparams.n_mmaps = data;
-	if (!get_field_value(mp_, val, "n_mmaps_max", &data, false))
+	if (!get_field_value(val, "n_mmaps_max", &data, false))
 		return false;
 	mparams.n_mmaps_max = data;
-	if (!get_field_value(mp_, val, "max_n_mmaps", &data, false))
+	if (!get_field_value(val, "max_n_mmaps", &data, false))
 		return false;
 	mparams.max_n_mmaps = data;
 	// pagesize is removed in glibc 2.27
-	if (!get_field_value(mp_, val, "pagesize", &data, true))
+	if (!get_field_value(val, "pagesize", &data, true))
 		return false;
 	if (data == ULONG_MAX)
 		mparams.pagesize = 0x1000ul;
 	else
 		mparams.pagesize = data;
-	if (!get_field_value(mp_, val, "mmapped_mem", &data, false))
+	if (!get_field_value(val, "mmapped_mem", &data, false))
 		return false;
 	mparams.mmapped_mem = data;
-	if (!get_field_value(mp_, val, "sbrk_base", &data, false))
+	if (!get_field_value(val, "sbrk_base", &data, false))
 		return false;
 	mparams.sbrk_base = (char *)data;
 
@@ -1937,7 +1946,7 @@ static bool get_glibc_version(void)
 }
 
 /*
- * Helper functions that depends on the glibc version
+ * Helper functions
  *
  */
 static size_t get_mstate_size(void)
@@ -1957,4 +1966,44 @@ static size_t get_mstate_size(void)
 		assert(0 && "internal error: glibc version not supported");
 
 	return mstate_size;
+}
+
+static int
+type_field_name2no(struct type *type, const char *field_name)
+{
+	int n;
+
+	if (type == NULL)
+		return -1;
+
+	type = check_typedef (type);
+
+	for (n = 0; n < TYPE_NFIELDS (type); n++) {
+		if (strcmp (field_name, TYPE_FIELD_NAME (type, n)) == 0)
+			return n;
+	}
+	return -1;
+}
+
+static bool
+get_field_value(struct value *val, const char *fieldname,
+				size_t *data, bool optional)
+{
+	size_t r = 0;
+	int fieldno;
+	struct value *fieldval;
+
+	*data = ULONG_MAX;
+	fieldno = type_field_name2no(value_type(val), fieldname);
+	if (fieldno < 0) {
+		if (optional) {
+			return true;
+		} else {
+			CA_PRINT("Failed to find member \"%s\"\n", fieldname);
+			return false;
+		}
+	}
+	fieldval = value_field(val, fieldno);
+	*data = value_as_long(fieldval);
+	return true;
 }

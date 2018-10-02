@@ -186,6 +186,8 @@ static size_t get_mstate_size(void);
 
 static bool get_field_value(struct value *, const char *, size_t *, bool);
 
+static bool memcpy_field_value(struct value *, const char *, char *, size_t);
+
 /***************************************************************************
 * Exposed functions
 ***************************************************************************/
@@ -835,34 +837,41 @@ static void release_all_ca_arenas(void)
 static bool
 read_malloc_state_by_symbol(address_t arena_vaddr, struct ca_malloc_state *mstate)
 {
-	static struct type *ms_type = NULL;
+	struct type *ms_type = NULL;
 	struct value *val;
 	size_t data;
 
-	if (ms_type == NULL) {
-		struct symbol *ma;
-		/*
-		* Global var
-		* File malloc.c: static struct malloc_state main_arena;
-		*/
-		ma = lookup_symbol("main_arena", 0, VAR_DOMAIN, 0).symbol;
-		if (ma == NULL) {
-			CA_PRINT("Failed to lookup gv \"main_arena\"\n");
-			return false;
-		}
-		val = value_of_variable(ma, 0);
-		ms_type = value_type(val);
-		ms_type = lookup_pointer_type(ms_type);
+	struct symbol *ma;
+	/*
+	* Global var
+	* File malloc.c: static struct malloc_state main_arena;
+	*/
+	ma = lookup_symbol("main_arena", 0, VAR_DOMAIN, 0).symbol;
+	if (ma == NULL) {
+		CA_PRINT("Failed to lookup gv \"main_arena\"\n");
+		return false;
 	}
+	val = value_of_variable(ma, 0);
+	ms_type = value_type(val);
+
 	val = value_at(ms_type, arena_vaddr);
-	// Extract data members of the arena metadata (struct malloc_state)
+	/*
+	 * Extract data members of the arena metadata (struct malloc_state)
+	 */
 	if(!get_field_value(val, "flags", &data, false))
 		return false;
 	mstate->flags = data;
-	if(!get_field_value(val, "nfastbins", &data, false))
+	if(!get_field_value(val, "nfastbins", &data, true))
 		return false;
-	mstate->nfastbins = data;
-	//fastbins
+	if (data != ULONG_MAX)
+		mstate->nfastbins = data;
+	// "fastbins" or "fastbinsY"?
+	if (!memcpy_field_value(val, "fastbins", (char *)&mstate->fastbins[0],
+	    sizeof(mstate->fastbins)) &&
+		!memcpy_field_value(val, "fastbinsY", (char *)&mstate->fastbins[0],
+	    sizeof(mstate->fastbins))) {
+		return false;
+	}
 	if(!get_field_value(val, "top", &data, false))
 		return false;
 	mstate->top = (void *)data;
@@ -870,7 +879,15 @@ read_malloc_state_by_symbol(address_t arena_vaddr, struct ca_malloc_state *mstat
 		return false;
 	mstate->last_remainder = (void *)data;
 	//bins
+	if (!memcpy_field_value(val, "bins", (char *)&mstate->bins[0],
+	    sizeof(mstate->bins))) {
+		return false;
+	}
 	//binmap
+	if (!memcpy_field_value(val, "binmap", (char *)&mstate->binmap[0],
+	    sizeof(mstate->binmap))) {
+		return false;
+	}
 	if(!get_field_value(val, "next", &data, false))
 		return false;
 	mstate->next = (void *)data;
@@ -1989,9 +2006,8 @@ static bool
 get_field_value(struct value *val, const char *fieldname,
 				size_t *data, bool optional)
 {
-	size_t r = 0;
 	int fieldno;
-	struct value *fieldval;
+	struct value *field_val;
 
 	*data = ULONG_MAX;
 	fieldno = type_field_name2no(value_type(val), fieldname);
@@ -2003,7 +2019,34 @@ get_field_value(struct value *val, const char *fieldname,
 			return false;
 		}
 	}
-	fieldval = value_field(val, fieldno);
-	*data = value_as_long(fieldval);
+	field_val = value_field(val, fieldno);
+	*data = value_as_long(field_val);
+	return true;
+}
+
+static bool
+memcpy_field_value(struct value *val, const char *fieldname, char *buf,
+    size_t bufsz)
+{
+	int fieldno;
+	struct value *field_val;
+	size_t fieldsz;
+
+	fieldno = type_field_name2no(value_type(val), fieldname);
+	if (fieldno < 0) {
+		CA_PRINT("Failed to find member \"%s\"\n", fieldname);
+		return false;
+	}
+	field_val = value_field(val, fieldno);
+	fieldsz = TYPE_LENGTH(value_type(field_val));
+	if (bufsz < fieldsz) {
+		CA_PRINT("Internal error: buffer of member \"%s\" is too small\n",
+		    fieldname);
+		return false;
+	}
+	if (!read_memory_wrapper(NULL, value_address(field_val),buf, fieldsz)) {
+		CA_PRINT("Failed to read member \"%s\"\n", fieldname);
+		return false;
+	}
 	return true;
 }

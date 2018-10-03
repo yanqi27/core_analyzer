@@ -33,11 +33,11 @@ def check_heap_blocks(known_blks, count):
 
 		if not match:
 			print "[ca_test] core analyzer returns wrong heap info of block [%d]" % (i)
-			print "[ca_test] \ttrue:  addr=0x%x size=%u inuse=%d" \
-				% (blk['p'], blk['size'], blk['inuse'])
-			print "[ca_test] \twrong: addr=0x%x size=%u inuse=%d" \
+			print "[ca_test] \texpected:  addr=0x%x size=%u inuse=%d" \
+				% (blk_addr, blk_size, blk['inuse'])
+			print "[ca_test] \tgot:       addr=0x%x size=%u inuse=%d" \
 				% (my_blk.address, my_blk.size, my_blk.inuse)
-			raise Exception('Failed to check block at %x' % blk_addr)
+			raise Exception('Failed to check block at 0x%x' % blk_addr)
 
 		i = i + 1
 	print "[ca_test]\tVerified %d heap blocks" % (count)

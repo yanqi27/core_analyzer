@@ -20,6 +20,25 @@
 #include <malloc.h>
 #endif
 
+#include <pthread.h>
+
+/*
+ * Since glibc 2.26, ptmalloc introduces per-thread cache.
+ * In order for core_analyzer to parse all heap data, the application
+ * needs to link with libpthread. This allows gdb to extract thread-local
+ * variables of ptmalloc tcache.
+ * !TODO! multi-threaded malloc/free
+ */
+static __thread int myNumber = 5;
+static pthread_mutex_t myLock = PTHREAD_MUTEX_INITIALIZER;
+static void
+IncMyNumberLock(void)
+{
+	pthread_mutex_lock(&myLock);
+	myNumber++;
+	pthread_mutex_unlock(&myLock);
+}
+
 struct region {
 	void *p;
 	size_t size;
@@ -74,7 +93,7 @@ uintptr_t hidden_object;
 static size_t
 rand_size()
 {
-	return rand() % 1024;
+	return rand() % 1032;
 }
 
 static void
@@ -95,6 +114,7 @@ void
 last_call(void)
 {
 	std::cout << "This is the last function call\n";
+	IncMyNumberLock();
 }
 
 static size_t
@@ -159,10 +179,12 @@ main(int argc, char** argv)
 	hidden_object = (uintptr_t)objlist.front();
 
 	// Free some small memory blocks
+	unsigned int num_free_regions = 0;
 	for (i = 0; i < num_small_regions; i++) {
 		if (is_lucky(i) == true) {
 			regions[i].inuse = false;
 			free(regions[i].p);
+			num_free_regions++;
 		}
 	}
 

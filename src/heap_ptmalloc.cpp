@@ -17,7 +17,8 @@
 ***************************************************************************/
 
 /*
- * Uniformed data structure to hide the differences across ptmalloc versions
+ * Uniformed data structure to hide the differences across ptmalloc versions;
+ * Only useful members are included
  */
 struct ca_malloc_par
 {
@@ -29,6 +30,10 @@ struct ca_malloc_par
   INTERNAL_SIZE_T  mmapped_mem;
   INTERNAL_SIZE_T  max_total_mem;
   char*            sbrk_base;
+  /* per-thread cache  */
+  size_t tcache_bins;		/* Maximum number of buckets to use. */
+  size_t tcache_max_bytes;
+  size_t tcache_count;		/* Maximum number of chunks in each bucket. */
 };
 
 struct ca_malloc_state {
@@ -153,7 +158,7 @@ static int glibc_ver_major = 0;
 static int glibc_ver_minor = 0;
 
 static unsigned long g_HEAP_MAX_SIZE;
-static size_t g_MAX_FAST_SIZE;
+static size_t g_MAX_FAST_SIZE = (80 * SIZE_SZ / 4);
 static struct ca_malloc_par mparams;
 
 static bool g_heap_ready = false;
@@ -161,8 +166,12 @@ static struct ca_arena* g_arenas = NULL;
 static unsigned int g_arena_cnt = 0;
 static unsigned int g_arena_buf_sz = 0;
 
-static struct ca_heap** g_sorted_heaps = NULL;	// heaps sorted by virtual address
+static struct ca_heap** g_sorted_heaps = NULL;	/* heaps sorted by virtual address */
 static unsigned int g_heap_cnt = 0;
+
+static mchunkptr *g_tcache_chunks;	/* Array of all chunks in per-thread cache */
+static unsigned int g_tcache_chunk_count;
+static unsigned int g_tcache_chunk_capacity;
 
 /*
  * Forward declaration
@@ -181,6 +190,7 @@ static address_t search_chunk(struct ca_heap*, address_t);
 static bool fill_heap_block(struct ca_heap*, address_t, struct heap_block*);
 
 static bool in_fastbins_or_remainder(struct ca_malloc_state*, mchunkptr, size_t);
+static bool in_tcache(mchunkptr, size_t);
 
 static size_t get_mstate_size(void);
 
@@ -194,7 +204,10 @@ static bool memcpy_field_value(struct value *, const char *, char *, size_t);
 const char *
 heap_version(void)
 {
-	return "Ptmalloc 2.7";
+	static char glibc_ver[64];
+	if (glibc_ver[0] == '\0')
+		snprintf(glibc_ver, 64, "glibc %s", gnu_get_libc_version());
+	return glibc_ver;
 }
 
 bool init_heap(void)
@@ -540,8 +553,9 @@ bool get_biggest_blocks(struct heap_block* blks, unsigned int num)
 						if (!read_memory_wrapper(NULL, chunk_addr + chunksz, &next_chunk, mchunk_sz))
 							break;
 
-						if (prev_inuse(&next_chunk)
-							&& (chunksz > g_MAX_FAST_SIZE || !in_fastbins_or_remainder(&heap->mArena->mpState, (mchunkptr)chunk_addr, chunksz)) )
+						if (prev_inuse(&next_chunk) &&
+							!in_fastbins_or_remainder(&heap->mArena->mpState, (mchunkptr)chunk_addr, chunksz) &&
+							!in_tcache((mchunkptr)chunk_addr, chunksz))
 						{
 							// this is an in-use block
 							blk.size = chunksz - size_t_sz;
@@ -616,8 +630,9 @@ bool walk_inuse_blocks(struct inuse_block* opBlocks, unsigned long* opCount)
 					if (!read_memory_wrapper(NULL, chunk_addr + chunksz, &next_chunk, mchunk_sz))
 						break;
 
-					if (prev_inuse(&next_chunk)
-						&& (chunksz > g_MAX_FAST_SIZE || !in_fastbins_or_remainder(&heap->mArena->mpState, (mchunkptr)chunk_addr, chunksz)) )
+					if (prev_inuse(&next_chunk) &&
+						!in_fastbins_or_remainder(&heap->mArena->mpState, (mchunkptr)chunk_addr, chunksz) &&
+						!in_tcache((mchunkptr)chunk_addr, chunksz))
 					{
 						(*opCount)++;
 						if (pBlockinfo)
@@ -834,6 +849,108 @@ static void release_all_ca_arenas(void)
 	release_sorted_heaps();
 }
 
+static void
+release_tcache_chunks(void)
+{
+	if (g_tcache_chunk_count > 0) {
+		for (unsigned int i = 0; i < g_tcache_chunk_count; i++) {
+			g_tcache_chunks[i] = NULL;
+		}
+		g_tcache_chunk_count = 0;
+	}
+}
+
+static void
+add_tcache_chunk(mchunkptr chunk)
+{
+	if (g_tcache_chunk_capacity == 0) {
+		g_tcache_chunk_capacity = 64;
+		g_tcache_chunks = (mchunkptr *)calloc(g_tcache_chunk_capacity,
+		    sizeof(*g_tcache_chunks));
+	} else if (g_tcache_chunk_capacity <= g_tcache_chunk_count) {
+		g_tcache_chunk_capacity *= 2;
+		g_tcache_chunks = (mchunkptr *)realloc(g_tcache_chunks,
+		    g_tcache_chunk_capacity * sizeof(*g_tcache_chunks));
+	}
+	g_tcache_chunks[g_tcache_chunk_count++] = chunk;
+}
+
+/*
+ * compare two ca_heaps by their starting address
+ */
+static int
+compare_tcache_chunk(const void* lhs, const void* rhs)
+{
+	const mchunkptr chunk1 = *(const mchunkptr *) lhs;
+	const mchunkptr chunk2 = *(const mchunkptr *) rhs;
+	// they can't be equal
+	if (chunk1 < chunk2)
+		return -1;
+	else if (chunk1 > chunk2)
+		return 1;
+	else
+		return 0;
+}
+
+static bool
+build_tcache(void)
+{
+	struct symbol *tcsym;
+	struct value *val;
+	struct type *type;
+	tcache_perthread_struct tcps;
+	size_t valsz;
+
+	/* !TODO! Traverse all threads for thread-local variables `tcache` */
+	/* ptmalloc: static __thread tcache_perthread_struct *tcache */
+	tcsym = lookup_symbol("tcache", 0, VAR_DOMAIN, 0).symbol;
+	if (tcsym == NULL) {
+		CA_PRINT("Failed to lookup thread-local variable \"tcache\"\n");
+		return false;
+	}
+	val = value_of_variable(tcsym, 0);
+	val = value_coerce_to_target(val);
+	type = value_type(val);
+	type = check_typedef (TYPE_TARGET_TYPE (type));
+	valsz = TYPE_LENGTH(type);
+	if (sizeof(tcps) < valsz) {
+		CA_PRINT("Internal error: \"struct tcache_perthread_struct\" is incorrect\n");
+		return false;
+	}
+	if (!read_memory_wrapper(NULL, value_as_address(val), &tcps, valsz)) {
+		CA_PRINT("Failed to read thread-local variable \"tcache\"\n");
+		return false;
+	}
+	/* Each entry is a singly-linked list */
+	for (unsigned int i = 0; i < mparams.tcache_bins; i++) {
+		unsigned int count = 0;
+		tcache_entry *entry = tcps.entries[i];
+
+		while(entry) {
+			tcache_entry next_entry;
+
+			if (++count > mparams.tcache_count) {
+				CA_PRINT("Failed to walk tcache.entries[%d], list count is "
+				    "larger than mp_.tcache_count [%ld]\n", i, mparams.tcache_count);
+				break;
+			}
+			add_tcache_chunk(mem2chunk(entry));
+			if (!read_memory_wrapper(NULL, (address_t)entry, &next_entry, sizeof(next_entry))) {
+				CA_PRINT("Failed to walk tcache.entries[%d]\n", i);
+				return false;
+			}
+			entry = next_entry.next;
+		}
+	}
+	/* Sort all chunks by address */
+	if (g_tcache_chunk_count > 0) {
+		qsort(g_tcache_chunks, g_tcache_chunk_count, sizeof(g_tcache_chunks[0]),
+		    compare_tcache_chunk);
+	}
+
+	return true;
+}
+
 static bool
 read_malloc_state_by_symbol(address_t arena_vaddr, struct ca_malloc_state *mstate)
 {
@@ -865,6 +982,8 @@ read_malloc_state_by_symbol(address_t arena_vaddr, struct ca_malloc_state *mstat
 		return false;
 	if (data != ULONG_MAX)
 		mstate->nfastbins = data;
+	else
+		mstate->nfastbins = sizeof(mstate->fastbins) / sizeof(mstate->fastbins[0]);
 	// "fastbins" or "fastbinsY"?
 	if (!memcpy_field_value(val, "fastbins", (char *)&mstate->fastbins[0],
 	    sizeof(mstate->fastbins)) &&
@@ -979,6 +1098,7 @@ static struct ca_arena* build_arena(address_t arena_vaddr, enum HEAP_TYPE type)
 			release_ca_arena(arena);
 			return NULL;
 		}
+		// !TODO! copy mchunkptr in fastbins and remainder to cached array and sort them
 	}
 
 	pgsize = mparams.pagesize;
@@ -1210,7 +1330,8 @@ static void version_warning(void)
 	if (g_debug_core && vw_once)
 	{
 		CA_PRINT("==================================================================================\n");
-		CA_PRINT("== The memory manager is assumed to be glibc %d.%d                                ==\n", glibc_ver_major, glibc_ver_minor);
+		CA_PRINT("== The memory manager is assumed to be glibc %d.%d                                ==\n",
+		    glibc_ver_major, glibc_ver_minor);
 		CA_PRINT("== If this is not true, please debug with another machine with matching glibc   ==\n");
 		CA_PRINT("==================================================================================\n");
 		vw_once = 0;
@@ -1220,19 +1341,19 @@ static void version_warning(void)
 static bool
 read_mp_by_symbol(void)
 {
-	struct symbol *mp_;
+	struct symbol *sym;
 	struct value *val;
 	size_t data;
 	/*
 	 * Global var
 	 * File malloc.c: static struct malloc_par mp_;
 	 */
-	mp_ = lookup_symbol("mp_", 0, VAR_DOMAIN, 0).symbol;
-	if (mp_ == NULL) {
+	sym = lookup_symbol("mp_", 0, VAR_DOMAIN, 0).symbol;
+	if (sym == NULL) {
 		CA_PRINT("Failed to lookup gv \"mp_\"\n");
 		return false;
 	}
-	val = value_of_variable(mp_, 0);
+	val = value_of_variable(sym, 0);
 	if(!get_field_value(val, "mmap_threshold", &data, false))
 		return false;
 	mparams.mmap_threshold = data;
@@ -1245,7 +1366,7 @@ read_mp_by_symbol(void)
 	if (!get_field_value(val, "max_n_mmaps", &data, false))
 		return false;
 	mparams.max_n_mmaps = data;
-	// pagesize is removed in glibc 2.27
+	/* pagesize is removed in glibc 2.27 */
 	if (!get_field_value(val, "pagesize", &data, true))
 		return false;
 	if (data == ULONG_MAX)
@@ -1258,6 +1379,26 @@ read_mp_by_symbol(void)
 	if (!get_field_value(val, "sbrk_base", &data, false))
 		return false;
 	mparams.sbrk_base = (char *)data;
+	/* per-thread cache since glibc 2.26 */
+	if (!get_field_value(val, "tcache_bins", &data, true))
+		return false;
+	if (data != ULONG_MAX)
+		mparams.tcache_bins = data;
+	if (!get_field_value(val, "tcache_max_bytes", &data, true))
+		return false;
+	if (data != ULONG_MAX)
+		mparams.tcache_max_bytes = request2size(data);
+	if (!get_field_value(val, "tcache_count", &data, true))
+		return false;
+	if (data != ULONG_MAX)
+		mparams.tcache_count = data;
+
+	/* ptmalloc: static INTERNAL_SIZE_T global_max_fast; */
+	sym = lookup_symbol("global_max_fast", 0, VAR_DOMAIN, 0).symbol;
+	if (sym) {
+		val = value_of_variable(sym, 0);
+		g_MAX_FAST_SIZE = value_as_long(val);
+	}
 
 	return true;
 }
@@ -1268,58 +1409,41 @@ static bool build_heaps_internal(address_t main_arena_vaddr, address_t mparams_v
 	struct ca_arena* arena;
 	bool rc = false;
 
-	// Read in the tuning parames
-	if (glibc_ver_minor == 3)
-		read_mp(3);
-	else if (glibc_ver_minor == 4)
-		read_mp(4);
-	else if (glibc_ver_minor == 5)
-	{
-		read_mp(5);
-		// My machine (rhel5.8) has glibc2.5 but its mp_ is of glibc2.12
-		// !FIXME!
-		if (mparams.pagesize != 0x1000ul)
-		{
-			struct malloc_par_GLIBC_2_12 pars;
-			rc = read_memory_wrapper(NULL, mparams_vaddr, &pars, sizeof(pars));
-			if (rc)
-				COPY_MALLOC_PAR(pars);
-			// pretend this is glibc 2.12
-			if (mparams.pagesize == 0x1000ul)
-			{
-				g_HEAP_MAX_SIZE = HEAP_MAX_SIZE_GLIBC_2_12;
-				g_MAX_FAST_SIZE = MAX_FAST_SIZE_GLIBC_2_12;
-				glibc_ver_minor = 12;
-			}
-		}
+	/* Read in the tuning parames */
+	rc = read_mp_by_symbol();
+	if (!rc) {
+		/* We failed to extract mp_ with debug symbols */
+		if (glibc_ver_minor == 3)
+			read_mp(3);
+		else if (glibc_ver_minor == 4)
+			read_mp(4);
+		else if (glibc_ver_minor == 5)
+			read_mp(5);
+		else if (glibc_ver_minor >= 12 && glibc_ver_minor <= 16)
+			read_mp(12);
+		else if (glibc_ver_minor >= 17 && glibc_ver_minor <= 22)
+			read_mp(17);
 	}
-	else if (glibc_ver_minor >= 12 && glibc_ver_minor <= 16)
-		read_mp(12);
-	else if (glibc_ver_minor >= 17 && glibc_ver_minor <= 27)
-		read_mp(17);
 
-	if (!rc)
-	{
-		CA_PRINT("Failed to read global variable mp_ at "PRINT_FORMAT_POINTER"\n", mparams_vaddr);
+	if (!rc ||
+		mparams.pagesize < 0x1000ul || mparams.pagesize & 0xffful ||
+		(size_t)mparams.sbrk_base & (size_t)0xffful ||
+		get_segment((address_t)mparams.sbrk_base, 1) == NULL) {
+		/* Sanity check fails */
+		CA_PRINT("Failed to extract heap metadata from gv mp_\n");
+		version_warning();
 		return false;
 	}
 
-	// Sanity check of heap parameters
-	if (mparams.pagesize < 0x1000ul ||
-		mparams.pagesize & 0xffful ||
-		(size_t)mparams.sbrk_base & (size_t)0xffful ||
-		get_segment((address_t)mparams.sbrk_base, 1) == NULL)
-	{
-		// We failed to extract heap metadata; try again with debug symbols
-		rc = read_mp_by_symbol();
-		if (!rc) {
-			CA_PRINT("Failed to extract heap metadata from gv mp_ and main_arena\n");
-			version_warning();
+	/* Collect per-thread caches */
+	if (mparams.tcache_bins > 0) {
+		if (!build_tcache()) {
+			CA_PRINT("Failed to extract per-thread cache\n");
 			return false;
 		}
 	}
 
-	// start with main arena, which is always present
+	/* start with main arena, which is always present */
 	arena_vaddr = main_arena_vaddr;
 	do
 	{
@@ -1331,7 +1455,7 @@ static bool build_heaps_internal(address_t main_arena_vaddr, address_t mparams_v
 		arena = build_arena(arena_vaddr, type);
 		if (!arena)
 			break;
-		// move to the next arena
+		/* move to the next arena */
 		arena_vaddr = (address_t) arena->mpState.next;
 	} while (arena_vaddr != main_arena_vaddr);
 
@@ -1373,8 +1497,10 @@ static bool build_heaps(void)
 		return false;
 
 	// Something has changed, discard the old info
-	if (g_arena_cnt > 0)
+	if (g_arena_cnt > 0) {
 		release_all_ca_arenas();
+		release_tcache_chunks();
+	}
 
 	// Support a subset of all glibc versions
 	if (glibc_ver_minor != 3
@@ -1389,7 +1515,7 @@ static bool build_heaps(void)
 	}
 
 	main_arena_vaddr = get_var_addr_by_name("main_arena", true);
-	mparams_vaddr    = get_var_addr_by_name("mp_", true); /* main_arena_vaddr + sizeof(struct malloc_state); */
+	mparams_vaddr    = get_var_addr_by_name("mp_", true);
 	if (main_arena_vaddr == 0 || mparams_vaddr == 0)
 	{
 		CA_PRINT("Failed to get the addresses of global variables main_arena & mp_\n");
@@ -1407,13 +1533,29 @@ static bool build_heaps(void)
 }
 
 /*
+ * Blocks in per-thread cache are free but their tags still indicate in-use.
+ */
+static bool
+in_tcache(mchunkptr chunkp, size_t chunksz)
+{
+	mchunkptr *res = NULL;
+
+	if (g_tcache_chunk_count == 0 || chunksz > mparams.tcache_max_bytes)
+		return false;
+	res = bsearch(&chunkp, g_tcache_chunks, g_tcache_chunk_count,
+	    sizeof(g_tcache_chunks[0]), compare_tcache_chunk);
+	return (res != NULL);
+}
+
+/*
  * Blocks in fastbins are free but their tags still indicate in-use.
  */
-static bool in_fastbins_or_remainder(struct ca_malloc_state* mstate, mchunkptr chunk_p, size_t chunksz)
+static bool
+in_fastbins_or_remainder(struct ca_malloc_state* mstate, mchunkptr chunk_p, size_t chunksz)
 {
 	int index;
 
-	if (!mstate)
+	if (!mstate || chunksz > g_MAX_FAST_SIZE)
 		return false;
 
 	if (glibc_ver_minor == 3 || glibc_ver_minor == 4)
@@ -1443,10 +1585,6 @@ static bool in_fastbins_or_remainder(struct ca_malloc_state* mstate, mchunkptr c
 				return true;
 			else if (!read_memory_wrapper(NULL, chunk_vaddr, &fast_chunk, mchunk_sz))
 				return false;
-			/*
-			if (chunk_vaddr == (address_t)fast_chunk.fd)
-				break;
-			*/
 			if (chunksize(&fast_chunk) > g_MAX_FAST_SIZE)
 				return false;
 			chunk_vaddr = (address_t)(fast_chunk.fd);
@@ -1616,8 +1754,9 @@ static bool fill_heap_block(struct ca_heap* heap, address_t addr, struct heap_bl
 		if (!read_memory_wrapper(NULL, chunk_addr + chunksz, &next_chunk, mchunk_sz))
 			return false;
 
-		if (prev_inuse(&next_chunk)
-			&& (chunksz > g_MAX_FAST_SIZE || !in_fastbins_or_remainder(&heap->mArena->mpState, (mchunkptr)chunk_addr, chunksz)) )
+		if (prev_inuse(&next_chunk) &&
+			!in_fastbins_or_remainder(&heap->mArena->mpState, (mchunkptr)chunk_addr, chunksz) &&
+			!in_tcache((mchunkptr)chunk_addr, chunksz))
 		{
 			blk->inuse = true;
 		}
@@ -1865,8 +2004,9 @@ static bool traverse_heap_blocks(struct ca_heap* heap,
 				return false;
 			}
 
-			if (prev_inuse(&next_chunk)
-				&& (chunksz > g_MAX_FAST_SIZE || !in_fastbins_or_remainder(&arena->mpState, (mchunkptr)cursor, chunksz)) )
+			if (prev_inuse(&next_chunk) &&
+				!in_fastbins_or_remainder(&arena->mpState, (mchunkptr)cursor, chunksz) &&
+				!in_tcache((mchunkptr)cursor, chunksz))
 			{
 				lbFreeBlock = false;
 				num_inuse++;
@@ -2044,7 +2184,7 @@ memcpy_field_value(struct value *val, const char *fieldname, char *buf,
 		    fieldname);
 		return false;
 	}
-	if (!read_memory_wrapper(NULL, value_address(field_val),buf, fieldsz)) {
+	if (!read_memory_wrapper(NULL, value_address(field_val), buf, fieldsz)) {
 		CA_PRINT("Failed to read member \"%s\"\n", fieldname);
 		return false;
 	}

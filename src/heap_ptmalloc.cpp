@@ -157,7 +157,7 @@ struct ca_arena
 static int glibc_ver_major = 0;
 static int glibc_ver_minor = 0;
 
-static unsigned long g_HEAP_MAX_SIZE;
+static unsigned long g_HEAP_MAX_SIZE = HEAP_MAX_SIZE_GLIBC_2_22; //!TODO!
 static size_t g_MAX_FAST_SIZE = (80 * SIZE_SZ / 4);
 static struct ca_malloc_par mparams;
 
@@ -892,17 +892,18 @@ compare_tcache_chunk(const void* lhs, const void* rhs)
 		return 0;
 }
 
-static bool
-build_tcache(void)
+static int
+thread_tcache (struct thread_info *info, void *data)
 {
 	struct symbol *tcsym;
 	struct value *val;
 	struct type *type;
 	tcache_perthread_struct tcps;
 	size_t valsz;
+	address_t addr;
 
-	/* !TODO! Traverse all threads for thread-local variables `tcache` */
-	/* ptmalloc: static __thread tcache_perthread_struct *tcache */
+	switch_to_thread (info->ptid);
+
 	tcsym = lookup_symbol("tcache", 0, VAR_DOMAIN, 0).symbol;
 	if (tcsym == NULL) {
 		CA_PRINT("Failed to lookup thread-local variable \"tcache\"\n");
@@ -917,7 +918,9 @@ build_tcache(void)
 		CA_PRINT("Internal error: \"struct tcache_perthread_struct\" is incorrect\n");
 		return false;
 	}
-	if (!read_memory_wrapper(NULL, value_as_address(val), &tcps, valsz)) {
+	addr = value_as_address(val);
+	CA_PRINT("tcache for ptid.pid [%d]: 0x%lx\n", info->ptid.pid, addr);
+	if (!read_memory_wrapper(NULL, addr, &tcps, valsz)) {
 		CA_PRINT("Failed to read thread-local variable \"tcache\"\n");
 		return false;
 	}
@@ -941,6 +944,26 @@ build_tcache(void)
 			}
 			entry = next_entry.next;
 		}
+	}
+
+	return 0;
+}
+
+static bool
+build_tcache(void)
+{
+	/* !TODO! Traverse all threads for thread-local variables `tcache` */
+	/* ptmalloc: static __thread tcache_perthread_struct *tcache */
+	{
+		ptid_t old;
+
+		/* remember current thread */
+		old = inferior_ptid;
+		/* switch to all threads */
+		iterate_over_threads(thread_tcache, NULL);
+		/* resume the old thread */
+		inferior_ptid = old;
+		switch_to_thread (old);
 	}
 	/* Sort all chunks by address */
 	if (g_tcache_chunk_count > 0) {
@@ -2174,7 +2197,6 @@ memcpy_field_value(struct value *val, const char *fieldname, char *buf,
 
 	fieldno = type_field_name2no(value_type(val), fieldname);
 	if (fieldno < 0) {
-		CA_PRINT("Failed to find member \"%s\"\n", fieldname);
 		return false;
 	}
 	field_val = value_field(val, fieldno);

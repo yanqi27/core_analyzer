@@ -174,9 +174,13 @@ static unsigned int g_arena_buf_sz = 0;
 static struct ca_heap** g_sorted_heaps = NULL;	/* heaps sorted by virtual address */
 static unsigned int g_heap_cnt = 0;
 
-static mchunkptr *g_tcache_chunks;	/* Array of all chunks in per-thread cache */
-static unsigned int g_tcache_chunk_count;
-static unsigned int g_tcache_chunk_capacity;
+/*
+ * Memory chunks in per-thread cache, fastbins and remainder are marked in-use
+ * though they are actually free. Collect them in this array for quick search.
+ */
+static mchunkptr *g_cached_chunks;
+static unsigned int g_cached_chunk_count;
+static unsigned int g_cached_chunk_capacity;
 
 /*
  * Forward declaration
@@ -194,8 +198,7 @@ static bool build_heap_chunks(struct ca_heap*);
 static address_t search_chunk(struct ca_heap*, address_t);
 static bool fill_heap_block(struct ca_heap*, address_t, struct heap_block*);
 
-static bool in_fastbins_or_remainder(struct ca_malloc_state*, mchunkptr, size_t);
-static bool in_tcache(mchunkptr, size_t);
+static bool in_cache(mchunkptr, size_t);
 
 static bool get_field_value(struct value *, const char *, size_t *, bool);
 
@@ -557,8 +560,7 @@ bool get_biggest_blocks(struct heap_block* blks, unsigned int num)
 							break;
 
 						if (prev_inuse(&next_chunk) &&
-							!in_fastbins_or_remainder(&heap->mArena->mpState, (mchunkptr)chunk_addr, chunksz) &&
-							!in_tcache((mchunkptr)chunk_addr, chunksz))
+							!in_cache((mchunkptr)chunk_addr, chunksz))
 						{
 							// this is an in-use block
 							blk.size = chunksz - size_t_sz;
@@ -634,8 +636,7 @@ bool walk_inuse_blocks(struct inuse_block* opBlocks, unsigned long* opCount)
 						break;
 
 					if (prev_inuse(&next_chunk) &&
-						!in_fastbins_or_remainder(&heap->mArena->mpState, (mchunkptr)chunk_addr, chunksz) &&
-						!in_tcache((mchunkptr)chunk_addr, chunksz))
+						!in_cache((mchunkptr)chunk_addr, chunksz))
 					{
 						(*opCount)++;
 						if (pBlockinfo)
@@ -855,27 +856,27 @@ static void release_all_ca_arenas(void)
 static void
 release_tcache_chunks(void)
 {
-	if (g_tcache_chunk_count > 0) {
-		for (unsigned int i = 0; i < g_tcache_chunk_count; i++) {
-			g_tcache_chunks[i] = NULL;
+	if (g_cached_chunk_count > 0) {
+		for (unsigned int i = 0; i < g_cached_chunk_count; i++) {
+			g_cached_chunks[i] = NULL;
 		}
-		g_tcache_chunk_count = 0;
+		g_cached_chunk_count = 0;
 	}
 }
 
 static void
-add_tcache_chunk(mchunkptr chunk)
+add_cached_chunk(mchunkptr chunk)
 {
-	if (g_tcache_chunk_capacity == 0) {
-		g_tcache_chunk_capacity = 64;
-		g_tcache_chunks = (mchunkptr *)calloc(g_tcache_chunk_capacity,
-		    sizeof(*g_tcache_chunks));
-	} else if (g_tcache_chunk_capacity <= g_tcache_chunk_count) {
-		g_tcache_chunk_capacity *= 2;
-		g_tcache_chunks = (mchunkptr *)realloc(g_tcache_chunks,
-		    g_tcache_chunk_capacity * sizeof(*g_tcache_chunks));
+	if (g_cached_chunk_capacity == 0) {
+		g_cached_chunk_capacity = 64;
+		g_cached_chunks = (mchunkptr *)calloc(g_cached_chunk_capacity,
+		    sizeof(*g_cached_chunks));
+	} else if (g_cached_chunk_capacity <= g_cached_chunk_count) {
+		g_cached_chunk_capacity *= 2;
+		g_cached_chunks = (mchunkptr *)realloc(g_cached_chunks,
+		    g_cached_chunk_capacity * sizeof(*g_cached_chunks));
 	}
-	g_tcache_chunks[g_tcache_chunk_count++] = chunk;
+	g_cached_chunks[g_cached_chunk_count++] = chunk;
 }
 
 /*
@@ -940,7 +941,7 @@ thread_tcache (struct thread_info *info, void *data)
 				    "larger than mp_.tcache_count [%ld]\n", i, mparams.tcache_count);
 				break;
 			}
-			add_tcache_chunk(mem2chunk(entry));
+			add_cached_chunk(mem2chunk(entry));
 			if (!read_memory_wrapper(NULL, (address_t)entry, &next_entry, sizeof(next_entry))) {
 				CA_PRINT("Failed to walk tcache.entries[%d]\n", i);
 				return false;
@@ -966,12 +967,6 @@ build_tcache(void)
 	/* resume the old thread */
 	inferior_ptid = old;
 	switch_to_thread (old);
-
-	/* Sort all chunks by address */
-	if (g_tcache_chunk_count > 0) {
-		qsort(g_tcache_chunks, g_tcache_chunk_count, sizeof(g_tcache_chunks[0]),
-		    compare_tcache_chunk);
-	}
 
 	return true;
 }
@@ -1124,7 +1119,29 @@ static struct ca_arena* build_arena(address_t arena_vaddr, enum HEAP_TYPE type)
 			release_ca_arena(arena);
 			return NULL;
 		}
-		// !TODO! copy mchunkptr in fastbins and remainder to cached array and sort them
+		// Copy mchunkptr in fastbins and remainder to cached array for quick search
+		{
+			int i;
+
+			for (i = 0; i < sizeof(arena->mpState.fastbins) / sizeof(arena->mpState.fastbins[0]); i++) {
+				address_t chunk_vaddr = (address_t)arena->mpState.fastbins[i];
+
+				while (chunk_vaddr) {
+					struct malloc_chunk fast_chunk;
+
+					if (!read_memory_wrapper(NULL, chunk_vaddr, &fast_chunk, mchunk_sz))
+						break;
+					if (chunksize(&fast_chunk) > mparams.MAX_FAST_SIZE) {
+						CA_PRINT("Invalid fast chunk 0x%lx, its size %ld is "
+						    "larger than MAX_FAST_SIZE %ld\n", chunk_vaddr, chunksize(&fast_chunk),
+							mparams.MAX_FAST_SIZE);
+						break;
+					}
+					add_cached_chunk((mchunkptr)chunk_vaddr);
+					chunk_vaddr = (address_t)(fast_chunk.fd);
+				}
+			}
+		}
 	}
 
 	pgsize = mparams.pagesize;
@@ -1272,12 +1289,6 @@ static struct ca_arena* build_arena(address_t arena_vaddr, enum HEAP_TYPE type)
 		// mmap region is not tracked by the arena structure
 		// heuristic search of such memory blocks
 		unsigned int sindex;
-
-		if ( (pgsize < 0x1000ul) || (pgsize & 0xffful) )
-		{
-			release_ca_arena(arena);
-			return NULL;
-		}
 
 		for (sindex=0; sindex<g_segment_count; sindex++)
 		{
@@ -1505,6 +1516,12 @@ static bool build_heaps_internal(address_t main_arena_vaddr, address_t mparams_v
 			CA_PRINT("Warning: %d mmap memory blocks were found while mp_ reports %d\n", num_mmap, mparams.n_mmaps);
 	}
 
+	/* Sort all cached chunks by address */
+	if (g_cached_chunk_count > 0) {
+		qsort(g_cached_chunks, g_cached_chunk_count, sizeof(g_cached_chunks[0]),
+		    compare_tcache_chunk);
+	}
+
 	return true;
 }
 
@@ -1565,61 +1582,15 @@ static bool build_heaps(void)
  * Blocks in per-thread cache are free but their tags still indicate in-use.
  */
 static bool
-in_tcache(mchunkptr chunkp, size_t chunksz)
+in_cache(mchunkptr chunkp, size_t chunksz)
 {
 	mchunkptr *res = NULL;
 
-	if (g_tcache_chunk_count == 0 || chunksz > mparams.tcache_max_bytes)
+	if (g_cached_chunk_count == 0 || chunksz > mparams.tcache_max_bytes)
 		return false;
-	res = bsearch(&chunkp, g_tcache_chunks, g_tcache_chunk_count,
-	    sizeof(g_tcache_chunks[0]), compare_tcache_chunk);
+	res = bsearch(&chunkp, g_cached_chunks, g_cached_chunk_count,
+	    sizeof(g_cached_chunks[0]), compare_tcache_chunk);
 	return (res != NULL);
-}
-
-/*
- * Blocks in fastbins are free but their tags still indicate in-use.
- */
-static bool
-in_fastbins_or_remainder(struct ca_malloc_state* mstate, mchunkptr chunk_p, size_t chunksz)
-{
-	int index;
-
-	if (!mstate || chunksz > mparams.MAX_FAST_SIZE)
-		return false;
-
-	if (glibc_ver_minor == 3 || glibc_ver_minor == 4)
-	{
-		index = fastbin_index_GLIBC_2_3(chunksz);
-	}
-	else if (glibc_ver_minor == 5)
-	{
-		index = fastbin_index_GLIBC_2_5(chunksz);
-	}
-	else if (glibc_ver_minor >= 12 && glibc_ver_minor <= 27)
-	{
-		index = fastbin_index_GLIBC_2_12(chunksz);
-	}
-	else
-		return false;
-
-	// Fastbins
-	if(index < mstate->nfastbins)
-	{
-		size_t mchunk_sz = sizeof(struct malloc_chunk);
-		address_t chunk_vaddr = (address_t)mstate->fastbins[index];
-		while (chunk_vaddr)
-		{
-			struct malloc_chunk fast_chunk;
-			if (chunk_vaddr == (address_t)chunk_p)
-				return true;
-			else if (!read_memory_wrapper(NULL, chunk_vaddr, &fast_chunk, mchunk_sz))
-				return false;
-			if (chunksize(&fast_chunk) > mparams.MAX_FAST_SIZE)
-				return false;
-			chunk_vaddr = (address_t)(fast_chunk.fd);
-		}
-	}
-	return false;
 }
 
 /*
@@ -1784,8 +1755,7 @@ static bool fill_heap_block(struct ca_heap* heap, address_t addr, struct heap_bl
 			return false;
 
 		if (prev_inuse(&next_chunk) &&
-			!in_fastbins_or_remainder(&heap->mArena->mpState, (mchunkptr)chunk_addr, chunksz) &&
-			!in_tcache((mchunkptr)chunk_addr, chunksz))
+			!in_cache((mchunkptr)chunk_addr, chunksz))
 		{
 			blk->inuse = true;
 		}
@@ -2034,8 +2004,7 @@ static bool traverse_heap_blocks(struct ca_heap* heap,
 			}
 
 			if (prev_inuse(&next_chunk) &&
-				!in_fastbins_or_remainder(&arena->mpState, (mchunkptr)cursor, chunksz) &&
-				!in_tcache((mchunkptr)cursor, chunksz))
+				!in_cache((mchunkptr)cursor, chunksz))
 			{
 				lbFreeBlock = false;
 				num_inuse++;

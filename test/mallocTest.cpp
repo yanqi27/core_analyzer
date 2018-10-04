@@ -86,9 +86,9 @@ private:
 	float speed;
 };
 
-const unsigned int num_small_regions = 4096;
-const unsigned int num_big_regions = 8;
-const unsigned int num_regions = num_small_regions + num_big_regions;
+const unsigned int num_small_regions = 4096 * NUM_THREADS;
+const unsigned int num_big_regions = 8 * NUM_THREADS;
+const unsigned int num_regions = num_small_regions + num_big_regions + 1;
 region * regions;
 
 const unsigned int num_derived = 4;
@@ -139,7 +139,7 @@ thread_func(void *arg)
 	unsigned int index, i;
 
 	// Allocate small memory blocks in random sizes
-	for (i = 0; i < num_small_regions/2; i++) {
+	for (i = 0; i < num_small_regions/NUM_THREADS; i++) {
 		index = get_index();
 		regions[index].size = rand_size();
 		regions[index].inuse = true;
@@ -152,7 +152,7 @@ thread_func(void *arg)
 	// Allocate big memory blocks, i.e. > 128KiB
 	const size_t threshold = 128 * 1024;
 	const size_t page_size = 4096;
-	for (i = 0; i < num_big_regions/2; i++) {
+	for (i = 0; i < num_big_regions/NUM_THREADS; i++) {
 		index = get_index();
 		regions[index].size = threshold + (rand() % 16) * page_size;
 		regions[index].inuse = true;
@@ -169,7 +169,7 @@ thread_func(void *arg)
 	}
 
 	// Free some small memory blocks
-	for (i = 0; i < num_regions/2; i++) {
+	for (i = 0; i < (num_regions - 1)/NUM_THREADS; i++) {
 		index = get_index();
 		if (regions[index].size < threshold && is_lucky(index)) {
 			regions[index].inuse = false;
@@ -197,6 +197,10 @@ main(int argc, char** argv)
 	regions = (region *) calloc(num_regions, sizeof *regions);
 	if (regions == NULL)
 		fatal_error("Out of memory");
+	// Include the allocated buffer for regions
+	regions[num_regions - 1].inuse = true;
+	regions[num_regions - 1].p = regions;
+	regions[num_regions - 1].size = region_size(regions);
 
 	// Create a group of Base objects
 	for (i = 0; i < num_derived; i++) {

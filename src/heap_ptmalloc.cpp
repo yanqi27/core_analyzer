@@ -34,6 +34,13 @@ struct ca_malloc_par
   size_t tcache_bins;		/* Maximum number of buckets to use. */
   size_t tcache_max_bytes;
   size_t tcache_count;		/* Maximum number of chunks in each bucket. */
+  /*
+   * Configured global parameters which are macros in ptmalloc.
+   * They don't belong to mp_. They are kept here for conveniece.
+   */
+  size_t HEAP_MAX_SIZE;
+  size_t MAX_FAST_SIZE;
+  size_t mstate_size;
 };
 
 struct ca_malloc_state {
@@ -67,7 +74,7 @@ struct heap_info {
 };
 
 #define heap_for_ptr(ptr) \
-	((struct heap_info *)((unsigned long)(ptr) & ~(g_HEAP_MAX_SIZE-1)))
+	((struct heap_info *)((unsigned long)(ptr) & ~(mparams.HEAP_MAX_SIZE-1)))
 
 /*
 ** The purpose of arena is manage a group of heaps to serve a thread or a set of threads
@@ -143,13 +150,13 @@ struct ca_arena
 #define read_mp(v)									\
 	do {										\
 		struct malloc_par_GLIBC_2_##v pars;					\
-		g_HEAP_MAX_SIZE = HEAP_MAX_SIZE_GLIBC_2_##v;				\
-		g_MAX_FAST_SIZE = MAX_FAST_SIZE_GLIBC_2_##v;				\
+		mparams.HEAP_MAX_SIZE = HEAP_MAX_SIZE_GLIBC_2_##v;				\
+		mparams.MAX_FAST_SIZE = MAX_FAST_SIZE_GLIBC_2_##v;				\
+		mparams.mstate_size = sizeof(struct malloc_state_GLIBC_2_##v);	\
 		rc = read_memory_wrapper(NULL, mparams_vaddr, &pars, sizeof(pars));	\
 		if (rc)									\
 			COPY_MALLOC_PAR_WITHOUT_PAGESIZE(pars);				\
 	} while (0)
-
 
 /*
  * Global variables
@@ -157,8 +164,6 @@ struct ca_arena
 static int glibc_ver_major = 0;
 static int glibc_ver_minor = 0;
 
-static unsigned long g_HEAP_MAX_SIZE = HEAP_MAX_SIZE_GLIBC_2_22; //!TODO!
-static size_t g_MAX_FAST_SIZE = (80 * SIZE_SZ / 4);
 static struct ca_malloc_par mparams;
 
 static bool g_heap_ready = false;
@@ -191,8 +196,6 @@ static bool fill_heap_block(struct ca_heap*, address_t, struct heap_block*);
 
 static bool in_fastbins_or_remainder(struct ca_malloc_state*, mchunkptr, size_t);
 static bool in_tcache(mchunkptr, size_t);
-
-static size_t get_mstate_size(void);
 
 static bool get_field_value(struct value *, const char *, size_t *, bool);
 
@@ -952,19 +955,18 @@ thread_tcache (struct thread_info *info, void *data)
 static bool
 build_tcache(void)
 {
-	/* !TODO! Traverse all threads for thread-local variables `tcache` */
+	ptid_t old;
+	/* Traverse all threads for thread-local variables `tcache` */
 	/* ptmalloc: static __thread tcache_perthread_struct *tcache */
-	{
-		ptid_t old;
 
-		/* remember current thread */
-		old = inferior_ptid;
-		/* switch to all threads */
-		iterate_over_threads(thread_tcache, NULL);
-		/* resume the old thread */
-		inferior_ptid = old;
-		switch_to_thread (old);
-	}
+	/* remember current thread */
+	old = inferior_ptid;
+	/* switch to all threads */
+	iterate_over_threads(thread_tcache, NULL);
+	/* resume the old thread */
+	inferior_ptid = old;
+	switch_to_thread (old);
+
 	/* Sort all chunks by address */
 	if (g_tcache_chunk_count > 0) {
 		qsort(g_tcache_chunks, g_tcache_chunk_count, sizeof(g_tcache_chunks[0]),
@@ -993,6 +995,7 @@ read_malloc_state_by_symbol(address_t arena_vaddr, struct ca_malloc_state *mstat
 	}
 	val = value_of_variable(ma, 0);
 	ms_type = value_type(val);
+	mparams.mstate_size = TYPE_LENGTH(ms_type);
 
 	val = value_at(ms_type, arena_vaddr);
 	/*
@@ -1073,7 +1076,7 @@ static struct ca_arena* build_arena(address_t arena_vaddr, enum HEAP_TYPE type)
 	}
 	else
 	{
-		size_t mstate_size = get_mstate_size();
+		size_t mstate_size = mparams.mstate_size;
 		union malloc_state arena_state;
 		bool rc;
 
@@ -1231,7 +1234,7 @@ static struct ca_arena* build_arena(address_t arena_vaddr, enum HEAP_TYPE type)
 	{
 		// dynamically created arena
 		address_t h_vaddr = (address_t) heap_for_ptr(top_addr);
-		size_t mstate_size = get_mstate_size();
+		size_t mstate_size = mparams.mstate_size;
 
 		// It may have more than one heap
 		while (h_vaddr)
@@ -1420,7 +1423,7 @@ read_mp_by_symbol(void)
 	sym = lookup_symbol("global_max_fast", 0, VAR_DOMAIN, 0).symbol;
 	if (sym) {
 		val = value_of_variable(sym, 0);
-		g_MAX_FAST_SIZE = value_as_long(val);
+		mparams.MAX_FAST_SIZE = value_as_long(val);
 	}
 
 	return true;
@@ -1432,6 +1435,9 @@ static bool build_heaps_internal(address_t main_arena_vaddr, address_t mparams_v
 	struct ca_arena* arena;
 	bool rc = false;
 
+	/* defaults */
+	mparams.HEAP_MAX_SIZE = HEAP_MAX_SIZE_GLIBC_2_22; // !TODO!
+	mparams.MAX_FAST_SIZE = (80 * SIZE_SZ / 4);
 	/* Read in the tuning parames */
 	rc = read_mp_by_symbol();
 	if (!rc) {
@@ -1445,7 +1451,7 @@ static bool build_heaps_internal(address_t main_arena_vaddr, address_t mparams_v
 		else if (glibc_ver_minor >= 12 && glibc_ver_minor <= 16)
 			read_mp(12);
 		else if (glibc_ver_minor >= 17 && glibc_ver_minor <= 22)
-			read_mp(17);
+			read_mp(22);
 	}
 
 	if (!rc ||
@@ -1578,7 +1584,7 @@ in_fastbins_or_remainder(struct ca_malloc_state* mstate, mchunkptr chunk_p, size
 {
 	int index;
 
-	if (!mstate || chunksz > g_MAX_FAST_SIZE)
+	if (!mstate || chunksz > mparams.MAX_FAST_SIZE)
 		return false;
 
 	if (glibc_ver_minor == 3 || glibc_ver_minor == 4)
@@ -1608,7 +1614,7 @@ in_fastbins_or_remainder(struct ca_malloc_state* mstate, mchunkptr chunk_p, size
 				return true;
 			else if (!read_memory_wrapper(NULL, chunk_vaddr, &fast_chunk, mchunk_sz))
 				return false;
-			if (chunksize(&fast_chunk) > g_MAX_FAST_SIZE)
+			if (chunksize(&fast_chunk) > mparams.MAX_FAST_SIZE)
 				return false;
 			chunk_vaddr = (address_t)(fast_chunk.fd);
 		}
@@ -2129,25 +2135,6 @@ static bool get_glibc_version(void)
  * Helper functions
  *
  */
-static size_t get_mstate_size(void)
-{
-	size_t mstate_size;
-	if (glibc_ver_minor == 3)
-		mstate_size = sizeof(struct malloc_state_GLIBC_2_3);
-	else if (glibc_ver_minor == 4)
-		mstate_size = sizeof(struct malloc_state_GLIBC_2_4);
-	else if (glibc_ver_minor == 5)
-		mstate_size = sizeof(struct malloc_state_GLIBC_2_5);
-	else if (glibc_ver_minor >= 12 && glibc_ver_minor <= 21)
-		mstate_size = sizeof(struct malloc_state_GLIBC_2_12);
-	else if (glibc_ver_minor >= 22 && glibc_ver_minor <= 27)
-		mstate_size = sizeof(struct malloc_state_GLIBC_2_22);
-	else
-		assert(0 && "internal error: glibc version not supported");
-
-	return mstate_size;
-}
-
 static int
 type_field_name2no(struct type *type, const char *field_name)
 {

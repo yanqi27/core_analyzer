@@ -17,7 +17,8 @@
 ***************************************************************************/
 
 /*
- * Uniformed data structure to hide the differences across ptmalloc versions
+ * Uniformed data structure to hide the differences across ptmalloc versions;
+ * Only useful members are included
  */
 struct ca_malloc_par
 {
@@ -29,6 +30,17 @@ struct ca_malloc_par
   INTERNAL_SIZE_T  mmapped_mem;
   INTERNAL_SIZE_T  max_total_mem;
   char*            sbrk_base;
+  /* per-thread cache  */
+  size_t tcache_bins;		/* Maximum number of buckets to use. */
+  size_t tcache_max_bytes;
+  size_t tcache_count;		/* Maximum number of chunks in each bucket. */
+  /*
+   * Configured global parameters which are macros in ptmalloc.
+   * They don't belong to mp_. They are kept here for conveniece.
+   */
+  size_t HEAP_MAX_SIZE;
+  size_t MAX_FAST_SIZE;
+  size_t mstate_size;
 };
 
 struct ca_malloc_state {
@@ -51,29 +63,7 @@ union malloc_state
 	struct malloc_state_GLIBC_2_5 mstate_2_5;
 	struct malloc_state_GLIBC_2_12 mstate_2_12;
 	struct malloc_state_GLIBC_2_22 mstate_2_22;
-	struct malloc_state_GLIBC_2_3_32 mstate_2_3_32;
-	struct malloc_state_GLIBC_2_4_32 mstate_2_4_32;
-	struct malloc_state_GLIBC_2_5_32 mstate_2_5_32;
-	struct malloc_state_GLIBC_2_12_32 mstate_2_12_32;
-	struct malloc_state_GLIBC_2_22_32 mstate_2_22_32;
 };
-
-union ca_malloc_chunk
-{
-	struct malloc_chunk chunk;
-	struct malloc_chunk_32 chunk_32;
-};
-
-#define ca_chunksize(ptr_bit,p) \
-	(ptr_bit==64?chunksize((mchunkptr)p):chunksize((mchunkptr_32)p))
-#define ca_chunk_is_mmapped(ptr_bit,p) \
-	(ptr_bit==64?chunk_is_mmapped((mchunkptr)p):chunk_is_mmapped((mchunkptr_32)p))
-#define ca_prev_inuse(ptr_bit,p) \
-	(ptr_bit==64?prev_inuse((mchunkptr)p):prev_inuse((mchunkptr_32)p))
-#define ca_chunk_fd(ptr_bit,p) \
-	(ptr_bit==64?(address_t)((mchunkptr)p)->fd:(address_t)((mchunkptr_32)p)->fd)
-#define ca_chunk_bk(ptr_bit,p) \
-	(ptr_bit==64?(address_t)((mchunkptr)p)->bk:(address_t)((mchunkptr_32)p)->bk)
 
 struct heap_info {
   char* ar_ptr;				/* Arena for this heap. */
@@ -83,29 +73,8 @@ struct heap_info {
   char pad[-6 * SIZE_SZ & MALLOC_ALIGN_MASK];	/* this is 0 for 64bit */
 };
 
-struct heap_info_32 {
-  ptr_t_32 ar_ptr;				/* Arena for this heap. */
-  ptr_t_32 prev;	/* struct heap_info_32* */
-  unsigned int size;				/* Current size in bytes. */
-  unsigned int mprotect_size;		/* pad in glibc 2.3 */
-  char pad[-6 * SIZE_SZ_32 & MALLOC_ALIGN_MASK_32];	/* this is 0 for 64bit */
-};
-
-union ca_heap_info
-{
-	struct heap_info hinfo;
-	struct heap_info_32 hinfo_32;
-};
-
-#define ca_hinfo_ar_ptr(ptr_bit,p) \
-	(ptr_bit==64?(address_t)((struct heap_info*)p)->ar_ptr : (address_t)((struct heap_info_32*)p)->ar_ptr)
-#define ca_hinfo_size(ptr_bit,p) \
-	(ptr_bit==64?((struct heap_info*)p)->size : ((struct heap_info_32*)p)->size)
-#define ca_hinfo_prev(ptr_bit,p) \
-	(ptr_bit==64?(address_t)((struct heap_info*)p)->prev : (address_t)((struct heap_info_32*)p)->prev)
-
 #define heap_for_ptr(ptr) \
-	((struct heap_info *)((unsigned long)(ptr) & ~(g_HEAP_MAX_SIZE-1)))
+	((struct heap_info *)((unsigned long)(ptr) & ~(mparams.HEAP_MAX_SIZE-1)))
 
 /*
 ** The purpose of arena is manage a group of heaps to serve a thread or a set of threads
@@ -164,56 +133,30 @@ struct ca_arena
 		mparams.sbrk_base      = (char*) pars.sbrk_base; \
 	} while(0)
 
-#define copy_mstate(arena, orig, orig_32)								\
+#define copy_mstate(arena, orig)								\
 	do {												\
-		if (g_ptr_bit == 64) {									\
-			(arena)->flags = 0; /* (orig)->flags; for 2.4 and later */			\
-			(arena)->nfastbins = sizeof((orig)->fastbins)/sizeof((orig)->fastbins[0]);	\
-			memcpy((arena)->fastbins, (orig)->fastbins, sizeof((orig)->fastbins));		\
-			(arena)->top = (orig)->top;							\
-			(arena)->last_remainder = (orig)->last_remainder;				\
-			memcpy((arena)->bins, (orig)->bins, sizeof((orig)->bins));			\
-			memcpy((arena)->binmap, (orig)->binmap, sizeof((orig)->binmap));		\
-			(arena)->next = (orig)->next;							\
-			(arena)->next_free = NULL; /* (orig)->next_free; for 2.5 and later */		\
-			(arena)->system_mem = (orig)->system_mem;					\
-		} else if (g_ptr_bit == 32) {								\
-			unsigned int i;									\
-			(arena)->flags = 0; /* (orig_32)->flags; for 2.4 and later */			\
-			(arena)->nfastbins = sizeof((orig_32)->fastbins)/sizeof((orig_32)->fastbins[0]);\
-			for (i = 0; i < (arena)->nfastbins; i++)					\
-				(arena)->fastbins[i] = (mfastbinptr) (orig_32)->fastbins[i];		\
-			(arena)->top = (mchunkptr) (orig_32)->top;					\
-			(arena)->last_remainder = (mchunkptr) (orig_32)->last_remainder;		\
-			for (i = 0; i < sizeof((orig_32)->bins)/sizeof((orig_32)->bins[0]); i++)	\
-				(arena)->bins[i] = (mchunkptr) (orig_32)->bins[i];			\
-			memcpy((arena)->binmap, (orig_32)->binmap, sizeof((orig_32)->binmap));		\
-			(arena)->next = (void*) (orig_32)->next;					\
-			(arena)->next_free = NULL; /* (orig_32)->next_free; for 2.5 and later */	\
-			(arena)->system_mem = (orig_32)->system_mem;					\
-		}											\
+		(arena)->flags = 0; /* (orig)->flags; for 2.4 and later */			\
+		(arena)->nfastbins = sizeof((orig)->fastbins)/sizeof((orig)->fastbins[0]);	\
+		memcpy((arena)->fastbins, (orig)->fastbins, sizeof((orig)->fastbins));		\
+		(arena)->top = (orig)->top;							\
+		(arena)->last_remainder = (orig)->last_remainder;				\
+		memcpy((arena)->bins, (orig)->bins, sizeof((orig)->bins));			\
+		memcpy((arena)->binmap, (orig)->binmap, sizeof((orig)->binmap));		\
+		(arena)->next = (orig)->next;							\
+		(arena)->next_free = NULL; /* (orig)->next_free; for 2.5 and later */		\
+		(arena)->system_mem = (orig)->system_mem;					\
 	} while(0)
-
-#define read_mp_32(v)									\
-	do {										\
-		struct malloc_par_GLIBC_2_##v##_32 pars;				\
-		g_HEAP_MAX_SIZE = HEAP_MAX_SIZE_GLIBC_2_##v##_32;			\
-		g_MAX_FAST_SIZE = MAX_FAST_SIZE_GLIBC_2_##v##_32;			\
-		rc = read_memory_wrapper(NULL, mparams_vaddr, &pars, sizeof(pars));	\
-		if (rc)									\
-			COPY_MALLOC_PAR_WITHOUT_PAGESIZE(pars);				\
-	} while (0)
 
 #define read_mp(v)									\
 	do {										\
 		struct malloc_par_GLIBC_2_##v pars;					\
-		g_HEAP_MAX_SIZE = HEAP_MAX_SIZE_GLIBC_2_##v;				\
-		g_MAX_FAST_SIZE = MAX_FAST_SIZE_GLIBC_2_##v;				\
+		mparams.HEAP_MAX_SIZE = HEAP_MAX_SIZE_GLIBC_2_##v;				\
+		mparams.MAX_FAST_SIZE = MAX_FAST_SIZE_GLIBC_2_##v;				\
+		mparams.mstate_size = sizeof(struct malloc_state_GLIBC_2_##v);	\
 		rc = read_memory_wrapper(NULL, mparams_vaddr, &pars, sizeof(pars));	\
 		if (rc)									\
 			COPY_MALLOC_PAR_WITHOUT_PAGESIZE(pars);				\
 	} while (0)
-
 
 /*
  * Global variables
@@ -221,8 +164,6 @@ struct ca_arena
 static int glibc_ver_major = 0;
 static int glibc_ver_minor = 0;
 
-static unsigned long g_HEAP_MAX_SIZE;
-static size_t g_MAX_FAST_SIZE;
 static struct ca_malloc_par mparams;
 
 static bool g_heap_ready = false;
@@ -230,8 +171,16 @@ static struct ca_arena* g_arenas = NULL;
 static unsigned int g_arena_cnt = 0;
 static unsigned int g_arena_buf_sz = 0;
 
-static struct ca_heap** g_sorted_heaps = NULL;	// heaps sorted by virtual address
+static struct ca_heap** g_sorted_heaps = NULL;	/* heaps sorted by virtual address */
 static unsigned int g_heap_cnt = 0;
+
+/*
+ * Memory chunks in per-thread cache, fastbins and remainder are marked in-use
+ * though they are actually free. Collect them in this array for quick search.
+ */
+static mchunkptr *g_cached_chunks;
+static unsigned int g_cached_chunk_count;
+static unsigned int g_cached_chunk_capacity;
 
 /*
  * Forward declaration
@@ -249,9 +198,11 @@ static bool build_heap_chunks(struct ca_heap*);
 static address_t search_chunk(struct ca_heap*, address_t);
 static bool fill_heap_block(struct ca_heap*, address_t, struct heap_block*);
 
-static bool in_fastbins_or_remainder(struct ca_malloc_state*, mchunkptr, size_t);
+static bool in_cache(mchunkptr, size_t);
 
-static size_t get_mstate_size(void);
+static bool get_field_value(struct value *, const char *, size_t *, bool);
+
+static bool memcpy_field_value(struct value *, const char *, char *, size_t);
 
 /***************************************************************************
 * Exposed functions
@@ -259,7 +210,10 @@ static size_t get_mstate_size(void);
 const char *
 heap_version(void)
 {
-	return "Ptmalloc 2.7";
+	static char glibc_ver[64];
+	if (glibc_ver[0] == '\0')
+		snprintf(glibc_ver, 64, "glibc %s", gnu_get_libc_version());
+	return glibc_ver;
 }
 
 bool init_heap(void)
@@ -293,7 +247,7 @@ bool get_next_heap_block(address_t addr, struct heap_block* blk)
 {
 	struct ca_heap* heap = NULL;
 	address_t next_addr = 0;
-	size_t size_t_sz = g_ptr_bit == 64 ? sizeof(INTERNAL_SIZE_T) : sizeof(INTERNAL_SIZE_T_32);
+	size_t size_t_sz = sizeof(INTERNAL_SIZE_T);
 
 	if (!g_heap_ready || g_heap_cnt == 0)
 		return false;
@@ -364,7 +318,7 @@ bool is_heap_block(address_t addr)
  */
 bool heap_walk(address_t heapaddr, bool verbose)
 {
-	size_t size_t_sz =  g_ptr_bit == 64 ? sizeof(INTERNAL_SIZE_T) : sizeof(INTERNAL_SIZE_T_32);
+	size_t size_t_sz =  sizeof(INTERNAL_SIZE_T);
 	bool rc = true;
 	size_t totoal_free_bytes, totoal_inuse_bytes;
 	unsigned long total_num_inuse, total_num_free;
@@ -534,13 +488,12 @@ static void add_one_big_block(struct heap_block* blks, unsigned int num, struct 
 
 bool get_biggest_blocks(struct heap_block* blks, unsigned int num)
 {
-	int ptr_bit = g_ptr_bit;
-	size_t mchunk_sz = ptr_bit == 64 ? sizeof(struct malloc_chunk) : sizeof(struct malloc_chunk_32);
-	size_t size_t_sz = ptr_bit == 64 ? sizeof(INTERNAL_SIZE_T) : sizeof(INTERNAL_SIZE_T_32);
+	size_t mchunk_sz = sizeof(struct malloc_chunk);
+	size_t size_t_sz = sizeof(INTERNAL_SIZE_T);
 	unsigned int i;
 	struct ca_arena* arena;
 	struct ca_heap*  heap;
-	union ca_malloc_chunk achunk;
+	struct malloc_chunk achunk;
 	struct heap_block blk;
 	struct heap_block* smallest = &blks[num - 1];
 
@@ -560,7 +513,7 @@ bool get_biggest_blocks(struct heap_block* blks, unsigned int num)
 			{
 				if (!read_memory_wrapper(NULL, heap->mStartAddr - size_t_sz, &achunk, mchunk_sz))
 					break;
-				blk.size = ca_chunksize(ptr_bit, &achunk) - size_t_sz * 2;
+				blk.size = chunksize(&achunk) - size_t_sz * 2;
 				if (blk.size > smallest->size)
 				{
 					blk.addr = heap->mStartAddr + size_t_sz;
@@ -594,7 +547,7 @@ bool get_biggest_blocks(struct heap_block* blks, unsigned int num)
 					address_t chunk_addr = heap->mChunks[bi] - size_t_sz;
 					if (!read_memory_wrapper(NULL, chunk_addr, &achunk, mchunk_sz))
 						break;
-					chunksz = ca_chunksize(ptr_bit, &achunk);
+					chunksz = chunksize(&achunk);
 					if (chunk_addr + chunksz + mchunk_sz >= heap->mEndAddr)
 					{
 						// top pad is free memory block
@@ -602,12 +555,12 @@ bool get_biggest_blocks(struct heap_block* blks, unsigned int num)
 					else
 					{
 						// Get the next chunk which has the prev_inuse bit flag
-						union ca_malloc_chunk next_chunk;
+						struct malloc_chunk next_chunk;
 						if (!read_memory_wrapper(NULL, chunk_addr + chunksz, &next_chunk, mchunk_sz))
 							break;
 
-						if (ca_prev_inuse(ptr_bit, &next_chunk)
-							&& (chunksz > g_MAX_FAST_SIZE || !in_fastbins_or_remainder(&heap->mArena->mpState, (mchunkptr)chunk_addr, chunksz)) )
+						if (prev_inuse(&next_chunk) &&
+							!in_cache((mchunkptr)chunk_addr, chunksz))
 						{
 							// this is an in-use block
 							blk.size = chunksz - size_t_sz;
@@ -632,9 +585,8 @@ bool walk_inuse_blocks(struct inuse_block* opBlocks, unsigned long* opCount)
 	unsigned int heap_index;
 	struct inuse_block* pBlockinfo = opBlocks;
 
-	int ptr_bit = g_ptr_bit;
-	size_t size_t_sz = ptr_bit == 64 ? sizeof(INTERNAL_SIZE_T) : sizeof(INTERNAL_SIZE_T_32);
-	size_t mchunk_sz = ptr_bit == 64 ? sizeof(struct malloc_chunk) : sizeof(struct malloc_chunk_32);
+	size_t size_t_sz = sizeof(INTERNAL_SIZE_T);
+	size_t mchunk_sz = sizeof(struct malloc_chunk);
 
 	if (!g_heap_ready)
 		return false;
@@ -643,7 +595,7 @@ bool walk_inuse_blocks(struct inuse_block* opBlocks, unsigned long* opCount)
 	for (heap_index = 0; heap_index < g_heap_cnt; heap_index++)
 	{
 		struct ca_heap* heap = g_sorted_heaps[heap_index];
-		union ca_malloc_chunk achunk;
+		struct malloc_chunk achunk;
 
 		// For mmap heap, there is only one block and in-use
 		if (heap->mArena->mType == ENUM_HEAP_MMAP_BLOCK)
@@ -654,7 +606,7 @@ bool walk_inuse_blocks(struct inuse_block* opBlocks, unsigned long* opCount)
 			if (pBlockinfo)
 			{
 				pBlockinfo->addr = heap->mStartAddr + size_t_sz;
-				pBlockinfo->size = ca_chunksize(ptr_bit, &achunk) - size_t_sz*2;
+				pBlockinfo->size = chunksize(&achunk) - size_t_sz*2;
 				pBlockinfo++;
 			}
 		}
@@ -672,19 +624,19 @@ bool walk_inuse_blocks(struct inuse_block* opBlocks, unsigned long* opCount)
 				// read current chunk's size tag
 				if (!read_memory_wrapper(NULL, chunk_addr, &achunk, mchunk_sz))
 					break;
-				chunksz = ca_chunksize(ptr_bit, &achunk);
+				chunksz = chunksize(&achunk);
 				// top pad
 				if (chunk_addr + chunksz + mchunk_sz >= heap->mEndAddr)
 					break;
 				else
 				{
 					// Get the next chunk which has the prev_inuse bit flag
-					union ca_malloc_chunk next_chunk;
+					struct malloc_chunk next_chunk;
 					if (!read_memory_wrapper(NULL, chunk_addr + chunksz, &next_chunk, mchunk_sz))
 						break;
 
-					if (ca_prev_inuse(ptr_bit, &next_chunk)
-						&& (chunksz > g_MAX_FAST_SIZE || !in_fastbins_or_remainder(&heap->mArena->mpState, (mchunkptr)chunk_addr, chunksz)) )
+					if (prev_inuse(&next_chunk) &&
+						!in_cache((mchunkptr)chunk_addr, chunksz))
 					{
 						(*opCount)++;
 						if (pBlockinfo)
@@ -845,7 +797,7 @@ static struct ca_arena* alloc_ca_arena(void)
 	if (g_arena_cnt >= g_arena_buf_sz)
 	{
 		if (g_arena_buf_sz == 0)
-			g_arena_buf_sz = 32;
+			g_arena_buf_sz = 64;
 		else
 			g_arena_buf_sz *= 2;
 		g_arenas = (struct ca_arena*) realloc(g_arenas, sizeof(struct ca_arena)*g_arena_buf_sz);
@@ -901,23 +853,216 @@ static void release_all_ca_arenas(void)
 	release_sorted_heaps();
 }
 
+static void
+release_tcache_chunks(void)
+{
+	unsigned int i;
+
+	if (g_cached_chunk_count > 0) {
+		for (i = 0; i < g_cached_chunk_count; i++) {
+			g_cached_chunks[i] = NULL;
+		}
+		g_cached_chunk_count = 0;
+	}
+}
+
+static void
+add_cached_chunk(mchunkptr chunk)
+{
+	if (g_cached_chunk_capacity == 0) {
+		g_cached_chunk_capacity = 64;
+		g_cached_chunks = (mchunkptr *)calloc(g_cached_chunk_capacity,
+		    sizeof(*g_cached_chunks));
+	} else if (g_cached_chunk_capacity <= g_cached_chunk_count) {
+		g_cached_chunk_capacity *= 2;
+		g_cached_chunks = (mchunkptr *)realloc(g_cached_chunks,
+		    g_cached_chunk_capacity * sizeof(*g_cached_chunks));
+	}
+	g_cached_chunks[g_cached_chunk_count++] = chunk;
+}
+
+/*
+ * compare two ca_heaps by their starting address
+ */
+static int
+compare_tcache_chunk(const void* lhs, const void* rhs)
+{
+	const mchunkptr chunk1 = *(const mchunkptr *) lhs;
+	const mchunkptr chunk2 = *(const mchunkptr *) rhs;
+	// they can't be equal
+	if (chunk1 < chunk2)
+		return -1;
+	else if (chunk1 > chunk2)
+		return 1;
+	else
+		return 0;
+}
+
+static int
+thread_tcache (struct thread_info *info, void *data)
+{
+	struct symbol *tcsym;
+	struct value *val;
+	struct type *type;
+	tcache_perthread_struct tcps;
+	size_t valsz;
+	address_t addr;
+	unsigned int i;
+
+	switch_to_thread (info->ptid);
+
+	tcsym = lookup_symbol("tcache", 0, VAR_DOMAIN, 0).symbol;
+	if (tcsym == NULL) {
+		CA_PRINT("Failed to lookup thread-local variable \"tcache\"\n");
+		return false;
+	}
+	val = value_of_variable(tcsym, 0);
+	val = value_coerce_to_target(val);
+	type = value_type(val);
+	type = check_typedef (TYPE_TARGET_TYPE (type));
+	valsz = TYPE_LENGTH(type);
+	if (sizeof(tcps) < valsz) {
+		CA_PRINT("Internal error: \"struct tcache_perthread_struct\" is incorrect\n");
+		return false;
+	}
+	addr = value_as_address(val);
+	CA_PRINT("tcache for ptid.pid [%d]: 0x%lx\n", info->ptid.pid, addr);
+	if (!read_memory_wrapper(NULL, addr, &tcps, valsz)) {
+		CA_PRINT("Failed to read thread-local variable \"tcache\"\n");
+		return false;
+	}
+	/* Each entry is a singly-linked list */
+	for (i = 0; i < mparams.tcache_bins; i++) {
+		unsigned int count = 0;
+		tcache_entry *entry = tcps.entries[i];
+
+		while(entry) {
+			tcache_entry next_entry;
+
+			if (++count > mparams.tcache_count) {
+				CA_PRINT("Failed to walk tcache.entries[%d], list count is "
+				    "larger than mp_.tcache_count [%ld]\n", i, mparams.tcache_count);
+				break;
+			}
+			add_cached_chunk(mem2chunk(entry));
+			if (!read_memory_wrapper(NULL, (address_t)entry, &next_entry, sizeof(next_entry))) {
+				CA_PRINT("Failed to walk tcache.entries[%d]\n", i);
+				return false;
+			}
+			entry = next_entry.next;
+		}
+	}
+
+	return 0;
+}
+
+static bool
+build_tcache(void)
+{
+	ptid_t old;
+	/* Traverse all threads for thread-local variables `tcache` */
+	/* ptmalloc: static __thread tcache_perthread_struct *tcache */
+
+	/* remember current thread */
+	old = inferior_ptid;
+	/* switch to all threads */
+	iterate_over_threads(thread_tcache, NULL);
+	/* resume the old thread */
+	inferior_ptid = old;
+	switch_to_thread (old);
+
+	return true;
+}
+
+static bool
+read_malloc_state_by_symbol(address_t arena_vaddr, struct ca_malloc_state *mstate)
+{
+	struct type *ms_type = NULL;
+	struct value *val;
+	size_t data;
+
+	struct symbol *ma;
+	/*
+	* Global var
+	* File malloc.c: static struct malloc_state main_arena;
+	*/
+	ma = lookup_symbol("main_arena", 0, VAR_DOMAIN, 0).symbol;
+	if (ma == NULL) {
+		CA_PRINT("Failed to lookup gv \"main_arena\"\n");
+		return false;
+	}
+	val = value_of_variable(ma, 0);
+	ms_type = value_type(val);
+	mparams.mstate_size = TYPE_LENGTH(ms_type);
+
+	val = value_at(ms_type, arena_vaddr);
+	/*
+	 * Extract data members of the arena metadata (struct malloc_state)
+	 */
+	if(!get_field_value(val, "flags", &data, false))
+		return false;
+	mstate->flags = data;
+	if(!get_field_value(val, "nfastbins", &data, true))
+		return false;
+	if (data != ULONG_MAX)
+		mstate->nfastbins = data;
+	else
+		mstate->nfastbins = sizeof(mstate->fastbins) / sizeof(mstate->fastbins[0]);
+	// "fastbins" or "fastbinsY"?
+	if (!memcpy_field_value(val, "fastbins", (char *)&mstate->fastbins[0],
+	    sizeof(mstate->fastbins)) &&
+		!memcpy_field_value(val, "fastbinsY", (char *)&mstate->fastbins[0],
+	    sizeof(mstate->fastbins))) {
+		return false;
+	}
+	if(!get_field_value(val, "top", &data, false))
+		return false;
+	mstate->top = (void *)data;
+	if(!get_field_value(val, "last_remainder", &data, false))
+		return false;
+	mstate->last_remainder = (void *)data;
+	//bins
+	if (!memcpy_field_value(val, "bins", (char *)&mstate->bins[0],
+	    sizeof(mstate->bins))) {
+		return false;
+	}
+	//binmap
+	if (!memcpy_field_value(val, "binmap", (char *)&mstate->binmap[0],
+	    sizeof(mstate->binmap))) {
+		return false;
+	}
+	if(!get_field_value(val, "next", &data, false))
+		return false;
+	mstate->next = (void *)data;
+	if(!get_field_value(val, "next_free", &data, true))
+		return false;
+	if (data == ULONG_MAX)
+		mstate->next_free = NULL;
+	else
+		mstate->next_free = (void *)data;
+	if(!get_field_value(val, "system_mem", &data, false))
+		return false;
+	mstate->system_mem = data;
+
+	return true;
+}
+
 /*
  * Build an area and its belonging heaps
  */
 static struct ca_arena* build_arena(address_t arena_vaddr, enum HEAP_TYPE type)
 {
-	union ca_malloc_chunk top_chunk;
+	struct malloc_chunk top_chunk;
 	struct ca_segment* segment;
 	struct ca_arena* arena;
 	struct ca_heap*  heap;
 	address_t cursor;
-	union ca_malloc_chunk achunk;
+	struct malloc_chunk achunk;
 	size_t chunksz, pgsize;
 	address_t top_addr;
-	int ptr_bit = g_ptr_bit;
-	size_t mchunk_sz = ptr_bit == 64 ? sizeof(struct malloc_chunk) : sizeof(struct malloc_chunk_32);
-	size_t size_t_sz = ptr_bit == 64 ? sizeof(INTERNAL_SIZE_T) : sizeof(INTERNAL_SIZE_T_32);
-	size_t minsz = ptr_bit == 64 ? MINSIZE : MINSIZE_32;
+	size_t mchunk_sz = sizeof(struct malloc_chunk);
+	size_t size_t_sz = sizeof(INTERNAL_SIZE_T);
+	size_t minsz = MINSIZE;
 
 	arena = alloc_ca_arena();
 	arena->mArenaAddr = arena_vaddr;
@@ -929,31 +1074,35 @@ static struct ca_arena* build_arena(address_t arena_vaddr, enum HEAP_TYPE type)
 	}
 	else
 	{
-		size_t mstate_size = get_mstate_size();
+		size_t mstate_size = mparams.mstate_size;
 		union malloc_state arena_state;
 		bool rc;
 
-		// Read in arena's meta data, i.e. struct malloc_state
-		rc = read_memory_wrapper(NULL, arena_vaddr, &arena_state, mstate_size);
-		if (rc) {
-			if (glibc_ver_minor == 3)
-				copy_mstate(&arena->mpState, &arena_state.mstate_2_3, &arena_state.mstate_2_3_32);
-			else if (glibc_ver_minor == 4)
-				copy_mstate(&arena->mpState, &arena_state.mstate_2_4, &arena_state.mstate_2_4_32);
-			else if (glibc_ver_minor == 5)
-				copy_mstate(&arena->mpState, &arena_state.mstate_2_5, &arena_state.mstate_2_5_32);
-			else if (glibc_ver_minor >= 12 && glibc_ver_minor <= 21)
-				copy_mstate(&arena->mpState, &arena_state.mstate_2_12, &arena_state.mstate_2_12_32);
-			else if (glibc_ver_minor >= 22 && glibc_ver_minor <= 23)
-				copy_mstate(&arena->mpState, &arena_state.mstate_2_22, &arena_state.mstate_2_22_32);
-			else {
-				assert(0 && "internal error: glibc version not supported");
+		// Parse arena's metadata by symbol if available
+		rc = read_malloc_state_by_symbol(arena_vaddr, &arena->mpState);
+		if (!rc) {
+			// Read in arena's meta data, i.e. struct malloc_state
+			rc = read_memory_wrapper(NULL, arena_vaddr, &arena_state, mstate_size);
+			if (rc) {
+				if (glibc_ver_minor == 3)
+					copy_mstate(&arena->mpState, &arena_state.mstate_2_3);
+				else if (glibc_ver_minor == 4)
+					copy_mstate(&arena->mpState, &arena_state.mstate_2_4);
+				else if (glibc_ver_minor == 5)
+					copy_mstate(&arena->mpState, &arena_state.mstate_2_5);
+				else if (glibc_ver_minor >= 12 && glibc_ver_minor <= 21)
+					copy_mstate(&arena->mpState, &arena_state.mstate_2_12);
+				else if (glibc_ver_minor >= 22 && glibc_ver_minor <= 27)
+					copy_mstate(&arena->mpState, &arena_state.mstate_2_22);
+				else {
+					assert(0 && "internal error: glibc version not supported");
+					return NULL;
+				}
+			} else {
+				CA_PRINT("Failed to read arena at "PRINT_FORMAT_POINTER"\n", arena_vaddr);
+				release_ca_arena(arena);
 				return NULL;
 			}
-		} else {
-			CA_PRINT("Failed to read arena at "PRINT_FORMAT_POINTER"\n", arena_vaddr);
-			release_ca_arena(arena);
-			return NULL;
 		}
 
 		// A program may never allocate from main heap, only big memory blocks (128KB+)
@@ -968,9 +1117,33 @@ static struct ca_arena* build_arena(address_t arena_vaddr, enum HEAP_TYPE type)
 		segment = get_segment(top_addr, mchunk_sz);
 		if (!segment || !read_memory_wrapper(segment, top_addr, &top_chunk, mchunk_sz))
 		{
+
 			CA_PRINT("Failed to read arena's top chunk at "PRINT_FORMAT_POINTER"\n", top_addr);
 			release_ca_arena(arena);
 			return NULL;
+		}
+		// Copy mchunkptr in fastbins and remainder to cached array for quick search
+		{
+			int i;
+
+			for (i = 0; i < sizeof(arena->mpState.fastbins) / sizeof(arena->mpState.fastbins[0]); i++) {
+				address_t chunk_vaddr = (address_t)arena->mpState.fastbins[i];
+
+				while (chunk_vaddr) {
+					struct malloc_chunk fast_chunk;
+
+					if (!read_memory_wrapper(NULL, chunk_vaddr, &fast_chunk, mchunk_sz))
+						break;
+					if (chunksize(&fast_chunk) > mparams.MAX_FAST_SIZE) {
+						CA_PRINT("Invalid fast chunk 0x%lx, its size %ld is "
+						    "larger than MAX_FAST_SIZE %ld\n", chunk_vaddr, chunksize(&fast_chunk),
+							mparams.MAX_FAST_SIZE);
+						break;
+					}
+					add_cached_chunk((mchunkptr)chunk_vaddr);
+					chunk_vaddr = (address_t)(fast_chunk.fd);
+				}
+			}
 		}
 	}
 
@@ -983,7 +1156,7 @@ static struct ca_arena* build_arena(address_t arena_vaddr, enum HEAP_TYPE type)
 		// main_arena
 		if (contiguous(&arena->mpState))
 		{
-			heap->mEndAddr = (address_t)top_addr + ca_chunksize(ptr_bit, &top_chunk);
+			heap->mEndAddr = (address_t)top_addr + chunksize(&top_chunk);
 			heap->mStartAddr = heap->mEndAddr - arena->mpState.system_mem + size_t_sz;
 			heap->mSegment = segment;
 			add_ca_heap (arena, heap);
@@ -1004,7 +1177,7 @@ static struct ca_arena* build_arena(address_t arena_vaddr, enum HEAP_TYPE type)
 				{
 					if (!read_memory_wrapper(segment, cursor, &achunk, mchunk_sz))
 						break;
-					chunksz = ca_chunksize(ptr_bit, &achunk);
+					chunksz = chunksize(&achunk);
 					if (chunksz > 2*size_t_sz)
 						cursor += chunksz;
 					else if (chunksz == 2*size_t_sz)
@@ -1015,7 +1188,7 @@ static struct ca_arena* build_arena(address_t arena_vaddr, enum HEAP_TYPE type)
 						{
 							if (read_memory_wrapper(segment, cursor, &achunk, 2*size_t_sz))
 							{
-								chunksz = ca_chunksize(ptr_bit, &achunk);
+								chunksz = chunksize(&achunk);
 								if (chunksz == 2*size_t_sz)
 								{
 									// find it
@@ -1055,7 +1228,7 @@ static struct ca_arena* build_arena(address_t arena_vaddr, enum HEAP_TYPE type)
 					{
 						if (!read_memory_wrapper(NULL, cursor, &achunk, mchunk_sz))
 							break;
-						chunksz = ca_chunksize(ptr_bit, &achunk);
+						chunksz = chunksize(&achunk);
 						if (chunksz < minsz)
 							break;
 						if (cursor + chunksz == top_addr)
@@ -1064,7 +1237,7 @@ static struct ca_arena* build_arena(address_t arena_vaddr, enum HEAP_TYPE type)
 							memset(heap, 0, sizeof(struct ca_heap));
 							heap->mSegment   = segment;
 							heap->mStartAddr = start + size_t_sz;
-							heap->mEndAddr = top_addr + ca_chunksize(ptr_bit, &top_chunk);
+							heap->mEndAddr = top_addr + chunksize(&top_chunk);
 							add_ca_heap (arena, heap);
 							bailout = true;
 							break;
@@ -1081,14 +1254,14 @@ static struct ca_arena* build_arena(address_t arena_vaddr, enum HEAP_TYPE type)
 	{
 		// dynamically created arena
 		address_t h_vaddr = (address_t) heap_for_ptr(top_addr);
-		size_t mstate_size = get_mstate_size();
+		size_t mstate_size = mparams.mstate_size;
 
 		// It may have more than one heap
 		while (h_vaddr)
 		{
 			address_t first_chunk;
-			union ca_heap_info hinfo;
-			size_t hinfo_sz = ptr_bit == 64 ? sizeof(struct heap_info) : sizeof(struct heap_info_32);
+			struct heap_info hinfo;
+			size_t hinfo_sz = sizeof(struct heap_info);
 
 			segment = get_segment(h_vaddr, hinfo_sz);
 			if (!segment || !read_memory_wrapper(segment, h_vaddr, &hinfo, hinfo_sz))
@@ -1099,22 +1272,19 @@ static struct ca_arena* build_arena(address_t arena_vaddr, enum HEAP_TYPE type)
 			heap = (struct ca_heap*) malloc(sizeof(struct ca_heap));
 			memset(heap, 0, sizeof(struct ca_heap));
 			heap->mSegment = segment;
-			if (ca_hinfo_ar_ptr(ptr_bit, &hinfo) ==  h_vaddr + hinfo_sz)
+			if ((address_t)(hinfo.ar_ptr) ==  h_vaddr + hinfo_sz)
 				first_chunk = h_vaddr + hinfo_sz + mstate_size;
 			else
 				first_chunk = h_vaddr + hinfo_sz;
 			// possible alignment requirement
-			if (ptr_bit == 64)
-				first_chunk = ((first_chunk + MALLOC_ALIGN_MASK) & ~MALLOC_ALIGN_MASK);
-			else
-				first_chunk = ((first_chunk + MALLOC_ALIGN_MASK_32) & ~MALLOC_ALIGN_MASK_32);
+			first_chunk = ((first_chunk + MALLOC_ALIGN_MASK) & ~MALLOC_ALIGN_MASK);
 			heap->mStartAddr =  first_chunk + size_t_sz;
-			heap->mEndAddr   = h_vaddr + ca_hinfo_size(ptr_bit, &hinfo);
+			heap->mEndAddr   = h_vaddr + hinfo.size;
 			// remember this heap
 			add_ca_heap(arena, heap);
 
 			// previous mmap-ed region
-			h_vaddr = ca_hinfo_prev(ptr_bit, &hinfo);
+			h_vaddr = (address_t)(hinfo.prev);
 		}
 	}
 	else if (type == ENUM_HEAP_MMAP_BLOCK)
@@ -1122,12 +1292,6 @@ static struct ca_arena* build_arena(address_t arena_vaddr, enum HEAP_TYPE type)
 		// mmap region is not tracked by the arena structure
 		// heuristic search of such memory blocks
 		unsigned int sindex;
-
-		if ( (pgsize < 0x1000ul) || (pgsize & 0xffful) )
-		{
-			release_ca_arena(arena);
-			return NULL;
-		}
 
 		for (sindex=0; sindex<g_segment_count; sindex++)
 		{
@@ -1165,7 +1329,7 @@ static struct ca_arena* build_arena(address_t arena_vaddr, enum HEAP_TYPE type)
 
 				if (cursor + pgsize < hend)
 				{
-					union ca_malloc_chunk mmap_chunk;
+					struct malloc_chunk mmap_chunk;
 					if (!read_memory_wrapper(hseg, cursor, &mmap_chunk, mchunk_sz))
 					{
 						CA_PRINT("Failed to read memory at "PRINT_FORMAT_POINTER" while finding mmap blocks\n", cursor);
@@ -1173,22 +1337,22 @@ static struct ca_arena* build_arena(address_t arena_vaddr, enum HEAP_TYPE type)
 					}
 					// such a block shall have
 					// mmap bit is set and size is multiple of page size and chunk is within segment
-					if (ca_chunk_is_mmapped(ptr_bit, &mmap_chunk)
-						&& !ca_prev_inuse(ptr_bit, &mmap_chunk)
+					if (chunk_is_mmapped(&mmap_chunk)
+						&& !prev_inuse(&mmap_chunk)
 						//&& chunksize(&mmap_chunk) >= mparams.mmap_threshold // the threshold maybe changed
-						&& ca_chunksize(ptr_bit, &mmap_chunk) > pgsize
-						&& (ca_chunksize(ptr_bit, &mmap_chunk) & (pgsize - 1)) == 0
-						&& ca_chunksize(ptr_bit, &mmap_chunk) <= hseg->m_vsize
-						&& cursor + ca_chunksize(ptr_bit, &mmap_chunk) <= hend)
+						&& chunksize(&mmap_chunk) > pgsize
+						&& (chunksize(&mmap_chunk) & (pgsize - 1)) == 0
+						&& chunksize(&mmap_chunk) <= hseg->m_vsize
+						&& cursor + chunksize(&mmap_chunk) <= hend)
 					{
 						heap = (struct ca_heap*) malloc(sizeof(struct ca_heap));
 						memset(heap, 0, sizeof(struct ca_heap));
 						heap->mSegment = hseg;
 						heap->mStartAddr = cursor + size_t_sz;
-						heap->mEndAddr   = cursor + ca_chunksize(ptr_bit, &mmap_chunk);
+						heap->mEndAddr   = cursor + chunksize(&mmap_chunk);
 						add_ca_heap(arena, heap);
 						// move forward
-						cursor += ca_chunksize(ptr_bit, &mmap_chunk);
+						cursor += chunksize(&mmap_chunk);
 						cursor = (cursor + (pgsize - 1)) & ~(pgsize - 1);
 					}
 					else
@@ -1206,193 +1370,74 @@ static void version_warning(void)
 	if (g_debug_core && vw_once)
 	{
 		CA_PRINT("==================================================================================\n");
-		CA_PRINT("== The memory manager is assumed to be glibc %d.%d                                ==\n", glibc_ver_major, glibc_ver_minor);
+		CA_PRINT("== The memory manager is assumed to be glibc %d.%d                                ==\n",
+		    glibc_ver_major, glibc_ver_minor);
 		CA_PRINT("== If this is not true, please debug with another machine with matching glibc   ==\n");
 		CA_PRINT("==================================================================================\n");
 		vw_once = 0;
 	}
 }
 
-static bool build_heaps_internal_32(address_t main_arena_vaddr, address_t mparams_vaddr)
+static bool
+read_mp_by_symbol(void)
 {
-	address_t arena_vaddr;
-	struct ca_arena* arena;
-	bool rc = false;
-
-	// Read in the tuning parames
-	if (glibc_ver_minor == 3)
-		read_mp_32(3);
-	else if (glibc_ver_minor == 4)
-		read_mp_32(4);
-	else if (glibc_ver_minor == 5)
-	{
-		read_mp_32(5);
-
-		// My machine (rhel5.8) has glibc2.5 but its mp_ is of glibc2.12
-		// !FIXME!
-		if (mparams.pagesize != 0x1000ul)
-		{
-			struct malloc_par_GLIBC_2_12_32 pars;
-			rc = read_memory_wrapper(NULL, mparams_vaddr, &pars, sizeof(pars));
-			if (rc)
-				COPY_MALLOC_PAR(pars);
-			// pretend this is glibc 2.12
-			if (mparams.pagesize == 0x1000ul)
-			{
-				glibc_ver_minor = 12;
-				g_HEAP_MAX_SIZE = HEAP_MAX_SIZE_GLIBC_2_12_32;
-				g_MAX_FAST_SIZE = MAX_FAST_SIZE_GLIBC_2_12_32;
-			}
-		}
-	}
-	else if (glibc_ver_minor >= 12 && glibc_ver_minor <= 16)
-		read_mp_32(12);
-	else if (glibc_ver_minor >= 17 && glibc_ver_minor <= 23)
-		read_mp_32(17);
-
-	if (!rc)
-	{
-		CA_PRINT("Failed to read global variable mp_ at "PRINT_FORMAT_POINTER"\n", mparams_vaddr);
+	struct symbol *sym;
+	struct value *val;
+	size_t data;
+	/*
+	 * Global var
+	 * File malloc.c: static struct malloc_par mp_;
+	 */
+	sym = lookup_symbol("mp_", 0, VAR_DOMAIN, 0).symbol;
+	if (sym == NULL) {
+		CA_PRINT("Failed to lookup gv \"mp_\"\n");
 		return false;
 	}
-
-	if (mparams.pagesize < 0x1000ul || mparams.pagesize & 0xffful)
-	{
-		CA_PRINT("Warning: Page size (%d) is incorrect\n", mparams.pagesize);
-		mparams.pagesize = 0x1000ul;
-		version_warning();
-		//return false;
-	}
-	if (mparams.sbrk_base == 0)
-	{
-		CA_PRINT("Warning: Unexpected malloc parameter mp_.sbrk_base = 0\n");
-		version_warning();
-		//return false;
-	}
-
-	// start with main arena, which is always present
-	arena_vaddr = main_arena_vaddr;
-	do
-	{
-		enum HEAP_TYPE type;
-		if (arena_vaddr == main_arena_vaddr)
-			type = ENUM_HEAP_MAIN;
-		else
-			type = ENUM_HEAP_DYNAMIC;
-		arena = build_arena(arena_vaddr, type);
-		if (!arena)
-			break;
-		// move to the next arena
-		arena_vaddr = (address_t) arena->mpState.next;
-	} while (arena_vaddr != main_arena_vaddr);
-
-	if (mparams.n_mmaps > 0)
-	{
-		int num_mmap = 0;
-		arena = build_arena(0, ENUM_HEAP_MMAP_BLOCK);
-		if (arena)
-		{
-			struct ca_heap* heap = arena->mpHeap;
-			while (heap)
-			{
-				num_mmap++;
-				heap = heap->mpNext;
-			}
-		}
-		if (num_mmap != mparams.n_mmaps)
-			CA_PRINT("Warning: %d mmap memory blocks were found while mp_ reports %d\n", num_mmap, mparams.n_mmaps);
-	}
-
-	return true;
-}
-
-static bool build_heaps_internal_64(address_t main_arena_vaddr, address_t mparams_vaddr)
-{
-	address_t arena_vaddr;
-	struct ca_arena* arena;
-	bool rc = false;
-
-	// Read in the tuning parames
-	if (glibc_ver_minor == 3)
-		read_mp(3);
-	else if (glibc_ver_minor == 4)
-		read_mp(4);
-	else if (glibc_ver_minor == 5)
-	{
-		read_mp(5);
-		// My machine (rhel5.8) has glibc2.5 but its mp_ is of glibc2.12
-		// !FIXME!
-		if (mparams.pagesize != 0x1000ul)
-		{
-			struct malloc_par_GLIBC_2_12 pars;
-			rc = read_memory_wrapper(NULL, mparams_vaddr, &pars, sizeof(pars));
-			if (rc)
-				COPY_MALLOC_PAR(pars);
-			// pretend this is glibc 2.12
-			if (mparams.pagesize == 0x1000ul)
-			{
-				g_HEAP_MAX_SIZE = HEAP_MAX_SIZE_GLIBC_2_12;
-				g_MAX_FAST_SIZE = MAX_FAST_SIZE_GLIBC_2_12;
-				glibc_ver_minor = 12;
-			}
-		}
-	}
-	else if (glibc_ver_minor >= 12 && glibc_ver_minor <= 16)
-		read_mp(12);
-	else if (glibc_ver_minor >= 17 && glibc_ver_minor <= 23)
-		read_mp(17);
-
-	if (!rc)
-	{
-		CA_PRINT("Failed to read global variable mp_ at "PRINT_FORMAT_POINTER"\n", mparams_vaddr);
+	val = value_of_variable(sym, 0);
+	if(!get_field_value(val, "mmap_threshold", &data, false))
 		return false;
-	}
-
-	if (mparams.pagesize < 0x1000ul || mparams.pagesize & 0xffful)
-	{
-		CA_PRINT("Warning: Page size (%d) is incorrect\n", mparams.pagesize);
+	mparams.mmap_threshold = data;
+	if (!get_field_value(val, "n_mmaps", &data, false))
+		return false;
+	mparams.n_mmaps = data;
+	if (!get_field_value(val, "n_mmaps_max", &data, false))
+		return false;
+	mparams.n_mmaps_max = data;
+	if (!get_field_value(val, "max_n_mmaps", &data, false))
+		return false;
+	mparams.max_n_mmaps = data;
+	/* pagesize is removed in glibc 2.27 */
+	if (!get_field_value(val, "pagesize", &data, true))
+		return false;
+	if (data == ULONG_MAX)
 		mparams.pagesize = 0x1000ul;
-		version_warning();
-		//return false;
-	}
-	if (mparams.sbrk_base == 0)
-	{
-		CA_PRINT("Warning: Unexpected malloc parameter mp_.sbrk_base = 0\n");
-		version_warning();
-		//return false;
-	}
+	else
+		mparams.pagesize = data;
+	if (!get_field_value(val, "mmapped_mem", &data, false))
+		return false;
+	mparams.mmapped_mem = data;
+	if (!get_field_value(val, "sbrk_base", &data, false))
+		return false;
+	mparams.sbrk_base = (char *)data;
+	/* per-thread cache since glibc 2.26 */
+	if (!get_field_value(val, "tcache_bins", &data, true))
+		return false;
+	if (data != ULONG_MAX)
+		mparams.tcache_bins = data;
+	if (!get_field_value(val, "tcache_max_bytes", &data, true))
+		return false;
+	if (data != ULONG_MAX)
+		mparams.tcache_max_bytes = request2size(data);
+	if (!get_field_value(val, "tcache_count", &data, true))
+		return false;
+	if (data != ULONG_MAX)
+		mparams.tcache_count = data;
 
-	// start with main arena, which is always present
-	arena_vaddr = main_arena_vaddr;
-	do
-	{
-		enum HEAP_TYPE type;
-		if (arena_vaddr == main_arena_vaddr)
-			type = ENUM_HEAP_MAIN;
-		else
-			type = ENUM_HEAP_DYNAMIC;
-		arena = build_arena(arena_vaddr, type);
-		if (!arena)
-			break;
-		// move to the next arena
-		arena_vaddr = (address_t) arena->mpState.next;
-	} while (arena_vaddr != main_arena_vaddr);
-
-	if (mparams.n_mmaps > 0)
-	{
-		int num_mmap = 0;
-		arena = build_arena(0, ENUM_HEAP_MMAP_BLOCK);
-		if (arena)
-		{
-			struct ca_heap* heap = arena->mpHeap;
-			while (heap)
-			{
-				num_mmap++;
-				heap = heap->mpNext;
-			}
-		}
-		if (num_mmap != mparams.n_mmaps)
-			CA_PRINT("Warning: %d mmap memory blocks were found while mp_ reports %d\n", num_mmap, mparams.n_mmaps);
+	/* ptmalloc: static INTERNAL_SIZE_T global_max_fast; */
+	sym = lookup_symbol("global_max_fast", 0, VAR_DOMAIN, 0).symbol;
+	if (sym) {
+		val = value_of_variable(sym, 0);
+		mparams.MAX_FAST_SIZE = value_as_long(val);
 	}
 
 	return true;
@@ -1400,12 +1445,87 @@ static bool build_heaps_internal_64(address_t main_arena_vaddr, address_t mparam
 
 static bool build_heaps_internal(address_t main_arena_vaddr, address_t mparams_vaddr)
 {
-	if (g_ptr_bit == 64)
-		return build_heaps_internal_64(main_arena_vaddr, mparams_vaddr);
-	else if (g_ptr_bit == 32)
-		return build_heaps_internal_32(main_arena_vaddr, mparams_vaddr);
-	else
+	address_t arena_vaddr;
+	struct ca_arena* arena;
+	bool rc = false;
+
+	/* defaults */
+	mparams.HEAP_MAX_SIZE = HEAP_MAX_SIZE_GLIBC_2_22; // !TODO!
+	mparams.MAX_FAST_SIZE = (80 * SIZE_SZ / 4);
+	/* Read in the tuning parames */
+	rc = read_mp_by_symbol();
+	if (!rc) {
+		/* We failed to extract mp_ with debug symbols */
+		if (glibc_ver_minor == 3)
+			read_mp(3);
+		else if (glibc_ver_minor == 4)
+			read_mp(4);
+		else if (glibc_ver_minor == 5)
+			read_mp(5);
+		else if (glibc_ver_minor >= 12 && glibc_ver_minor <= 16)
+			read_mp(12);
+		else if (glibc_ver_minor >= 17 && glibc_ver_minor <= 22)
+			read_mp(22);
+	}
+
+	if (!rc ||
+		mparams.pagesize < 0x1000ul || mparams.pagesize & 0xffful ||
+		(size_t)mparams.sbrk_base & (size_t)0xffful ||
+		get_segment((address_t)mparams.sbrk_base, 1) == NULL) {
+		/* Sanity check fails */
+		CA_PRINT("Failed to extract heap metadata from gv mp_\n");
+		version_warning();
 		return false;
+	}
+
+	/* Collect per-thread caches */
+	if (mparams.tcache_bins > 0) {
+		if (!build_tcache()) {
+			CA_PRINT("Failed to extract per-thread cache\n");
+			return false;
+		}
+	}
+
+	/* start with main arena, which is always present */
+	arena_vaddr = main_arena_vaddr;
+	do
+	{
+		enum HEAP_TYPE type;
+		if (arena_vaddr == main_arena_vaddr)
+			type = ENUM_HEAP_MAIN;
+		else
+			type = ENUM_HEAP_DYNAMIC;
+		arena = build_arena(arena_vaddr, type);
+		if (!arena)
+			break;
+		/* move to the next arena */
+		arena_vaddr = (address_t) arena->mpState.next;
+	} while (arena_vaddr != main_arena_vaddr);
+
+	if (mparams.n_mmaps > 0)
+	{
+		int num_mmap = 0;
+		arena = build_arena(0, ENUM_HEAP_MMAP_BLOCK);
+		if (arena)
+		{
+			struct ca_heap* heap = arena->mpHeap;
+			while (heap)
+			{
+				num_mmap++;
+				heap = heap->mpNext;
+			}
+		}
+		if (num_mmap != mparams.n_mmaps)
+			CA_PRINT("Warning: %d mmap memory blocks were found while mp_ reports %d\n", num_mmap, mparams.n_mmaps);
+	}
+
+	/* Sort all cached chunks by address */
+	if (g_cached_chunk_count > 0) {
+		qsort(g_cached_chunks, g_cached_chunk_count, sizeof(g_cached_chunks[0]),
+		    compare_tcache_chunk);
+	}
+
+	return true;
 }
 
 /*
@@ -1426,15 +1546,17 @@ static bool build_heaps(void)
 		return false;
 
 	// Something has changed, discard the old info
-	if (g_arena_cnt > 0)
+	if (g_arena_cnt > 0) {
 		release_all_ca_arenas();
+		release_tcache_chunks();
+	}
 
 	// Support a subset of all glibc versions
 	if (glibc_ver_minor != 3
 		&& glibc_ver_minor != 4
 		&& glibc_ver_minor != 5
 		//&& glibc_ver_minor != 11
-		&& (glibc_ver_minor < 12 || glibc_ver_minor > 23))
+		&& (glibc_ver_minor < 12 || glibc_ver_minor > 27))
 	{
 		CA_PRINT("The memory manager of glibc %d.%d is not supported in this release\n",
 				glibc_ver_major, glibc_ver_minor);
@@ -1442,7 +1564,7 @@ static bool build_heaps(void)
 	}
 
 	main_arena_vaddr = get_var_addr_by_name("main_arena", true);
-	mparams_vaddr    = get_var_addr_by_name("mp_", true); /* main_arena_vaddr + sizeof(struct malloc_state); */
+	mparams_vaddr    = get_var_addr_by_name("mp_", true);
 	if (main_arena_vaddr == 0 || mparams_vaddr == 0)
 	{
 		CA_PRINT("Failed to get the addresses of global variables main_arena & mp_\n");
@@ -1460,62 +1582,20 @@ static bool build_heaps(void)
 }
 
 /*
- * Blocks in fastbins are free but their tags still indicate in-use.
+ * Blocks in per-thread cache are free but their tags still indicate in-use.
  */
-static bool in_fastbins_or_remainder(struct ca_malloc_state* mstate, mchunkptr chunk_p, size_t chunksz)
+static bool
+in_cache(mchunkptr chunkp, size_t chunksz)
 {
-	int ptr_bit = g_ptr_bit;
-	int index;
+	mchunkptr *res = NULL;
 
-	if (!mstate)
+	if (g_cached_chunk_count == 0 ||
+	    ((chunksz > mparams.tcache_max_bytes) && chunksz > mparams.MAX_FAST_SIZE)) {
 		return false;
-
-	if (glibc_ver_minor == 3 || glibc_ver_minor == 4)
-	{
-		if (ptr_bit == 64)
-			index = fastbin_index_GLIBC_2_3(chunksz);
-		else
-			index = fastbin_index_GLIBC_2_3_32(chunksz);
 	}
-	else if (glibc_ver_minor == 5)
-	{
-		if (ptr_bit == 64)
-			index = fastbin_index_GLIBC_2_5(chunksz);
-		else
-			index = fastbin_index_GLIBC_2_5_32(chunksz);
-	}
-	else if (glibc_ver_minor >= 12 && glibc_ver_minor <= 23)
-	{
-		if (ptr_bit == 64)
-			index = fastbin_index_GLIBC_2_12(chunksz);
-		else
-			index = fastbin_index_GLIBC_2_12_32(chunksz);
-	}
-	else
-		return false;
-
-	// Fastbins
-	if(index < mstate->nfastbins)
-	{
-		size_t mchunk_sz = ptr_bit == 64 ? sizeof(struct malloc_chunk) : sizeof(struct malloc_chunk_32);
-		address_t chunk_vaddr = (address_t)mstate->fastbins[index];
-		while (chunk_vaddr)
-		{
-			union ca_malloc_chunk fast_chunk;
-			if (chunk_vaddr == (address_t)chunk_p)
-				return true;
-			else if (!read_memory_wrapper(NULL, chunk_vaddr, &fast_chunk, mchunk_sz))
-				return false;
-			/*
-			if (chunk_vaddr == (address_t)fast_chunk.fd)
-				break;
-			*/
-			if (ca_chunksize(ptr_bit, &fast_chunk) > g_MAX_FAST_SIZE)
-				return false;
-			chunk_vaddr = ca_chunk_fd(ptr_bit, &fast_chunk);
-		}
-	}
-	return false;
+	res = bsearch(&chunkp, g_cached_chunks, g_cached_chunk_count,
+	    sizeof(g_cached_chunks[0]), compare_tcache_chunk);
+	return (res != NULL);
 }
 
 /*
@@ -1525,12 +1605,11 @@ static bool build_heap_chunks(struct ca_heap* heap)
 {
 	unsigned int count;
 	address_t cursor;
-	union ca_malloc_chunk achunk;
+	struct malloc_chunk achunk;
 	size_t chunksz;
 	bool lbFencePost;
-	int ptr_bit = g_ptr_bit;
-	size_t mchunk_sz = ptr_bit == 64 ? sizeof(struct malloc_chunk) : sizeof(struct malloc_chunk_32);
-	size_t size_t_sz = ptr_bit == 64 ? sizeof(INTERNAL_SIZE_T) : sizeof(INTERNAL_SIZE_T_32);
+	size_t mchunk_sz = sizeof(struct malloc_chunk);
+	size_t size_t_sz = sizeof(INTERNAL_SIZE_T);
 
 	// First pass, count the number of blocks
 	count = 0;
@@ -1543,7 +1622,7 @@ static bool build_heap_chunks(struct ca_heap* heap)
 			return false;
 
 		// check if chunk size is within valid range
-		chunksz = ca_chunksize(ptr_bit, &achunk);
+		chunksz = chunksize(&achunk);
 		if (cursor > (address_t)(-chunksz)
 			|| cursor+chunksz+mchunk_sz > heap->mEndAddr+0x100)
 		{
@@ -1583,7 +1662,7 @@ static bool build_heap_chunks(struct ca_heap* heap)
 		heap->mChunks[count++] = cursor + size_t_sz;
 		read_memory_wrapper(NULL, cursor, &achunk, mchunk_sz);
 		// check if chunk size is within valid range
-		chunksz = ca_chunksize(ptr_bit, &achunk);
+		chunksz = chunksize(&achunk);
 		if (cursor > (address_t)(-chunksz)
 			|| cursor+chunksz+mchunk_sz > heap->mEndAddr+0x100)
 		{
@@ -1643,11 +1722,10 @@ static address_t search_chunk(struct ca_heap* heap, address_t addr)
 static bool fill_heap_block(struct ca_heap* heap, address_t addr, struct heap_block* blk)
 {
 	address_t chunk_addr;
-	union ca_malloc_chunk achunk;
+	struct malloc_chunk achunk;
 	size_t chunksz;
-	int ptr_bit = g_ptr_bit;
-	size_t size_t_sz = ptr_bit == 64 ? sizeof(INTERNAL_SIZE_T) : sizeof(INTERNAL_SIZE_T_32);
-	size_t mchunk_sz = ptr_bit == 64 ? sizeof(struct malloc_chunk) : sizeof(struct malloc_chunk_32);
+	size_t size_t_sz = sizeof(INTERNAL_SIZE_T);
+	size_t mchunk_sz = sizeof(struct malloc_chunk);
 
 	// For mmap heap, there is only one block and in-use
 	if (heap->mArena->mType == ENUM_HEAP_MMAP_BLOCK)
@@ -1655,7 +1733,7 @@ static bool fill_heap_block(struct ca_heap* heap, address_t addr, struct heap_bl
 		if (!read_memory_wrapper(NULL, heap->mStartAddr - size_t_sz, &achunk, mchunk_sz))
 			return false;
 		blk->addr = heap->mStartAddr + size_t_sz;
-		blk->size = ca_chunksize(ptr_bit, &achunk) - size_t_sz*2;
+		blk->size = chunksize(&achunk) - size_t_sz*2;
 		blk->inuse = true;
 		return true;
 	}
@@ -1666,7 +1744,7 @@ static bool fill_heap_block(struct ca_heap* heap, address_t addr, struct heap_bl
 	chunk_addr = search_chunk(heap, addr) - size_t_sz;
 	if (!read_memory_wrapper(NULL, chunk_addr, &achunk, mchunk_sz))
 		return false;
-	chunksz = ca_chunksize(ptr_bit, &achunk);
+	chunksz = chunksize(&achunk);
 	blk->addr = chunk_addr + size_t_sz*2;
 	// top pad
 	if (chunk_addr + chunksz + mchunk_sz >= heap->mEndAddr)
@@ -1677,12 +1755,12 @@ static bool fill_heap_block(struct ca_heap* heap, address_t addr, struct heap_bl
 	else
 	{
 		// Get the next chunk which has the prev_inuse bit flag
-		union ca_malloc_chunk next_chunk;
+		struct malloc_chunk next_chunk;
 		if (!read_memory_wrapper(NULL, chunk_addr + chunksz, &next_chunk, mchunk_sz))
 			return false;
 
-		if (ca_prev_inuse(ptr_bit, &next_chunk)
-			&& (chunksz > g_MAX_FAST_SIZE || !in_fastbins_or_remainder(&heap->mArena->mpState, (mchunkptr)chunk_addr, chunksz)) )
+		if (prev_inuse(&next_chunk) &&
+			!in_cache((mchunkptr)chunk_addr, chunksz))
 		{
 			blk->inuse = true;
 		}
@@ -1702,13 +1780,12 @@ static bool fill_heap_block(struct ca_heap* heap, address_t addr, struct heap_bl
 static bool check_bin_and_fastbin(struct ca_arena* arena)
 {
 	bool rc = true;
-	unsigned int ptr_bit = g_ptr_bit;
-	address_t amask = ptr_bit == 64 ? 7 : 3;
+	address_t amask = 7;
 
 	// check fastbins
 	int bi;
 	int fbi;
-	size_t mchunk_sz = ptr_bit == 64 ? sizeof(struct malloc_chunk) : sizeof(struct malloc_chunk_32);
+	size_t mchunk_sz = sizeof(struct malloc_chunk);
 	bool error_found;
 
 	if (arena->mType == ENUM_HEAP_MMAP_BLOCK)
@@ -1721,7 +1798,7 @@ static bool check_bin_and_fastbin(struct ca_arena* arena)
 		error_found = false;
 		while (chunk_vaddr)
 		{
-			union ca_malloc_chunk fast_chunk;
+			struct malloc_chunk fast_chunk;
 			if (chunk_vaddr & amask)
 			{
 				CA_PRINT("\nError: chunk at "PRINT_FORMAT_POINTER" in fastbin[%d] is misaligned\n",
@@ -1740,20 +1817,15 @@ static bool check_bin_and_fastbin(struct ca_arena* arena)
 				{
 					if (read_memory_wrapper(NULL, chunk_prev_vaddr, &fast_chunk, mchunk_sz))
 						CA_PRINT("\tChunk address comes from previous fastbin chunk at "PRINT_FORMAT_POINTER" with fd="PRINT_FORMAT_POINTER"\n",
-								chunk_prev_vaddr, ca_chunk_fd(ptr_bit, &fast_chunk));
+								chunk_prev_vaddr, (address_t)(fast_chunk.fd));
 				}
 				else
 					CA_PRINT("\tChunk address is the first chunk of this fastbin\n");
 				rc = false;
 				break;
 			}
-			//if (bDebug)
-			//{
-			//	CA_PRINT("Fastbin[%d] Chunk at "PRINT_FORMAT_POINTER", its size tag is "PRINT_FORMAT_POINTER", fd="PRINT_FORMAT_POINTER"\n",
-			//			fbi, chunk_vaddr, ptr_bit==64 ? fast_chunk.chunk.size : fast_chunk.chunk_32.size, ca_chunk_fd(ptr_bit, &fast_chunk));
-			//}
 			chunk_prev_vaddr = chunk_vaddr;
-			chunk_vaddr = ca_chunk_fd(ptr_bit, &fast_chunk);
+			chunk_vaddr = (address_t)(fast_chunk.fd);
 		}
 	}
 
@@ -1762,8 +1834,7 @@ static bool check_bin_and_fastbin(struct ca_arena* arena)
 	{
 		address_t chunk_vaddr = (address_t)arena->mpState.bins[bi];
 		address_t chunk_next_vaddr = (address_t)arena->mpState.bins[bi+1];
-		union ca_malloc_chunk chunk;
-		union ca_malloc_chunk chunk_first;
+		struct malloc_chunk chunk, chunk_first;
 
 		error_found = false;
 		//if (bDebug)
@@ -1798,11 +1869,6 @@ static bool check_bin_and_fastbin(struct ca_arena* arena)
 			address_t chunk_prev_vaddr = 0;
 			while (chunk_vaddr)
 			{
-				//if (bDebug)
-				//{
-				//	CA_PRINT("Bin[%d] Chunk at "PRINT_FORMAT_POINTER", its size tag is "PRINT_FORMAT_POINTER", fd="PRINT_FORMAT_POINTER", bk="PRINT_FORMAT_POINTER"\n",
-				//			bi, chunk_vaddr, ptr_bit==64 ? chunk.chunk.size : chunk.chunk_32.size, ca_chunk_fd(ptr_bit, &chunk), ca_chunk_bk(ptr_bit, &chunk));
-				//}
 				if (chunk_vaddr & amask)
 				{
 					CA_PRINT("\nError: chunk at "PRINT_FORMAT_POINTER" in bin[%d] is misaligned\n",
@@ -1815,24 +1881,24 @@ static bool check_bin_and_fastbin(struct ca_arena* arena)
 							chunk_vaddr, bi); /*T*/
 					error_found = true;
 				}
-				else if (chunk_prev_vaddr && ca_chunk_bk(ptr_bit, &chunk) != chunk_prev_vaddr)
+				else if (chunk_prev_vaddr && (address_t)(chunk.bk) != chunk_prev_vaddr)
 				{
 					CA_PRINT("\nError: chunk at "PRINT_FORMAT_POINTER" witch bk="PRINT_FORMAT_POINTER" that does not point to previous chunk\n",
-							chunk_vaddr, ca_chunk_bk(ptr_bit, &chunk));
+							chunk_vaddr, (address_t)(chunk.bk));
 					error_found = true;
 				}
-				else if (ca_chunk_fd(ptr_bit, &chunk) == chunk_first_vaddr)
+				else if ((address_t)(chunk.fd) == chunk_first_vaddr)
 				{
-					if (ca_chunk_bk(ptr_bit, &chunk_first) != chunk_vaddr)
+					if ((address_t)(chunk_first.bk) != chunk_vaddr)
 					{
 						CA_PRINT("\nError: bk="PRINT_FORMAT_POINTER" of first chunk does not point to last chunk="PRINT_FORMAT_POINTER"\n",
-								ca_chunk_bk(ptr_bit, &chunk_first), chunk_vaddr);
+								(address_t)(chunk_first.bk), chunk_vaddr);
 						error_found = true;
 					}
-					if (ca_chunk_fd(ptr_bit, &chunk) != chunk_first_vaddr)
+					if ((address_t)(chunk.fd) != chunk_first_vaddr)
 					{
 						CA_PRINT("\nError: fd="PRINT_FORMAT_POINTER" of last chunk does not point to first chunk="PRINT_FORMAT_POINTER"\n",
-								ca_chunk_fd(ptr_bit, &chunk), chunk_first_vaddr);
+								(address_t)(chunk.fd), chunk_first_vaddr);
 						error_found = true;
 					}
 				}
@@ -1842,7 +1908,7 @@ static bool check_bin_and_fastbin(struct ca_arena* arena)
 					{
 						if (read_memory_wrapper(NULL, chunk_prev_vaddr, &chunk, mchunk_sz))
 							CA_PRINT("\tChunk address comes from previous bin[%d] chunk at "PRINT_FORMAT_POINTER" with {fd="PRINT_FORMAT_POINTER", bk="PRINT_FORMAT_POINTER"}\n",
-									bi, chunk_prev_vaddr, ca_chunk_fd(ptr_bit, &chunk), ca_chunk_bk(ptr_bit, &chunk));
+									bi, chunk_prev_vaddr, (address_t)(chunk.fd), (address_t)(chunk.bk));
 					}
 					else
 						CA_PRINT("\tChunk address is the first chunk of the bin[%d]\n", bi);
@@ -1850,7 +1916,7 @@ static bool check_bin_and_fastbin(struct ca_arena* arena)
 					break;
 				}
 				chunk_prev_vaddr = chunk_vaddr;
-				chunk_vaddr = ca_chunk_fd(ptr_bit, &chunk);
+				chunk_vaddr = (address_t)(chunk.fd);
 				if (chunk_vaddr == chunk_first_vaddr)
 				{
 					chunk_vaddr = 0;
@@ -1873,12 +1939,11 @@ static bool traverse_heap_blocks(struct ca_heap* heap,
 							unsigned long* opNumInuse,	// output number of inuse blocks
 							unsigned long* opNumFree)	// output number of free blocks
 {
-	int ptr_bit = g_ptr_bit;
-	size_t size_t_sz = ptr_bit == 64 ? sizeof(INTERNAL_SIZE_T) : sizeof(INTERNAL_SIZE_T_32);
-	size_t mchunk_sz = ptr_bit == 64 ? sizeof(struct malloc_chunk) : sizeof(struct malloc_chunk_32);
+	size_t size_t_sz = sizeof(INTERNAL_SIZE_T);
+	size_t mchunk_sz = sizeof(struct malloc_chunk);
 
 	address_t cursor;
-	union ca_malloc_chunk achunk;
+	struct malloc_chunk achunk;
 	size_t totoal_free_bytes, num_free;
 	size_t totoal_inuse_bytes, num_inuse;
 	address_t heap_begin = heap->mStartAddr - size_t_sz;
@@ -1900,12 +1965,12 @@ static bool traverse_heap_blocks(struct ca_heap* heap,
 	{
 		int lbFreeBlock, lbLastBlock;
 		// check if chunk size is within valid range
-		size_t chunksz = ca_chunksize(ptr_bit, &achunk);
+		size_t chunksz = chunksize(&achunk);
 		if (cursor > (address_t)(-chunksz) || cursor < heap_begin || cursor > heap_end
 			|| cursor+chunksz+mchunk_sz > heap_end+0x100)
 		{
 			CA_PRINT("Failed to walk arena. The chunk at "PRINT_FORMAT_POINTER" may be corrupted. Its size tag is "PRINT_FORMAT_POINTER"\n",
-					cursor, ptr_bit==64 ? achunk.chunk.size : achunk.chunk_32.size);
+					cursor, achunk.size);
 			return false;
 		}
 
@@ -1936,15 +2001,15 @@ static bool traverse_heap_blocks(struct ca_heap* heap,
 		else
 		{
 			// Get the next chunk
-			union ca_malloc_chunk next_chunk;
+			struct malloc_chunk next_chunk;
 			if (!read_memory_wrapper(NULL, cursor+chunksz, &next_chunk, mchunk_sz))
 			{
 				CA_PRINT("Failed to get chunk at "PRINT_FORMAT_POINTER"\n", cursor+chunksz);
 				return false;
 			}
 
-			if (ca_prev_inuse(ptr_bit, &next_chunk)
-				&& (chunksz > g_MAX_FAST_SIZE || !in_fastbins_or_remainder(&arena->mpState, (mchunkptr)cursor, chunksz)) )
+			if (prev_inuse(&next_chunk) &&
+				!in_cache((mchunkptr)cursor, chunksz))
 			{
 				lbFreeBlock = false;
 				num_inuse++;
@@ -1959,7 +2024,7 @@ static bool traverse_heap_blocks(struct ca_heap* heap,
 				add_block_mem_histogram(chunksz - size_t_sz, false, 1);
 			}
 			// Special case of double fencepost for non-contiguous main_arena heaps
-			if (chunksz == 2*size_t_sz && ca_chunksize(ptr_bit, &next_chunk) == 2*size_t_sz)
+			if (chunksz == 2*size_t_sz && chunksize(&next_chunk) == 2*size_t_sz)
 				lbLastBlock = true;
 			achunk = next_chunk;
 		}
@@ -2010,13 +2075,13 @@ static bool traverse_heap_blocks(struct ca_heap* heap,
  */
 static bool get_glibc_version(void)
 {
-#define BUF_SZ 32
-	char buf[BUF_SZ];
+	const size_t bufsz = 64;
+	char buf[bufsz];
 	const char* version = gnu_get_libc_version();
 	int len = strlen(version);
 	int i;
 
-	if (len >= BUF_SZ)
+	if (len >= bufsz)
 		return false;
 
 	strncpy(buf, version, len+1);
@@ -2041,24 +2106,70 @@ static bool get_glibc_version(void)
 }
 
 /*
- * Helper functions that depends on the glibc version
+ * Helper functions
  *
  */
-static size_t get_mstate_size(void)
+static int
+type_field_name2no(struct type *type, const char *field_name)
 {
-	size_t mstate_size;
-	if (glibc_ver_minor == 3)
-		mstate_size = g_ptr_bit == 64 ? sizeof(struct malloc_state_GLIBC_2_3) : sizeof(struct malloc_state_GLIBC_2_3_32);
-	else if (glibc_ver_minor == 4)
-		mstate_size = g_ptr_bit == 64 ? sizeof(struct malloc_state_GLIBC_2_4) : sizeof(struct malloc_state_GLIBC_2_4_32);
-	else if (glibc_ver_minor == 5)
-		mstate_size = g_ptr_bit == 64 ? sizeof(struct malloc_state_GLIBC_2_5) : sizeof(struct malloc_state_GLIBC_2_5_32);
-	else if (glibc_ver_minor >= 12 && glibc_ver_minor <= 21)
-		mstate_size = g_ptr_bit == 64 ? sizeof(struct malloc_state_GLIBC_2_12) : sizeof(struct malloc_state_GLIBC_2_12_32);
-	else if (glibc_ver_minor >= 22 && glibc_ver_minor <= 23)
-		mstate_size = g_ptr_bit == 64 ? sizeof(struct malloc_state_GLIBC_2_22) : sizeof(struct malloc_state_GLIBC_2_22_32);
-	else
-		assert(0 && "internal error: glibc version not supported");
+	int n;
 
-	return mstate_size;
+	if (type == NULL)
+		return -1;
+
+	type = check_typedef (type);
+
+	for (n = 0; n < TYPE_NFIELDS (type); n++) {
+		if (strcmp (field_name, TYPE_FIELD_NAME (type, n)) == 0)
+			return n;
+	}
+	return -1;
+}
+
+static bool
+get_field_value(struct value *val, const char *fieldname,
+				size_t *data, bool optional)
+{
+	int fieldno;
+	struct value *field_val;
+
+	*data = ULONG_MAX;
+	fieldno = type_field_name2no(value_type(val), fieldname);
+	if (fieldno < 0) {
+		if (optional) {
+			return true;
+		} else {
+			CA_PRINT("Failed to find member \"%s\"\n", fieldname);
+			return false;
+		}
+	}
+	field_val = value_field(val, fieldno);
+	*data = value_as_long(field_val);
+	return true;
+}
+
+static bool
+memcpy_field_value(struct value *val, const char *fieldname, char *buf,
+    size_t bufsz)
+{
+	int fieldno;
+	struct value *field_val;
+	size_t fieldsz;
+
+	fieldno = type_field_name2no(value_type(val), fieldname);
+	if (fieldno < 0) {
+		return false;
+	}
+	field_val = value_field(val, fieldno);
+	fieldsz = TYPE_LENGTH(value_type(field_val));
+	if (bufsz < fieldsz) {
+		CA_PRINT("Internal error: buffer of member \"%s\" is too small\n",
+		    fieldname);
+		return false;
+	}
+	if (!read_memory_wrapper(NULL, value_address(field_val), buf, fieldsz)) {
+		CA_PRINT("Failed to read member \"%s\"\n", fieldname);
+		return false;
+	}
+	return true;
 }

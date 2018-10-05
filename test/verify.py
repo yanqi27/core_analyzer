@@ -33,11 +33,11 @@ def check_heap_blocks(known_blks, count):
 
 		if not match:
 			print "[ca_test] core analyzer returns wrong heap info of block [%d]" % (i)
-			print "[ca_test] \ttrue:  addr=0x%x size=%u inuse=%d" \
-				% (blk['p'], blk['size'], blk['inuse'])
-			print "[ca_test] \twrong: addr=0x%x size=%u inuse=%d" \
+			print "[ca_test] \texpected:  addr=0x%x size=%u inuse=%d" \
+				% (blk_addr, blk_size, blk['inuse'])
+			print "[ca_test] \tgot:       addr=0x%x size=%u inuse=%d" \
 				% (my_blk.address, my_blk.size, my_blk.inuse)
-			raise Exception('Failed to check block at %x' % blk_addr)
+			raise Exception('Failed to check block at 0x%x' % blk_addr)
 
 		i = i + 1
 	print "[ca_test]\tVerified %d heap blocks" % (count)
@@ -54,9 +54,9 @@ def check_big_blocks(big_blks, big_count, user_blks):
 		blk_size = blk.size
 		if blk_size != sorted_user_blks[i].size:
 			print "[ca_test] The [%d]th biggest heap block is wrong" % (i + 1)
-			print "[ca_test] true:  addr=0x%x size=%u" \
+			print "[ca_test] expected:  addr=0x%x size=%u" \
 				% (sorted_user_blks[i].address, sorted_user_blks[i].size)
-			print "[ca_test] wrong: addr=0x%x size=%u" % (blk_addr, blk_size)
+			print "[ca_test] got:       addr=0x%x size=%u" % (blk_addr, blk_size)
 			raise Exception('Test Failed')
 
 		i = i + 1

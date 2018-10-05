@@ -1,29 +1,37 @@
-#### Introduction
+### Introduction
 gdbplus is an extension to the formal releases of GNU debugger gdb
-(http://www.gnu.org/software/gdb/) with core analyzer incorporated. It supports
+(http://www.gnu.org/software/gdb/) with core analyzer embedded. It supports
 the same functions, such as heap scan, object reference search, memory pattern
-analysis, etc., with the additional power of debug symbols. The result is clear
-picture of the memory layout and object relationship of data objects. These
-added features may shed light on tough issues such as memory corruption,
-debugging highly optimized code, race condition, etc. The current
-implementation is tested on x86_64 architecture including RedHat/SUSE both
-32-bit and 64-bit, MacOSX 64-bit only. It won't be difficult to port to other
-platforms if necessary.
+analysis, etc., with the additional power of debug symbols. It has additional
+features like disassembling optimized code with the context of heap objects. The
+current implementation supports x86_64 architecture. However, it won't be
+difficult to port to other architectures and platforms if necessary.
 
-#### Features
+### Features
 A set of gdb commands are added to this custom build. Detail description of
 these functions may be found in the project's website:
 http://core-analyzer.sourceforge.net/
 
-##### How to Build
-The source bundle includes the executable "gdb" under `bin`. You may simply
-copy this executable on to your machine where `gdb` is installed, for example,
-`/usr/bin` or `/usr/local/bin`. If you want to build by yourself, you will
-need to download the corresponding verion of gdb
+### How to Build
+The source bundle includes an executable "gdb" under `bin` directory. This is for
+evaluation and testing purpose. It is recommended to build your own executable
+in your environment. You will need to download the corresponding verion of gdb
 (http://www.gnu.org/software/gdb/download/). Copy gdbplus source and header
-files (gdbplus/gdb-7.5.1/gdb) into the respective subfoler of downloaded
+files (gdbplus/gdb-7.11.1/gdb) into the respective subfoler of downloaded
 source. Then build as usual.
 ```
-$./configure
-$make
+$ ./configure --with-python --prefix=/usr/local
+$ make
+```
+
+### Debug Symbols of Heap Structures
+Core analyzer extracts heap metadata with the help of debug symbols. Without the
+matching debug symbols, its functions are limited or don't work at all. For
+example, Linux heap data structures are defined in libc.so which debug symbols
+are required. On Ubuntu, this is package `libc6-dbg` which is installed out of box.
+On CentOS, you can run command `sudo debuginfo-install -y glibc`.
+libc.so debug symbols are installed at /usr/lib/debug by default. If gdb doesn't find
+it, you can add the following line in you `.gdbinit` file.
+```
+set debug-file-directory /usr/lib/debug
 ```

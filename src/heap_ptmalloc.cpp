@@ -1586,8 +1586,10 @@ in_cache(mchunkptr chunkp, size_t chunksz)
 {
 	mchunkptr *res = NULL;
 
-	if (g_cached_chunk_count == 0 || chunksz > mparams.tcache_max_bytes)
+	if (g_cached_chunk_count == 0 ||
+	    ((chunksz > mparams.tcache_max_bytes) && chunksz > mparams.MAX_FAST_SIZE)) {
 		return false;
+	}
 	res = bsearch(&chunkp, g_cached_chunks, g_cached_chunk_count,
 	    sizeof(g_cached_chunks[0]), compare_tcache_chunk);
 	return (res != NULL);

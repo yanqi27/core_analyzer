@@ -856,8 +856,10 @@ static void release_all_ca_arenas(void)
 static void
 release_tcache_chunks(void)
 {
+	unsigned int i;
+
 	if (g_cached_chunk_count > 0) {
-		for (unsigned int i = 0; i < g_cached_chunk_count; i++) {
+		for (i = 0; i < g_cached_chunk_count; i++) {
 			g_cached_chunks[i] = NULL;
 		}
 		g_cached_chunk_count = 0;
@@ -905,6 +907,7 @@ thread_tcache (struct thread_info *info, void *data)
 	tcache_perthread_struct tcps;
 	size_t valsz;
 	address_t addr;
+	unsigned int i;
 
 	switch_to_thread (info->ptid);
 
@@ -929,7 +932,7 @@ thread_tcache (struct thread_info *info, void *data)
 		return false;
 	}
 	/* Each entry is a singly-linked list */
-	for (unsigned int i = 0; i < mparams.tcache_bins; i++) {
+	for (i = 0; i < mparams.tcache_bins; i++) {
 		unsigned int count = 0;
 		tcache_entry *entry = tcps.entries[i];
 

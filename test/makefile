@@ -3,7 +3,7 @@ CXX = g++
 
 COMP_OPT = -g -m64 -fpermissive
 
-LIBS = 
+LIBS = -lpthread 
 
 TARGETS = mallocTest
 

@@ -20,6 +20,30 @@
 #include <malloc.h>
 #endif
 
+#include <pthread.h>
+
+#define NUM_THREADS 2
+/*
+ * Since glibc 2.26, ptmalloc introduces per-thread cache.
+ * In order for core_analyzer to parse all heap data, the application
+ * needs to link with libpthread. This allows gdb to extract thread-local
+ * variables of ptmalloc tcache.
+ * !TODO! multi-threaded malloc/free
+ */
+static pthread_mutex_t myLock = PTHREAD_MUTEX_INITIALIZER;
+static int region_index;
+
+static int
+get_index(void)
+{
+	int res;
+
+	pthread_mutex_lock(&myLock);
+	res = region_index++;
+	pthread_mutex_unlock(&myLock);
+
+	return res;
+}
 struct region {
 	void *p;
 	size_t size;
@@ -62,9 +86,9 @@ private:
 	float speed;
 };
 
-const unsigned int num_small_regions = 4096;
-const unsigned int num_big_regions = 8;
-const unsigned int num_regions = num_small_regions + num_big_regions;
+const unsigned int num_small_regions = 4096 * NUM_THREADS;
+const unsigned int num_big_regions = 8 * NUM_THREADS;
+const unsigned int num_regions = num_small_regions + num_big_regions + 1;
 region * regions;
 
 const unsigned int num_derived = 4;
@@ -74,7 +98,7 @@ uintptr_t hidden_object;
 static size_t
 rand_size()
 {
-	return rand() % 1024;
+	return rand() % 1032;
 }
 
 static void
@@ -108,21 +132,15 @@ region_size(void *p)
 #endif
 }
 
-int
-main(int argc, char** argv)
+static void *
+thread_func(void *arg)
 {
-	unsigned int index = 0;
-	unsigned int i;
-
-	// Initialize random number generator
-	srand (time(NULL));
-
-	regions = (region *) calloc(num_regions, sizeof *regions);
-	if (regions == NULL)
-		fatal_error("Out of memory");
+	volatile bool *done = (volatile bool *)arg;
+	unsigned int index, i;
 
 	// Allocate small memory blocks in random sizes
-	for (i = 0; i < num_small_regions; i++, index++) {
+	for (i = 0; i < num_small_regions/NUM_THREADS; i++) {
+		index = get_index();
 		regions[index].size = rand_size();
 		regions[index].inuse = true;
 		regions[index].p = malloc(regions[index].size);
@@ -134,7 +152,8 @@ main(int argc, char** argv)
 	// Allocate big memory blocks, i.e. > 128KiB
 	const size_t threshold = 128 * 1024;
 	const size_t page_size = 4096;
-	for (i = 0; i < num_big_regions; i++, index++) {
+	for (i = 0; i < num_big_regions/NUM_THREADS; i++) {
+		index = get_index();
 		regions[index].size = threshold + (rand() % 16) * page_size;
 		regions[index].inuse = true;
 		regions[index].p = malloc(regions[index].size);
@@ -142,6 +161,46 @@ main(int argc, char** argv)
 			fatal_error("Out of memory");
 		regions[index].size = region_size(regions[index].p);
 	}
+
+	// Signal memory allocation has finished, wait for memory release
+	*done = true;
+	while (*done) {
+		sleep(1);
+	}
+
+	// Free some small memory blocks
+	for (i = 0; i < (num_regions - 1)/NUM_THREADS; i++) {
+		index = get_index();
+		if (regions[index].size < threshold && is_lucky(index)) {
+			regions[index].inuse = false;
+			free(regions[index].p);
+		}
+	}
+
+	// Don't exit the thread so that per-thread cache is valid
+	*done = true;
+	while (true) {
+		sleep(1);
+	}
+
+	return NULL;
+}
+
+int
+main(int argc, char** argv)
+{
+	int i;
+
+	// Initialize random number generator
+	srand (time(NULL));
+
+	regions = (region *) calloc(num_regions, sizeof *regions);
+	if (regions == NULL)
+		fatal_error("Out of memory");
+	// Include the allocated buffer for regions
+	regions[num_regions - 1].inuse = true;
+	regions[num_regions - 1].p = regions;
+	regions[num_regions - 1].size = region_size(regions);
 
 	// Create a group of Base objects
 	for (i = 0; i < num_derived; i++) {
@@ -158,12 +217,28 @@ main(int argc, char** argv)
 	}
 	hidden_object = (uintptr_t)objlist.front();
 
-	// Free some small memory blocks
-	for (i = 0; i < num_small_regions; i++) {
-		if (is_lucky(i) == true) {
-			regions[i].inuse = false;
-			free(regions[i].p);
+	bool flags[NUM_THREADS];
+	pthread_t tids[NUM_THREADS];
+	for (i = 0; i < NUM_THREADS; i++)
+		flags[i] = false;
+	for (i = 0; i < NUM_THREADS; i++) {
+		if (pthread_create(&tids[i], NULL, thread_func, &flags[i]) != 0) {
+			fatal_error("Failed to create pthread");
 		}
+	}
+	// Wait for threads to finish memory allocations
+	for (i = 0; i < NUM_THREADS; i++) {
+		while (flags[i] == false)
+			sleep(1);
+	}
+	// Signal threads to start releasing memory
+	region_index = 0;
+	for (i = 0; i < NUM_THREADS; i++)
+		flags[i] = false;
+	// Wait until memory release is done
+	for (i = 0; i < NUM_THREADS; i++) {
+		while (flags[i] == false)
+			sleep(1);
 	}
 
 	// Test driver may break at this function for inspection or create a core dump

@@ -35,6 +35,10 @@ struct span_stats {
 /*
  * Globals
  */
+static int tc_version_major = 2;
+static int tc_version_minor = 0;
+static int tc_version_patch = 0;
+
 static bool g_initialized = false;
 
 static struct ca_config g_config;
@@ -52,7 +56,7 @@ static unsigned long g_cached_blocks_count;
  * Forward declaration
  */
 static void gdb_symbol_prelude(void);
-static int type_field_name2no(struct type *, const char *);
+static struct value *get_field_value(struct value *, const char *);
 static bool parse_config(void);
 static bool parse_pagemap(void);
 static bool parse_thread_cache(void);
@@ -621,12 +625,9 @@ parse_config(void)
 	/*
 	 * tcmalloc::Static::sizemap_.class_to_size_
 	 */
-	fieldno = type_field_name2no(value_type(sizemap), "class_to_size_");
-	if (fieldno < 0) {
-		CA_PRINT("Failed to find member \"class_to_size_\"\n");
+	class_to_size = get_field_value(sizemap, "class_to_size_");
+	if (!class_to_size)
 		return false;
-	}
-	class_to_size = value_field (sizemap, fieldno);
 	if (TYPE_CODE (value_type(class_to_size)) != TYPE_CODE_ARRAY) {
 		CA_PRINT("Unexpected \"class_to_size\" is not an array\n");
 		return false;
@@ -664,91 +665,35 @@ parse_config(void)
 	return true;
 }
 
-bool
-parse_pagemap(void)
+static bool
+parse_pagemap_2_5(struct symbol *pageheap_, struct type *leaf_type,
+    struct type *span_type)
 {
-        char *exp;
-        struct expression *expr;
-        struct value *val;
-	struct symbol *pageheap_;
 	struct value *pageheap_p, *pageheap;
 	struct value *pagemap;
 	struct value *root_p, *root;
 	struct value *ptrs;
-	int fieldno;
 	LONGEST low_bound, high_bound, index;
-	struct type *leaf_type, *span_type, *my_type;
 
-	/*
-	 * We need to cast a void* to this type later
-	 */
-        exp = "\"TCMalloc_PageMap3<35>::Leaf\"";
-        expr = parse_expression(exp);
-        val = evaluate_type(expr);
-	leaf_type = value_type(val);
-        if (leaf_type == NULL) {
-                CA_PRINT("Failed to lookup type \"TCMalloc_PageMap3<35>::Leaf\"\n");
-                 CA_PRINT("Do you forget to download debug symbol of "
-                    "libtcmalloc?\n");
-                return false;
-        }
-
-        exp = "tcmalloc::Span";
-	span_type = lookup_transparent_type(exp);
-	if (span_type == NULL) {
-                CA_PRINT("Failed to lookup type \"tcmalloc::Span\"\n");
-		CA_PRINT("Do you forget to download debug symbol of "
-		    "libtcmalloc?\n");
-		return false;
-	}
-	leaf_type = lookup_pointer_type(leaf_type);
-	span_type = lookup_pointer_type(span_type);
-
-	/*
-	 * Global var
-	 * tcmalloc::PageHeap *tcmalloc::Static::pageheap_;
-	 */
-	pageheap_ = lookup_global_symbol("tcmalloc::Static::pageheap_", 0,
-	    VAR_DOMAIN).symbol;
-	if (pageheap_ == NULL) {
-		CA_PRINT("Failed to lookup gv "
-		    "\"tcmalloc::Static::pageheap_\"\n");
-		return false;
-	}
-        my_type = SYMBOL_TYPE(pageheap_);
-        if (TYPE_NAME(my_type) && strcmp(TYPE_NAME(my_type), "tcmalloc::Static::PageHeapStorage") == 0) {
-                CA_PRINT("TCMalloc 2.6 and later is not supported\n");
-                return false;
-        } 
+	/* struct symbol to struct value */
 	pageheap_p = value_of_variable(pageheap_, 0);
+	/* deref pointer value */ 
 	pageheap = value_ind(pageheap_p);
-
 	/*
 	 * tcmalloc::Static::pageheap_->pagemap_
 	 */
-	fieldno = type_field_name2no(value_type(pageheap), "pagemap_");
-	if (fieldno < 0) {
-		CA_PRINT("Failed to find member \"pagemap_\"\n");
-		return false;
-	}
-	pagemap = value_field (pageheap, fieldno);
+	pagemap = get_field_value(pageheap, "pagemap_");
 
 	/*
 	 * tcmalloc::Static::pageheap_->pagemap_.root_
 	 */
-	fieldno = type_field_name2no(value_type(pagemap), "root_");
-	if (fieldno < 0) {
-		CA_PRINT("Failed to find member \"root_\"\n");
-		return false;
-	}
-	root_p = value_field(pagemap, fieldno);
+	root_p = get_field_value(pagemap, "root_");
 	root = value_ind(root_p);
 
 	/*
 	 * tcmalloc::Static::pageheap_->pagemap_.root_->ptrs
 	 */
-	fieldno = type_field_name2no(value_type(root), "ptrs");
-	ptrs = value_field(root, fieldno);
+	ptrs = get_field_value(root, "ptrs");
 	if (TYPE_CODE (value_type(ptrs)) != TYPE_CODE_ARRAY) {
 		CA_PRINT("Unexpected \"ptrs\" is not an array\n");
 		return false;
@@ -776,8 +721,7 @@ parse_pagemap(void)
 		/*
 		 * tcmalloc::Static::pageheap_->pagemap_.root_->ptrs[index]->ptrs
 		 */
-		fieldno = type_field_name2no(value_type(node), "ptrs");
-		ptrs2 = value_field(node, fieldno);
+		ptrs2 = get_field_value(node, "ptrs");
 		get_array_bounds (value_type(ptrs2), &low_bound2, &high_bound2);
 		CA_PRINT_DBG("tcmalloc::Static::pageheap_->pagemap_.root_->ptrs[%ld]->ptrs[%ld-%ld] "
 		    "array length %ld\n", index, low_bound2, high_bound2,
@@ -798,6 +742,133 @@ parse_pagemap(void)
 			if (parse_leaf(leaf, span_type) == false)
 				return false;
 		}
+	}
+	return true;
+}
+
+static bool
+parse_pagemap_2_7(struct symbol *pageheap_, struct type *leaf_type,
+    struct type *span_type)
+{
+	struct value *pageheap, *storage, *memory;
+	struct value *pagemap;
+	struct type *pageheap_type;
+	struct value *root_p, *root;
+	LONGEST low_bound, high_bound, index;
+	const char *type_name;
+
+	/* tcmalloc::PageHeap needs more than the default 64KB for gdb value buffer */
+	execute_command("set max-value-size 2097152", 0);
+
+	/* struct symbol to struct value */
+	storage = value_of_variable(pageheap_, 0);
+
+	/* cast reinterpret_cast<PageHeap *>(&pageheap_.memory); */
+	memory = get_field_value(storage, "memory");
+	pageheap_type = lookup_transparent_type("tcmalloc::PageHeap");
+	if (pageheap_type == NULL) {
+		CA_PRINT("Failed to lookup type \"tcmalloc::PageHeap\"\n");
+		return false;
+	}
+	pageheap = value_cast(pageheap_type, storage);
+
+	/*
+	 * tcmalloc::Static::pageheap_.memory.pagemap_
+	 * type = class TCMalloc_PageMap2<35> {
+	 *   private:
+	 *     TCMalloc_PageMap2<35>::Leaf *root_[131072];
+	 *     void *(*allocator_)(Number);
+	 * }
+	 */
+	pagemap = get_field_value(pageheap, "pagemap_");
+	type_name = TYPE_NAME(check_typedef(value_type(pagemap)));
+	if (strcmp(type_name, "TCMalloc_PageMap2<35>") != 0) {
+		CA_PRINT("Internal error: pageheap_.pagemap_ has unexpected type\n");
+		return false;
+	}
+	root = get_field_value(pagemap, "root_");
+
+	if (get_array_bounds (value_type(root), &low_bound, &high_bound) == 0) {
+		CA_PRINT("Could not determine \"root_\" bounds\n");
+		return false;
+	}
+	CA_PRINT_DBG("tcmalloc::Static::pageheap_.pagemap_.root_[%ld-%ld] "
+	    "array length %ld\n", low_bound, high_bound,
+	    high_bound - low_bound + 1);
+
+	/*
+	 * tcmalloc::Static::pageheap_.memory.pagemap_.root_[index]
+	 */
+	for (index = low_bound; index <= high_bound; index++) {
+		struct value *leaf_p, *leaf;
+		LONGEST low_bound2, high_bound2, index2;
+
+		leaf_p = value_subscript(root, index);
+		if (value_as_address(leaf_p) == 0)
+			continue;
+		leaf = value_ind(leaf_p);
+		if (parse_leaf(leaf, span_type) == false)
+			return false;
+	}
+
+	return true;
+}
+
+bool
+parse_pagemap(void)
+{
+	struct symbol *pageheap_;
+	struct type *ph_type;
+	struct type *leaf_type, *span_type;
+	char *exp;
+	struct expression *expr;
+	struct value *val;
+
+	/*
+	 * We need to cast a void* to this type later
+	 */
+	exp = "\"TCMalloc_PageMap3<35>::Leaf\"";
+	expr = parse_expression(exp);
+	val = evaluate_type(expr);
+	leaf_type = value_type(val);
+	if (leaf_type == NULL) {
+		CA_PRINT("Failed to lookup type \"TCMalloc_PageMap3<35>::Leaf\"\n");
+			CA_PRINT("Do you forget to download debug symbol of "
+			"libtcmalloc?\n");
+		return false;
+	}
+
+	exp = "tcmalloc::Span";
+	span_type = lookup_transparent_type(exp);
+	if (span_type == NULL) {
+		CA_PRINT("Failed to lookup type \"tcmalloc::Span\"\n");
+		CA_PRINT("Do you forget to download debug symbol of "
+		    "libtcmalloc?\n");
+		return false;
+	}
+	leaf_type = lookup_pointer_type(leaf_type);
+	span_type = lookup_pointer_type(span_type);
+
+	/*
+	 * Global var
+	 * tcmalloc::PageHeap *tcmalloc::Static::pageheap_;
+	 */
+	pageheap_ = lookup_global_symbol("tcmalloc::Static::pageheap_", 0,
+	    VAR_DOMAIN).symbol;
+	if (pageheap_ == NULL) {
+		CA_PRINT("Failed to lookup gv "
+		    "\"tcmalloc::Static::pageheap_\"\n");
+		return false;
+	}
+	ph_type = SYMBOL_TYPE(pageheap_);
+	if (strcmp(TYPE_NAME(ph_type), "tcmalloc::Static::PageHeapStorage") == 0) {
+		tc_version_minor = 7;
+		if (!parse_pagemap_2_7(pageheap_, leaf_type, span_type))
+			return false;
+	} else {
+		tc_version_minor = 5;
+		if (!parse_pagemap_2_5(pageheap_, leaf_type, span_type))
+			return false;
 	}
 
 	return true;
@@ -866,30 +937,20 @@ parse_central_cache(void)
 bool
 parse_central_freelist(struct value *cfl)
 {
-	int fieldno;
 	int used_slots, count;
-	struct value *tc_slots;
+	struct value *tc_slots, *val;
 	LONGEST low_bound, high_bound, index;
 
 	/*
 	 * tcmalloc::CentralFreeList::used_slots_
 	 */
-	fieldno = type_field_name2no(value_type(cfl), "used_slots_");
-	if (fieldno < 0) {
-		CA_PRINT("failed to find member \"used_slots_\"\n");
-		return false;
-	}
-	used_slots = value_as_long(value_field(cfl, fieldno));
+	val = get_field_value(cfl, "used_slots_");
+	used_slots = value_as_long(val);
 
 	/*
 	 * tcmalloc::CentralFreeList::used_slots_
 	 */
-	fieldno = type_field_name2no(value_type(cfl), "tc_slots_");
-	if (fieldno < 0) {
-		CA_PRINT("failed to find member \"tc_slots_\"\n");
-		return false;
-	}
-	tc_slots = value_field(cfl, fieldno);
+	tc_slots = get_field_value(cfl, "tc_slots_");
 	if (TYPE_CODE (value_type(tc_slots)) != TYPE_CODE_ARRAY) {
 		CA_PRINT("Unexpected \"tc_slots\" is not an array\n");
 		return false;
@@ -929,7 +990,6 @@ parse_central_freelist(struct value *cfl)
 bool
 parse_central_freelist_tcentry(struct value *tcentry, bool *empty_slot)
 {
-	int fieldno;
 	struct value *head, *tail;
 	int count;
 	struct type *void_p, *void_pp;
@@ -937,24 +997,14 @@ parse_central_freelist_tcentry(struct value *tcentry, bool *empty_slot)
 	/*
 	 * tcmalloc::CentralFreeList::TCEntry::head
 	 */
-	fieldno = type_field_name2no(value_type(tcentry), "head");
-	if (fieldno < 0) {
-		CA_PRINT("failed to find member \"head\"\n");
-		return false;
-	}
-	head = value_field(tcentry, fieldno);
+	head = get_field_value(tcentry, "head");
 	void_p = value_type(head);
 	void_pp = lookup_pointer_type(void_p);
 
 	/*
 	 * tcmalloc::CentralFreeList::TCEntry::tail
 	 */
-	fieldno = type_field_name2no(value_type(tcentry), "tail");
-	if (fieldno < 0) {
-		CA_PRINT("failed to find member \"tail\"\n");
-		return false;
-	}
-	tail = value_field(tcentry, fieldno);
+	tail = get_field_value(tcentry, "tail");
 
 	count = 0;
 	while (value_as_address(head) != 0) {
@@ -1177,7 +1227,7 @@ span_block_free(struct ca_span *span, address_t addr)
 	return span->bitmap[n] & (1 << bit);
 }
 
-int
+static int
 type_field_name2no(struct type *type, const char *field_name)
 {
 	int n;
@@ -1194,22 +1244,29 @@ type_field_name2no(struct type *type, const char *field_name)
 	return -1;
 }
 
+struct value *
+get_field_value(struct value *val, const char *field_name)
+{
+	int fieldno;
+
+	fieldno = type_field_name2no(value_type(val), field_name);
+	if (fieldno < 0) {
+		CA_PRINT("failed to find member \"%s\"\n", field_name);
+		return NULL;
+	}
+	return value_field(val, fieldno);
+}
+
 bool
 parse_leaf(struct value *leaf, struct type *span_type)
 {
-	int fieldno;
 	struct value *values;
 	LONGEST low_bound, high_bound, index;
 
 	/*
 	 * leaf->values
 	 */
-	fieldno = type_field_name2no(value_type(leaf), "values");
-	if (fieldno < 0) {
-		CA_PRINT("failed to find member \"values\"\n");
-		return false;
-	}
-	values = value_field(leaf, fieldno);
+	values = get_field_value(leaf, "values");
 	if (TYPE_CODE (value_type(values)) != TYPE_CODE_ARRAY) {
 		CA_PRINT("Unexpected: \"values\" is not an array\n");
 		return false;
@@ -1249,10 +1306,8 @@ parse_leaf(struct value *leaf, struct type *span_type)
 bool
 parse_span(struct value *span)
 {
-	int fieldno;
 	struct ca_span *my_span;
 	struct value *m;
-	struct type *type = value_type(span);
 	struct ca_segment *segment;
 
 	if (g_spans_count >= g_spans_capacity) {
@@ -1270,40 +1325,54 @@ parse_span(struct value *span)
 	my_span = &g_spans[g_spans_count++];
 	memset(my_span, 0, sizeof *my_span);
 
-	fieldno = type_field_name2no(type, "start");
-	m = value_field(span, fieldno);
+	m = get_field_value(span, "start");
 	my_span->start = value_as_long(m);
 
-	fieldno = type_field_name2no(type, "length");
-	m = value_field(span, fieldno);
+	m = get_field_value(span, "length");
 	my_span->length = value_as_long(m);
 
-	fieldno = type_field_name2no(type, "next");
-	m = value_field(span, fieldno);
+	m = get_field_value(span, "next");
 	my_span->next = value_as_address(m);
 
-	fieldno = type_field_name2no(type, "prev");
-	m = value_field(span, fieldno);
+	m = get_field_value(span, "prev");
 	my_span->prev = value_as_address(m);
 
-	fieldno = type_field_name2no(type, "objects");
-	m = value_field(span, fieldno);
-	my_span->objects = value_as_address(m);
+	if (tc_version_minor <= 5) {
+		m = get_field_value(span, "objects");
+		my_span->objects = value_as_address(m);
+	} else {
+		int n;
+		struct type *span_type = value_type(span);
+		/*
+		 * struct tcmalloc::Span {
+		 *     union {
+		 *         void *objects;
+		 *         char span_iter_space[8];
+		 *     };
+		 *     ...
+		 * }
+		 */
+		m = get_field_value(span, "has_span_iter");
+		for (n = 0; n < TYPE_NFIELDS (span_type); n++) {
+			if (TYPE_CODE(TYPE_FIELD_TYPE(span_type, n)) == TYPE_CODE_UNION) {
+				struct value *v = value_field(span, n);
+				m = get_field_value(v, "objects");
+				my_span->objects = value_as_address(m);
+				break;
+			}
+		}
+	}
 
-	fieldno = type_field_name2no(type, "refcount");
-	m = value_field(span, fieldno);
+	m = get_field_value(span, "refcount");
 	my_span->refcount = value_as_long(m);
 
-	fieldno = type_field_name2no(type, "sizeclass");
-	m = value_field(span, fieldno);
+	m = get_field_value(span, "sizeclass");
 	my_span->sizeclass = value_as_long(m);
 
-	fieldno = type_field_name2no(type, "location");
-	m = value_field(span, fieldno);
+	m = get_field_value(span, "location");
 	my_span->location = value_as_long(m);
 
-	fieldno = type_field_name2no(type, "sample");
-	m = value_field(span, fieldno);
+	m = get_field_value(span, "sample");
 	my_span->sample = value_as_long(m);
 
 	skip_npage = my_span->length - 1;
@@ -1339,12 +1408,10 @@ parse_thread_cache(void)
 	 */
 	while (value_as_address(thread_heaps_p) != 0) {
 		struct value *lists;
-		int fieldno;
 		LONGEST low_bound, high_bound;
 
 		thread_heaps = value_ind(thread_heaps_p);
-		fieldno = type_field_name2no(value_type(thread_heaps), "list_");
-		lists = value_field(thread_heaps, fieldno);
+		lists = get_field_value(thread_heaps, "list_");
 		if (TYPE_CODE (value_type(lists)) != TYPE_CODE_ARRAY) {
 			CA_PRINT("Unexpected \"list_\" is not an array\n");
 			return false;
@@ -1368,8 +1435,7 @@ parse_thread_cache(void)
 			return false;
 
 		/* next ThreadCache on link list */
-		fieldno = type_field_name2no(value_type(thread_heaps), "next_");
-		thread_heaps_p = value_field(thread_heaps, fieldno);
+		thread_heaps_p = get_field_value(thread_heaps, "next_");
 	}
 
 	return true;
@@ -1382,17 +1448,14 @@ parse_thread_cache_lists(struct value *lists)
 
 	for (index = 0; index < g_config.kNumClasses; index++) {
 		struct value *freelist, *list;
-		int fieldno;
 		unsigned int len, count;
 		struct type *void_p, *void_pp;
 
 		freelist = value_subscript(lists, index);
 
-		fieldno = type_field_name2no(value_type(freelist), "length_");
-		len = value_as_address(value_field(freelist, fieldno));
+		len = value_as_address(get_field_value(freelist, "length_"));
 
-		fieldno = type_field_name2no(value_type(freelist), "list_");
-		list = value_field(freelist, fieldno);
+		list = get_field_value(freelist, "list_");
 		void_p = value_type(list);
 		void_pp = lookup_pointer_type(void_p);
 		count = 0;

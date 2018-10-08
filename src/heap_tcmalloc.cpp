@@ -56,6 +56,7 @@ static unsigned long g_cached_blocks_count;
  * Forward declaration
  */
 static void gdb_symbol_prelude(void);
+static int type_field_name2no(struct type *, const char *);
 static struct value *get_field_value(struct value *, const char *);
 static bool parse_config(void);
 static bool parse_pagemap(void);
@@ -823,6 +824,7 @@ parse_pagemap(void)
 	char *exp;
 	struct expression *expr;
 	struct value *val;
+	bool span_has_objects = false;
 
 	/*
 	 * We need to cast a void* to this type later
@@ -846,6 +848,9 @@ parse_pagemap(void)
 		    "libtcmalloc?\n");
 		return false;
 	}
+	if (type_field_name2no(span_type, "objects") >= 0)
+		span_has_objects = true;
+
 	leaf_type = lookup_pointer_type(leaf_type);
 	span_type = lookup_pointer_type(span_type);
 
@@ -861,8 +866,12 @@ parse_pagemap(void)
 		return false;
 	}
 	ph_type = SYMBOL_TYPE(pageheap_);
-	if (strcmp(TYPE_NAME(ph_type), "tcmalloc::Static::PageHeapStorage") == 0) {
-		tc_version_minor = 7;
+	if (TYPE_NAME(ph_type) &&
+	    strcmp(TYPE_NAME(ph_type), "tcmalloc::Static::PageHeapStorage") == 0) {
+		if (span_has_objects)
+			tc_version_minor = 6;
+		else
+			tc_version_minor = 7;
 		if (!parse_pagemap_2_7(pageheap_, leaf_type, span_type))
 			return false;
 	} else {
@@ -1227,7 +1236,7 @@ span_block_free(struct ca_span *span, address_t addr)
 	return span->bitmap[n] & (1 << bit);
 }
 
-static int
+int
 type_field_name2no(struct type *type, const char *field_name)
 {
 	int n;
@@ -1337,7 +1346,7 @@ parse_span(struct value *span)
 	m = get_field_value(span, "prev");
 	my_span->prev = value_as_address(m);
 
-	if (tc_version_minor <= 5) {
+	if (tc_version_minor <= 6) {
 		m = get_field_value(span, "objects");
 		my_span->objects = value_as_address(m);
 	} else {

@@ -821,42 +821,27 @@ parse_pagemap(void)
 	struct symbol *pageheap_;
 	struct type *ph_type;
 	struct type *leaf_type, *span_type;
-	char *exp;
-	struct expression *expr;
+	const char *type_name;
 	struct value *val;
 	bool span_has_objects = false;
 
 	/*
 	 * We need to cast a void* to this type later
 	 */
-	exp = "\"TCMalloc_PageMap3<35>::Leaf\"";
-	expr = parse_expression(exp);
-	val = evaluate_type(expr);
-	leaf_type = value_type(val);
-	if (leaf_type == NULL) {
-		CA_PRINT("Failed to lookup type \"TCMalloc_PageMap3<35>::Leaf\"\n");
-			CA_PRINT("Do you forget to download debug symbol of "
-			"libtcmalloc?\n");
-		return false;
-	}
-
-	exp = "tcmalloc::Span";
-	span_type = lookup_transparent_type(exp);
+	type_name = "tcmalloc::Span";
+	span_type = lookup_transparent_type(type_name);
 	if (span_type == NULL) {
-		CA_PRINT("Failed to lookup type \"tcmalloc::Span\"\n");
-		CA_PRINT("Do you forget to download debug symbol of "
-		    "libtcmalloc?\n");
+		CA_PRINT("Failed to lookup type \"%s\"\n", type_name);
+		CA_PRINT("Do you forget to download debug symbols of libtcmalloc.so?\n");
 		return false;
 	}
 	if (type_field_name2no(span_type, "objects") >= 0)
 		span_has_objects = true;
-
-	leaf_type = lookup_pointer_type(leaf_type);
 	span_type = lookup_pointer_type(span_type);
 
 	/*
-	 * Global var
-	 * tcmalloc::PageHeap *tcmalloc::Static::pageheap_;
+	 * Version detection through global var:
+	 *   tcmalloc::PageHeap *tcmalloc::Static::pageheap_;
 	 */
 	pageheap_ = lookup_global_symbol("tcmalloc::Static::pageheap_", 0,
 	    VAR_DOMAIN).symbol;
@@ -872,12 +857,35 @@ parse_pagemap(void)
 			tc_version_minor = 6;
 		else
 			tc_version_minor = 7;
+	} else {
+		tc_version_minor = 5;
+	}
+
+	if (tc_version_minor <= 5) {
+		/* Version 2.5 uses three-leveled page map */
+		type_name = "TCMalloc_PageMap3<35>::Leaf";
+		leaf_type = lookup_transparent_type(type_name);
+		if (leaf_type == NULL) {
+			CA_PRINT("Failed to lookup type \"%s\"\n", type_name);
+			return false;
+		}
+		leaf_type = lookup_pointer_type(leaf_type);
+		if (!parse_pagemap_2_5(pageheap_, leaf_type, span_type))
+			return false;
+	} else if (tc_version_minor <= 7) {
+		/* Version 2.6+ uses two-leveled page map */
+		type_name = "TCMalloc_PageMap2<35>::Leaf";
+		leaf_type = lookup_transparent_type(type_name);
+		if (leaf_type == NULL) {
+			CA_PRINT("Failed to lookup type \"%s\"\n", type_name);
+			return false;
+		}
+		leaf_type = lookup_pointer_type(leaf_type);
 		if (!parse_pagemap_2_7(pageheap_, leaf_type, span_type))
 			return false;
 	} else {
-		tc_version_minor = 5;
-		if (!parse_pagemap_2_5(pageheap_, leaf_type, span_type))
-			return false;
+		CA_PRINT("Unsupported tcmalloc version\n");
+		return false;
 	}
 
 	return true;

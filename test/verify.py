@@ -21,6 +21,8 @@ def check_heap_blocks(known_blks, count):
 		blk_addr = int(blk['p'].cast(ulong_type))
 		blk_size = int(blk['size'].cast(ulong_type))
 		my_blk = gdb.heap_block(blk_addr)
+		if not my_blk:
+			raise Exception('Failed to query block at 0x%x' % blk_addr)
 		match = True
 		if blk['inuse']:
 			if blk_addr != my_blk.address or blk_size != my_blk.size or not my_blk.inuse:

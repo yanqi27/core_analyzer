@@ -58,10 +58,6 @@ typedef CORE_ADDR address_t;
 #define PRINT_FORMAT_POINTER "0x%lx"
 #define PRINT_FORMAT_SIZE    "%ld"
 
-#define CA_BOOL  bool
-#define CA_TRUE  true
-#define CA_FALSE false
-
 extern void print_op_value_context(size_t op_value, int op_size, address_t loc, int offset, int lea);
 extern void print_type_name(struct type*, const char*, const char*, const char*);
 struct object_reference;

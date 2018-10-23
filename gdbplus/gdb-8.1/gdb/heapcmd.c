@@ -72,28 +72,28 @@ segment_command (char *arg, int from_tty)
 static void
 include_free_command (char *arg, int from_tty)
 {
-	g_skip_free = CA_FALSE;
+	g_skip_free = false;
 	printf_filtered(_("Reference search will now include free heap memory blocks\n"));
 }
 
 static void
 ignore_free_command (char *arg, int from_tty)
 {
-	g_skip_free = CA_TRUE;
+	g_skip_free = true;
 	printf_filtered(_("Reference search will now exclude free heap memory blocks (default)\n"));
 }
 
 static void
 include_unknown_command (char *arg, int from_tty)
 {
-	g_skip_unknown = CA_FALSE;
+	g_skip_unknown = false;
 	printf_filtered(_("Reference search will now include all memory\n"));
 }
 
 static void
 ignore_unknown_command (char *arg, int from_tty)
 {
-	g_skip_unknown = CA_TRUE;
+	g_skip_unknown = true;
 	printf_filtered(_("Reference search will now exclude memory with unknown storage type (default)\n"));
 }
 
@@ -173,7 +173,7 @@ obj_command (char *arg, int from_tty)
 		return;
 
 	old_chain = make_cleanup_restore_current_thread ();
-	search_cplusplus_objects_and_references(arg, CA_FALSE);
+	search_cplusplus_objects_and_references(arg, false);
 	// remember to resume the current thread/frame
 	do_cleanups (old_chain);
 }
@@ -273,7 +273,13 @@ _initialize_heapcmd (void)
 	add_cmd("obj", class_info, obj_command, _("Search for object and reference to object of the same type as the input expression\nobj <type|variable>"), &cmdlist);
 	add_cmd("shrobj", class_info, shrobj_command, _("Find objects that currently referenced from multiple threads\nshrobj [tid0] [tid1] [...]"), &cmdlist);
 
-	add_cmd("heap", class_info, heap_command, _("Heap walk, heap data validation, memory usage statistics, etc.\nheap [/verbose or /v] [/leak or /l]\nheap [/block or /b] [/cluster or /c] <addr_exp>\nheap [/usage or /u] <var_exp>\nheap [/topblock or /tb] [/topuser or /tu] <num>\n"), &cmdlist);
+	add_cmd("heap", class_info, heap_command, _("Heap walk, heap data validation, memory usage statistics, etc.\n"
+		"heap [/verbose or /v] [/leak or /l]\n"
+		"heap [/block or /b] [/cluster or /c] <addr_exp>\n"
+		"heap [/usage or /u] <var_exp>\n"
+		"heap [/topblock or /tb] [/topuser or /tu] <num>\n"
+		"heap [/m]\n"),
+		&cmdlist);
 
 	add_cmd("pattern", class_info, pattern_command, _("Reveal memory pattern\npattern <start> <end>"), &cmdlist);
 	add_cmd("segment", class_info, segment_command, _("Display memory segments"), &cmdlist);

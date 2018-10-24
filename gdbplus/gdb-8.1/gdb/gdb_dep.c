@@ -2035,7 +2035,7 @@ display_saved_registers(struct gdbarch *gdbarch,
  * then call disassemble function
  */
 void
-decode_func(char *arg)
+decode_func(const char *arg)
 {
 	int ptr_bit = g_ptr_bit;
 	size_t ptr_sz = ptr_bit >> 3;
@@ -2072,8 +2072,9 @@ decode_func(char *arg)
 	/* Parse user input options */
 	if (arg)
 	{
+		gdb::unique_xmalloc_ptr<char> myarg(xstrdup(arg));
 		char* options[MAX_NUM_OPTIONS];
-		int num_options = ca_parse_options(arg, options);
+		int num_options = ca_parse_options(myarg.get(), options);
 		for (i = 0; i < num_options; i++)
 		{
 			char* option = options[i];

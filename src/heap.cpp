@@ -93,7 +93,7 @@ char ca_help_msg[] = "Commands of core_analyzer " CA_VERSION_STRING "\n"
 /*
  * Parse user options and invoke corresponding heap-related functions
  */
-bool heap_command_impl(char* args)
+bool heap_command_impl(const char* args)
 {
 	bool rc = true;
 
@@ -113,7 +113,8 @@ bool heap_command_impl(char* args)
 	if (args)
 	{
 		char* options[MAX_NUM_OPTIONS];
-		int num_options = ca_parse_options(args, options);
+		gdb::unique_xmalloc_ptr<char> myargs(xstrdup(args));
+		int num_options = ca_parse_options(myargs.get(), options);
 		int i;
 		for (i = 0; i < num_options; i++)
 		{
@@ -224,9 +225,9 @@ bool heap_command_impl(char* args)
 					CA_PRINT("\t[In-use]\n");
 				else
 					CA_PRINT("\t[Free]\n");
-				CA_PRINT("\t[Address] "PRINT_FORMAT_POINTER"\n", heap_block.addr);
-				CA_PRINT("\t[Size]    "PRINT_FORMAT_SIZE"\n", heap_block.size);
-				CA_PRINT("\t[Offset]  "PRINT_FORMAT_SIZE"\n", addr - heap_block.addr);
+				CA_PRINT("\t[Address] " PRINT_FORMAT_POINTER "\n", heap_block.addr);
+				CA_PRINT("\t[Size]    " PRINT_FORMAT_SIZE "\n", heap_block.size);
+				CA_PRINT("\t[Offset]  " PRINT_FORMAT_SIZE "\n", addr - heap_block.addr);
 			}
 			else
 				CA_PRINT("[Error] Failed to query the memory block\n");
@@ -272,7 +273,7 @@ bool heap_command_impl(char* args)
 /*
  * Parse user options and invoke corresponding search functions
  */
-bool ref_command_impl(char* args)
+bool ref_command_impl(const char* args)
 {
 	int rc;
 	bool threadref = false;
@@ -285,7 +286,8 @@ bool ref_command_impl(char* args)
 	if (args)
 	{
 		char* options[MAX_NUM_OPTIONS];
-		int num_options = ca_parse_options(args, options);
+		gdb::unique_xmalloc_ptr<char> myargs(xstrdup(args));
+		int num_options = ca_parse_options(myargs.get(), options);
 		int i;
 		for (i = 0; i < num_options; i++)
 		{
@@ -339,7 +341,7 @@ bool ref_command_impl(char* args)
 			size = 1;
 		if (level == 0)
 			level = 1;
-		CA_PRINT("Search for thread references to "PRINT_FORMAT_POINTER" size "PRINT_FORMAT_SIZE" up to "PRINT_FORMAT_SIZE" levels of indirection\n",
+		CA_PRINT("Search for thread references to " PRINT_FORMAT_POINTER " size " PRINT_FORMAT_SIZE " up to " PRINT_FORMAT_SIZE " levels of indirection\n",
 					addr, size, level);
 		rc = find_object_refs_on_threads(addr, size, level);
 	}
@@ -347,14 +349,14 @@ bool ref_command_impl(char* args)
 	{
 		if (size == 0)
 		{
-			CA_PRINT("Search for object type associated with "PRINT_FORMAT_POINTER"\n", addr);
+			CA_PRINT("Search for object type associated with " PRINT_FORMAT_POINTER "\n", addr);
 			rc = find_object_type(addr);
 		}
 		else
 		{
 			if (level == 0)
 				level = 1;
-			CA_PRINT("Search for references to "PRINT_FORMAT_POINTER" size "PRINT_FORMAT_SIZE" up to "PRINT_FORMAT_SIZE" levels of indirection\n",
+			CA_PRINT("Search for references to " PRINT_FORMAT_POINTER " size " PRINT_FORMAT_SIZE " up to " PRINT_FORMAT_SIZE " levels of indirection\n",
 						addr, size, level);
 			rc = find_object_refs(addr, size, level);
 		}
@@ -371,7 +373,7 @@ bool ref_command_impl(char* args)
 static void
 print_segment(struct ca_segment* segment)
 {
-	CA_PRINT("["PRINT_FORMAT_POINTER" - "PRINT_FORMAT_POINTER"] %6ldK  %c%c%c ",
+	CA_PRINT("[" PRINT_FORMAT_POINTER " - " PRINT_FORMAT_POINTER "] %6ldK  %c%c%c ",
 		segment->m_vaddr, segment->m_vaddr+segment->m_vsize,
 		segment->m_vsize/1024,
 		segment->m_read?'r':'-', segment->m_write?'w':'-', segment->m_exec?'x':'-');
@@ -394,7 +396,7 @@ print_segment(struct ca_segment* segment)
 	CA_PRINT("\n");
 }
 
-bool segment_command_impl(char* args)
+bool segment_command_impl(const char* args)
 {
 	struct ca_segment* segment;
 
@@ -489,7 +491,7 @@ bool segment_command_impl(char* args)
 /*
  * Parse user options and invoke corresponding pattern function
  */
-bool pattern_command_impl(char* args)
+bool pattern_command_impl(const char* args)
 {
 	address_t lo = 0, hi = 0;
 	// Parse user input options
@@ -497,7 +499,8 @@ bool pattern_command_impl(char* args)
 	if (args)
 	{
 		char* options[MAX_NUM_OPTIONS];
-		int num_options = ca_parse_options(args, options);
+		gdb::unique_xmalloc_ptr<char> myargs(xstrdup(args));
+		int num_options = ca_parse_options(myargs.get(), options);
 		if (num_options != 2)
 		{
 			CA_PRINT("Expect arguments: <start> <end>\n");
@@ -585,8 +588,8 @@ struct inuse_block* build_inuse_heap_blocks(unsigned long* opCount)
 				if (cursor->addr + cursor->size > (cursor+1)->addr)
 				{
 					CA_PRINT("Internal error: in-use array is not properly sorted at %ld\n", count);
-					CA_PRINT("\t[%ld] "PRINT_FORMAT_POINTER" size=%ld\n", count, cursor->addr, cursor->size);
-					CA_PRINT("\t[%ld] "PRINT_FORMAT_POINTER"\n", count+1, (cursor+1)->addr);
+					CA_PRINT("\t[%ld] " PRINT_FORMAT_POINTER " size=%ld\n", count, cursor->addr, cursor->size);
+					CA_PRINT("\t[%ld] " PRINT_FORMAT_POINTER "\n", count+1, (cursor+1)->addr);
 					free (blocks);
 					*opCount = 0;
 					return NULL;
@@ -705,7 +708,7 @@ bool biggest_blocks(unsigned int num)
 		CA_PRINT("Top %d biggest in-use heap memory blocks:\n", num);
 		for (i=0; i<num; i++)
 		{
-			CA_PRINT("\taddr="PRINT_FORMAT_POINTER"  size="PRINT_FORMAT_SIZE" (",
+			CA_PRINT("\taddr=" PRINT_FORMAT_POINTER "  size=" PRINT_FORMAT_SIZE " (",
 					blocks[i].addr, blocks[i].size);
 			print_size (blocks[i].size);
 			CA_PRINT(")\n");
@@ -1209,7 +1212,7 @@ bool display_heap_leak_candidates(void)
 		if (!is_visited(qv_bitmap, cur_index))
 		{
 			leak_count++;
-			CA_PRINT("[%ld] addr="PRINT_FORMAT_POINTER" size="PRINT_FORMAT_SIZE"\n",
+			CA_PRINT("[%ld] addr=" PRINT_FORMAT_POINTER " size=" PRINT_FORMAT_SIZE "\n",
 					leak_count, blk->addr, blk->size);
 			total_leak_bytes += blk->size;
 		}

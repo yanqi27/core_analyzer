@@ -10,8 +10,10 @@
 struct CA_SET;
 struct CA_LIST;
 
+#ifndef __cplusplus
 #ifdef _SPLAY_TREE_H
 #define CA_USE_SPLAY_TREE
+#endif
 #endif
 
 #ifdef CA_USE_SPLAY_TREE

@@ -7699,7 +7699,7 @@ static const struct dis386 float_reg[][8] = {
 		FGRPdf_4 }, { "fucomip", { ST, STi } }, { "fcomip", { ST, STi } }, {
 		Bad_Opcode }, }, };
 
-static char *fgrps[][8] = {
+static const char *fgrps[][8] = {
 /* d9_2  0 */
 { "fnop", "(bad)", "(bad)", "(bad)", "(bad)", "(bad)", "(bad)", "(bad)", },
 

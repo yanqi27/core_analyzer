@@ -113,8 +113,8 @@ bool heap_command_impl(const char* args)
 	if (args)
 	{
 		char* options[MAX_NUM_OPTIONS];
-		gdb::unique_xmalloc_ptr<char> myargs(xstrdup(args));
-		int num_options = ca_parse_options(myargs.get(), options);
+		char *myargs = strdup(args);
+		int num_options = ca_parse_options(myargs, options);
 		int i;
 		for (i = 0; i < num_options; i++)
 		{
@@ -123,6 +123,7 @@ bool heap_command_impl(const char* args)
 			{
 				if (strcmp(option, "/m") == 0) {
 					CA_PRINT("Target allocator: %s\n", heap_version());
+					free(myargs);
 					return true;
 				}
 				if (strcmp(option, "/leak") == 0 || strcmp(option, "/l") == 0)
@@ -131,6 +132,7 @@ bool heap_command_impl(const char* args)
 					if (block_info || cluster_blocks || calc_usage || top_block || top_user || addr)
 					{
 						CA_PRINT("Option [%s] conflicts with one of the previous options\n", option);
+						free(myargs);
 						return false;
 					}
 				}
@@ -144,6 +146,7 @@ bool heap_command_impl(const char* args)
 					if (check_leak || cluster_blocks || calc_usage || top_block || top_user)
 					{
 						CA_PRINT("Option [%s] conflicts with one of the previous options\n", option);
+						free(myargs);
 						return false;
 					}
 				}
@@ -153,6 +156,7 @@ bool heap_command_impl(const char* args)
 					if (check_leak || block_info || calc_usage || top_block || top_user)
 					{
 						CA_PRINT("Option [%s] conflicts with one of the previous options\n", option);
+						free(myargs);
 						return false;
 					}
 				}
@@ -162,6 +166,7 @@ bool heap_command_impl(const char* args)
 					if (check_leak || block_info || cluster_blocks || top_block || top_user)
 					{
 						CA_PRINT("Option [%s] conflicts with one of the previous options\n", option);
+						free(myargs);
 						return false;
 					}
 				}
@@ -171,6 +176,7 @@ bool heap_command_impl(const char* args)
 					if (check_leak || block_info || cluster_blocks || calc_usage || top_user)
 					{
 						CA_PRINT("Option [%s] conflicts with one of the previous options\n", option);
+						free(myargs);
 						return false;
 					}
 				}
@@ -180,6 +186,7 @@ bool heap_command_impl(const char* args)
 					if (check_leak || block_info || cluster_blocks || calc_usage || top_block)
 					{
 						CA_PRINT("Option [%s] conflicts with one of the previous options\n", option);
+						free(myargs);
 						return false;
 					}
 				}
@@ -188,6 +195,7 @@ bool heap_command_impl(const char* args)
 				else
 				{
 					CA_PRINT("Invalid option: [%s]\n", option);
+					free(myargs);
 					return false;
 				}
 			}
@@ -201,9 +209,11 @@ bool heap_command_impl(const char* args)
 			else
 			{
 				CA_PRINT("Invalid option: [%s]\n", option);
+				free(myargs);
 				return false;
 			}
 		}
+		free(myargs);
 	}
 	if (check_leak)
 	{
@@ -286,8 +296,8 @@ bool ref_command_impl(const char* args)
 	if (args)
 	{
 		char* options[MAX_NUM_OPTIONS];
-		gdb::unique_xmalloc_ptr<char> myargs(xstrdup(args));
-		int num_options = ca_parse_options(myargs.get(), options);
+		char *myargs = strdup(args);
+		int num_options = ca_parse_options(myargs, options);
 		int i;
 		for (i = 0; i < num_options; i++)
 		{
@@ -300,6 +310,7 @@ bool ref_command_impl(const char* args)
 				if (addr == 0)
 				{
 					CA_PRINT("Invalid address [%s] argument\n", option);
+					free(myargs);
 					return false;
 				}
 			}
@@ -309,6 +320,7 @@ bool ref_command_impl(const char* args)
 				if (size == 0)
 				{
 					CA_PRINT("Invalid size [%s] argument\n", option);
+					free(myargs);
 					return false;
 				}
 			}
@@ -318,15 +330,18 @@ bool ref_command_impl(const char* args)
 				if (level == 0)
 				{
 					CA_PRINT("Invalid level [%s] argument\n", option);
+					free(myargs);
 					return false;
 				}
 			}
 			else
 			{
 				CA_PRINT("Too many arguments: %s\n", option);
+				free(myargs);
 				return false;
 			}
 		}
+		free(myargs);
 	}
 
 	if (addr == 0)
@@ -499,11 +514,12 @@ bool pattern_command_impl(const char* args)
 	if (args)
 	{
 		char* options[MAX_NUM_OPTIONS];
-		gdb::unique_xmalloc_ptr<char> myargs(xstrdup(args));
-		int num_options = ca_parse_options(myargs.get(), options);
+		char *myargs = strdup(args);
+		int num_options = ca_parse_options(myargs, options);
 		if (num_options != 2)
 		{
 			CA_PRINT("Expect arguments: <start> <end>\n");
+			free(myargs);
 			return false;
 		}
 		lo = ca_eval_address (options[0]);
@@ -511,8 +527,10 @@ bool pattern_command_impl(const char* args)
 		if (hi <= lo)
 		{
 			CA_PRINT("Invalid memory address range (start >= end)\n");
+			free(myargs);
 			return false;
 		}
+		free(myargs);
 	}
 	else
 	{

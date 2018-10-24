@@ -1603,8 +1603,9 @@ print_type_layout (char* exp)
     {
     	int indirect = 0;
     	int is_ptr = 0;
-    	if (TYPE_CODE (type) == TYPE_CODE_PTR)
-    		is_ptr = 1;
+    	if (TYPE_CODE (type) == TYPE_CODE_PTR) {
+			is_ptr = 1;
+		}
 		/* print type name */
 		printf_filtered (_("type="));
 		type_print (type, "", gdb_stdout, -1);

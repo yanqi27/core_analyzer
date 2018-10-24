@@ -926,7 +926,7 @@ thread_tcache (struct thread_info *info, void *data)
 		return false;
 	}
 	addr = value_as_address(val);
-	CA_PRINT("tcache for ptid.pid [%d]: 0x%lx\n", info->ptid.pid(), addr);
+	//CA_PRINT("tcache for ptid.pid [%d]: 0x%lx\n", info->ptid.pid(), addr);
 	if (!read_memory_wrapper(NULL, addr, &tcps, valsz)) {
 		CA_PRINT("Failed to read thread-local variable \"tcache\"\n");
 		return false;

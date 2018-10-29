@@ -15,54 +15,46 @@
 * gdb commands
 ***************************************************************************/
 static void
-heap_command (char *args, int from_tty)
+heap_command (const char *args, int from_tty)
 {
-	struct cleanup *old_chain;
-
 	/* We depend on typed segments */
 	if (!update_memory_segments_and_heaps())
 		return;
-	old_chain = make_cleanup_restore_current_thread ();
+
+	// remember to resume the current thread/frame
+	scoped_restore_current_thread mythread;
 
 	heap_command_impl(args);
-
-	// remember to resume the current thread/frame
-	do_cleanups (old_chain);
 }
 
 static void
-ref_command (char *args, int from_tty)
+ref_command (const char *args, int from_tty)
 {
-	struct cleanup *old_chain;
 	/* We depend on typed segments */
 	if (!update_memory_segments_and_heaps())
 		return;
-	old_chain = make_cleanup_restore_current_thread ();
+
+	// remember to resume the current thread/frame
+	scoped_restore_current_thread mythread;
 
 	ref_command_impl(args);
-
-	// remember to resume the current thread/frame
-	do_cleanups (old_chain);
 }
 
 static void
-pattern_command (char *args, int from_tty)
+pattern_command (const char *args, int from_tty)
 {
-	struct cleanup *old_chain;
 	/* We depend on typed segments */
 	if (!update_memory_segments_and_heaps())
 		return;
 
-	old_chain = make_cleanup_restore_current_thread ();
+	// remember to resume the current thread/frame
+	scoped_restore_current_thread mythread;
 
 	pattern_command_impl(args);
-
-	// remember to resume the current thread/frame
-	do_cleanups (old_chain);
 }
 
 static void
-segment_command (char *arg, int from_tty)
+segment_command (const char *arg, int from_tty)
 {
 	if (!update_memory_segments_and_heaps())
 		return;
@@ -70,35 +62,35 @@ segment_command (char *arg, int from_tty)
 }
 
 static void
-include_free_command (char *arg, int from_tty)
+include_free_command (const char *arg, int from_tty)
 {
-	g_skip_free = CA_FALSE;
+	g_skip_free = false;
 	printf_filtered(_("Reference search will now include free heap memory blocks\n"));
 }
 
 static void
-ignore_free_command (char *arg, int from_tty)
+ignore_free_command (const char *arg, int from_tty)
 {
-	g_skip_free = CA_TRUE;
+	g_skip_free = true;
 	printf_filtered(_("Reference search will now exclude free heap memory blocks (default)\n"));
 }
 
 static void
-include_unknown_command (char *arg, int from_tty)
+include_unknown_command (const char *arg, int from_tty)
 {
-	g_skip_unknown = CA_FALSE;
+	g_skip_unknown = false;
 	printf_filtered(_("Reference search will now include all memory\n"));
 }
 
 static void
-ignore_unknown_command (char *arg, int from_tty)
+ignore_unknown_command (const char *arg, int from_tty)
 {
-	g_skip_unknown = CA_TRUE;
+	g_skip_unknown = true;
 	printf_filtered(_("Reference search will now exclude memory with unknown storage type (default)\n"));
 }
 
 static void
-assign_command (char *args, int from_tty)
+assign_command (const char *args, int from_tty)
 {
 	// Parse user input options
 	// argument is in the form of <start> <end>
@@ -106,7 +98,8 @@ assign_command (char *args, int from_tty)
 	{
 		address_t addr = 0, value = 0;
 		char* options[MAX_NUM_OPTIONS];
-		int num_options = ca_parse_options(args, options);
+		gdb::unique_xmalloc_ptr<char> myargs(xstrdup(args));
+		int num_options = ca_parse_options(myargs.get(), options);
 		int i;
 		if (num_options != 2)
 		{
@@ -122,14 +115,15 @@ assign_command (char *args, int from_tty)
 }
 
 static void
-unassign_command (char *args, int from_tty)
+unassign_command (const char *args, int from_tty)
 {
 	// Parse user input options
 	// argument is a list of addresses
 	if (args)
 	{
 		char* options[MAX_NUM_OPTIONS];
-		int num_options = ca_parse_options(args, options);
+		gdb::unique_xmalloc_ptr<char> myargs(xstrdup(args));
+		int num_options = ca_parse_options(myargs.get(), options);
 		int i;
 		for (i = 0; i < num_options; i++)
 		{
@@ -143,13 +137,13 @@ unassign_command (char *args, int from_tty)
 }
 
 static void
-info_local_command (char *arg, int from_tty)
+info_local_command (const char *arg, int from_tty)
 {
 	print_func_locals ();
 }
 
 static void
-dt_command (char *arg, int from_tty)
+dt_command (const char *arg, int from_tty)
 {
 	char* type_or_expr;
 
@@ -161,10 +155,8 @@ dt_command (char *arg, int from_tty)
 }
 
 static void
-obj_command (char *arg, int from_tty)
+obj_command (const char *arg, int from_tty)
 {
-	struct cleanup *old_chain;
-
 	if (!arg)
 		error_no_arg (_("type or variable name"));
 
@@ -172,14 +164,14 @@ obj_command (char *arg, int from_tty)
 	if (!update_memory_segments_and_heaps())
 		return;
 
-	old_chain = make_cleanup_restore_current_thread ();
-	search_cplusplus_objects_and_references(arg, CA_FALSE);
 	// remember to resume the current thread/frame
-	do_cleanups (old_chain);
+	scoped_restore_current_thread mythread;
+
+	search_cplusplus_objects_and_references(arg, false);
 }
 
 static void
-shrobj_level_command (char *arg, int from_tty)
+shrobj_level_command (const char *arg, int from_tty)
 {
 	unsigned int level = 0;
 	if (arg)
@@ -189,7 +181,7 @@ shrobj_level_command (char *arg, int from_tty)
 }
 
 static void
-max_indirection_level_command (char *arg, int from_tty)
+max_indirection_level_command (const char *arg, int from_tty)
 {
 	unsigned int level = 0;
 	if (arg)
@@ -201,10 +193,9 @@ max_indirection_level_command (char *arg, int from_tty)
 #define IS_BLANK(c) ((c)==' ' || (c)=='\t')
 
 static void
-shrobj_command (char *args, int from_tty)
+shrobj_command (const char *args, int from_tty)
 {
 	struct CA_LIST* threads = NULL;
-	struct cleanup *old_chain;
 
 	/* We depend on typed segments */
 	if (!update_memory_segments_and_heaps())
@@ -214,7 +205,8 @@ shrobj_command (char *args, int from_tty)
 	if (args)
 	{
 		char* options[MAX_NUM_OPTIONS];
-		int num_options = ca_parse_options(args, options);
+		gdb::unique_xmalloc_ptr<char> myargs(xstrdup(args));
+		int num_options = ca_parse_options(myargs.get(), options);
 		int i;
 		for (i = 0; i < num_options; i++)
 		{
@@ -229,10 +221,11 @@ shrobj_command (char *args, int from_tty)
 		}
 	}
 
-	old_chain = make_cleanup_restore_current_thread ();
-	find_shared_objects_by_threads(threads);
 	// remember to resume the current thread/frame
-	do_cleanups (old_chain);
+	scoped_restore_current_thread mythread;
+
+	find_shared_objects_by_threads(threads);
+
 	// cleanup thread list
 	if (!ca_list_empty(threads))
 	{
@@ -245,23 +238,20 @@ shrobj_command (char *args, int from_tty)
 }
 
 static void
-decode_command (char *arg, int from_tty)
+decode_command (const char *arg, int from_tty)
 {
-	struct cleanup *old_chain;
 	/* We depend on typed segments */
 	if (!update_memory_segments_and_heaps())
 		return;
 
-	old_chain = make_cleanup_restore_current_thread ();
+	// remember to resume the current thread/frame
+	scoped_restore_current_thread mythread;
 
 	decode_func(arg);
-
-	// remember to resume the current thread/frame
-	do_cleanups (old_chain);
 }
 
 static void
-display_help_command (char *arg, int from_tty)
+display_help_command (const char *arg, int from_tty)
 {
     CA_PRINT("%s", ca_help_msg);
 }
@@ -273,7 +263,13 @@ _initialize_heapcmd (void)
 	add_cmd("obj", class_info, obj_command, _("Search for object and reference to object of the same type as the input expression\nobj <type|variable>"), &cmdlist);
 	add_cmd("shrobj", class_info, shrobj_command, _("Find objects that currently referenced from multiple threads\nshrobj [tid0] [tid1] [...]"), &cmdlist);
 
-	add_cmd("heap", class_info, heap_command, _("Heap walk, heap data validation, memory usage statistics, etc.\nheap [/verbose or /v] [/leak or /l]\nheap [/block or /b] [/cluster or /c] <addr_exp>\nheap [/usage or /u] <var_exp>\nheap [/topblock or /tb] [/topuser or /tu] <num>\n"), &cmdlist);
+	add_cmd("heap", class_info, heap_command, _("Heap walk, heap data validation, memory usage statistics, etc.\n"
+		"heap [/verbose or /v] [/leak or /l]\n"
+		"heap [/block or /b] [/cluster or /c] <addr_exp>\n"
+		"heap [/usage or /u] <var_exp>\n"
+		"heap [/topblock or /tb] [/topuser or /tu] <num>\n"
+		"heap [/m]\n"),
+		&cmdlist);
 
 	add_cmd("pattern", class_info, pattern_command, _("Reveal memory pattern\npattern <start> <end>"), &cmdlist);
 	add_cmd("segment", class_info, segment_command, _("Display memory segments"), &cmdlist);

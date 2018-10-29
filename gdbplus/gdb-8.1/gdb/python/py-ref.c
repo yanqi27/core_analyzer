@@ -40,7 +40,7 @@ static struct pyref_type pyref_types[] =
 	ENTRY (ENUM_MODULE_DATA),
 	ENTRY (ENUM_HEAP),
 	ENTRY (ENUM_UNKNOWN),
-	{ 0, NULL }
+	{ (enum storage_type)0, NULL }
 };
 
 /* Return the storage type.  */
@@ -248,11 +248,10 @@ object_ref_new (PyTypeObject *type, PyObject *args, PyObject *keywords)
 		addr = (address_t) PyLong_AsLong (obj);
 	else if (gdbpy_is_string (obj))
 	{
-		char *s;
-
-		s = python_string_to_target_string (obj);
+		gdb::unique_xmalloc_ptr<char> s
+			= python_string_to_target_string (obj);
 		if (s != NULL)
-			addr = parse_and_eval_address (s);
+			addr = parse_and_eval_address (s.get());
 	}
 
 	if (!update_memory_segments_and_heaps())
@@ -477,7 +476,7 @@ PyTypeObject object_ref_type = {
 PyObject *gdbpy_cpp_object (PyObject *self, PyObject *args)
 {
 	PyObject *result = NULL;
-	char *exp = NULL;
+	gdb::unique_xmalloc_ptr<char> exp;
 	struct CA_LIST* objects;
 
 	// Get the input parameters
@@ -506,7 +505,7 @@ PyObject *gdbpy_cpp_object (PyObject *self, PyObject *args)
 	}
 
 	// Search for the objects
-	objects = search_cplusplus_objects_with_vptr (exp);
+	objects = search_cplusplus_objects_with_vptr (exp.get());
 	if (objects)
 	{
 		struct object_reference* ref;
@@ -641,7 +640,7 @@ PyObject *gdbpy_shared_object (PyObject *self, PyObject *args)
  *   3rd argument: search scope
  * Returns a list of gdb.Object_ref objects
  */
-PyObject *gdbpy_ref (PyObject *self, PyObject *args)
+PyObject *gdbpy_objref (PyObject *self, PyObject *args)
 {
 	PyObject *result = NULL;
 	address_t obj_addr = 0;

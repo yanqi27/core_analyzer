@@ -57,11 +57,10 @@ heap_block_new (PyTypeObject *type, PyObject *args, PyObject *keywords)
 		addr = (address_t) PyLong_AsLong (obj);
 	else if (gdbpy_is_string (obj))
 	{
-		char *s;
-
-		s = python_string_to_target_string (obj);
+		gdb::unique_xmalloc_ptr<char> s
+			= python_string_to_target_string (obj);
 		if (s != NULL)
-			addr = parse_and_eval_address (s);
+			addr = parse_and_eval_address (s.get());
 	}
 
 	if (!update_memory_segments_and_heaps())

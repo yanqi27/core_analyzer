@@ -266,6 +266,8 @@ display_help_command (char *arg, int from_tty)
     CA_PRINT("%s", ca_help_msg);
 }
 
+void _initialize_heapcmd (void);
+
 void
 _initialize_heapcmd (void)
 {

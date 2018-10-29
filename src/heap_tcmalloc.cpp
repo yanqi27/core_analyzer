@@ -344,7 +344,7 @@ heap_walk(address_t heapaddr, bool verbose)
 	/*
 	 * Full heap walk
 	 */
-	stats = calloc(g_config.kNumClasses + 1, sizeof *stats);
+	stats = (struct span_stats *)calloc(g_config.kNumClasses + 1, sizeof *stats);
 	if (stats == NULL) {
 		CA_PRINT("Out of memory\n");
 		return false;
@@ -583,7 +583,7 @@ span_get(address_t addr)
 	unsigned long pageid;
 
 	pageid = addr >> g_config.kPageShift;
-	span = bsearch(&pageid, (void *)g_spans, g_spans_count,
+	span = (struct ca_span *)bsearch(&pageid, (void *)g_spans, g_spans_count,
 	    sizeof(struct ca_span), span_search_compare);
 
 	return span;
@@ -640,11 +640,11 @@ parse_config(void)
 	}
 
 	g_config.kNumClasses = high_bound - low_bound + 1;
-	g_config.sizemap.class_to_size = calloc(g_config.kNumClasses,
+	g_config.sizemap.class_to_size = (size_t *)calloc(g_config.kNumClasses,
 	    sizeof(size_t));
-	g_config.sizemap.class_to_pages = calloc(g_config.kNumClasses,
+	g_config.sizemap.class_to_pages = (size_t *)calloc(g_config.kNumClasses,
 	    sizeof(size_t));
-	g_config.sizemap.num_objects_to_move = calloc(g_config.kNumClasses,
+	g_config.sizemap.num_objects_to_move = (int *)calloc(g_config.kNumClasses,
 	    sizeof(int));
 	if (g_config.sizemap.class_to_size == NULL ||
 	    g_config.sizemap.class_to_pages == NULL ||
@@ -751,7 +751,7 @@ static bool
 parse_pagemap_2_7(struct symbol *pageheap_, struct type *leaf_type,
     struct type *span_type)
 {
-	struct value *pageheap, *storage, *memory;
+	struct value *pageheap, *storage;
 	struct value *pagemap;
 	struct type *pageheap_type;
 	struct value *root_p, *root;
@@ -765,7 +765,6 @@ parse_pagemap_2_7(struct symbol *pageheap_, struct type *leaf_type,
 	storage = value_of_variable(pageheap_, 0);
 
 	/* cast reinterpret_cast<PageHeap *>(&pageheap_.memory); */
-	memory = get_field_value(storage, "memory");
 	pageheap_type = lookup_transparent_type("tcmalloc::PageHeap");
 	if (pageheap_type == NULL) {
 		CA_PRINT("Failed to lookup type \"tcmalloc::PageHeap\"\n");
@@ -1156,7 +1155,7 @@ span_populate_free_bitmap(struct ca_span *span)
 	blk_sz = g_config.sizemap.class_to_size[span->sizeclass];
 	span->count = (span->length << g_config.kPageShift) / blk_sz;
 	n_uint = (span->count + UINT_BITS - 1) / UINT_BITS;
-	span->bitmap = calloc(n_uint, sizeof(unsigned int));
+	span->bitmap = (unsigned int *)calloc(n_uint, sizeof(unsigned int));
 	if (span->bitmap == NULL) {
 		CA_PRINT("%s: out out memory\n", __FUNCTION__);
 		return false;
@@ -1334,7 +1333,7 @@ parse_span(struct value *span)
 			goal = 1024;
 		else
 			goal = g_spans_capacity * 2;
-		g_spans = realloc(g_spans, goal * sizeof(struct ca_span));
+		g_spans = (struct ca_span *)realloc(g_spans, goal * sizeof(struct ca_span));
 		if (g_spans == NULL)
 			return false;
 		g_spans_capacity = goal;
@@ -1514,7 +1513,7 @@ cached_block_add(address_t addr)
 			goal = 1024;
 		else
 			goal = g_cached_blocks_capacity * 2;
-		g_cached_blocks = realloc(g_cached_blocks, goal * sizeof(address_t));
+		g_cached_blocks = (address_t *)realloc(g_cached_blocks, goal * sizeof(address_t));
 		if (g_cached_blocks == NULL)
 			return false;
 		g_cached_blocks_capacity = goal;
@@ -1544,8 +1543,8 @@ cached_block_search_compare(const void *k, const void *m)
 int
 span_search_compare(const void *k, const void *m)
 {
-	const unsigned long *pageid = k;
-	const struct ca_span *span = m;
+	const unsigned long *pageid = (const unsigned long *)k;
+	const struct ca_span *span = (const struct ca_span *)m;
 
 	return (*pageid >= span->start) - (*pageid < span->start +
 	    span->length);
@@ -1556,7 +1555,7 @@ is_block_cached(address_t addr)
 {
 	address_t *a;
 
-	a = bsearch(&addr, g_cached_blocks, g_cached_blocks_count,
+	a = (address_t *)bsearch(&addr, g_cached_blocks, g_cached_blocks_count,
 	    sizeof(address_t), cached_block_search_compare);
 	return a != NULL;
 }
@@ -1631,7 +1630,7 @@ verify_sorted_spans(void)
 			address_t addr = ((g_spans[i].start + l) <<
 			    g_config.kPageShift) + 1;
 
-			if (span_get(addr) == false) {
+			if (span_get(addr) == NULL) {
 				CA_PRINT("failed to query span with address "
 				    "%#lx\n",addr);
 				return false;

@@ -14,7 +14,7 @@
 #include <elf.h>
 #endif
 
-#include <sys/param.h> // for MAXPATHLEN
+#include <sys/param.h>
 #include "dis-asm.h"
 #include "readline/readline.h"
 
@@ -22,28 +22,29 @@
 #define PN_XNUM 0xffff
 #endif
 
-// True if target is a dump file, false for live process
-CA_BOOL g_debug_core = CA_FALSE;
+/* True if target is a dump file, false for live process */
+bool g_debug_core = false;
 
-// Target's bit mode, 32 or 64
+/* Target's bit mode, 32 or 64 */
 unsigned int g_ptr_bit = 64;
 
-// Currently seleceted thread/frame
+/* Currently seleceted thread/frame */
 struct ca_debug_context g_debug_context = {0, 0, 0, NULL};
 
 static int g_rsp_regnum = -1;
 
-static CA_BOOL g_quit = CA_FALSE;
+static bool g_quit = false;
 
-/***************************************************************************
-* Exposed helper
-***************************************************************************/
-CA_BOOL inferior_memory_read (address_t addr, void* buffer, size_t sz)
+/*
+ * Exposed helper
+ */
+bool
+inferior_memory_read (address_t addr, void* buffer, size_t sz)
 {
-	if (target_read_memory(addr, buffer, sz) == 0)
-		return CA_TRUE;
+	if (target_read_memory(addr, (gdb_byte *)buffer, sz) == 0)
+		return true;
 	else
-		return CA_FALSE;
+		return false;
 }
 
 static int
@@ -61,10 +62,10 @@ thread_callback (struct thread_info *info, void *data)
 		if (segment)
 		{
 			segment->m_type   = ENUM_STACK;
-			segment->m_thread.tid = info->num;
-			segment->m_thread.lwp = info->ptid.lwp;
+			segment->m_thread.tid = info->per_inf_num;
+			segment->m_thread.lwp = info->ptid.lwp();
 			segment->m_thread.context = info;
-			if (info->num == 1 && segment->m_vsize > 2*1024*1024)
+			if (segment->m_thread.tid == 1 && segment->m_vsize > 2*1024*1024)
 			{
 				segment->m_fsize = segment->m_vsize = 1024*1024;
 			}
@@ -73,34 +74,33 @@ thread_callback (struct thread_info *info, void *data)
 	return 0;
 }
 
-static int mmap_core_file(const char* fname)
+static int
+mmap_core_file(const char* fname)
 {
 	struct stat lStatBuf;
 	size_t mFileSize;
 	int mFileDescriptor;
 	char* mpStartAddr;
-	char* mpEndAddr;
 	int total_phnum;
 	int i, n;
 
 	if (!fname)
-		return CA_FALSE;
-	// stat the core file
+		return false;
+	/* stat the core file */
 	if (stat(fname, &lStatBuf))
-		return CA_FALSE;
+		return false;
 	gdb_assert(lStatBuf.st_size > 0);
 	mFileSize = lStatBuf.st_size;
-	// open core file
+	/* open core file */
 	mFileDescriptor = open(fname, O_RDONLY);
 	if (mFileDescriptor == -1)
-		return CA_FALSE;
-	// mmap core file
+		return false;
+	/* mmap core file */
 	mpStartAddr = (char*) mmap(0, mFileSize, PROT_READ, MAP_PRIVATE, mFileDescriptor, 0);
 	if(mpStartAddr == MAP_FAILED)
-		return CA_FALSE;
-	mpEndAddr = mpStartAddr + mFileSize;
+		return false;
 
-	// walk through the mmap-ed core file and fix the corresponding ca_segments
+	/* walk through the mmap-ed core file and fix the corresponding ca_segments */
 	if (g_ptr_bit == 64)
 	{
 		Elf64_Ehdr* elfhdr = (Elf64_Ehdr*)mpStartAddr;
@@ -115,7 +115,7 @@ static int mmap_core_file(const char* fname)
 		{
 			Elf64_Phdr* phdr = (Elf64_Phdr*) (mpStartAddr + elfhdr->e_phoff + i * elfhdr->e_phentsize);
 			if (phdr->p_type == PT_LOAD && phdr->p_filesz > 0
-				&& phdr->p_offset + phdr->p_filesz <= mFileSize) // aware of truncated core
+				&& phdr->p_offset + phdr->p_filesz <= mFileSize) /* aware of truncated core */
 			{
 				for (n=0; n<g_segment_count; n++)
 				{
@@ -144,7 +144,7 @@ static int mmap_core_file(const char* fname)
 		{
 			Elf32_Phdr* phdr = (Elf32_Phdr*) (mpStartAddr + elfhdr->e_phoff + i * elfhdr->e_phentsize);
 			if (phdr->p_type == PT_LOAD && phdr->p_filesz > 0
-				&& phdr->p_offset + phdr->p_filesz <= mFileSize) // aware of truncated core
+				&& phdr->p_offset + phdr->p_filesz <= mFileSize) /* aware of truncated core */
 			{
 				for (n=0; n<g_segment_count; n++)
 				{
@@ -160,7 +160,7 @@ static int mmap_core_file(const char* fname)
 		}
 	}
 
-	return CA_TRUE;
+	return true;
 }
 
 static int
@@ -190,10 +190,13 @@ read_mapping (FILE *mapfile,
   return (ret != 0 && ret != EOF);
 }
 
-// For a live process, read the process's memory map from /proc
-// when create is true, build ca_segments
-// when create is false, return true if process's regions haven't changed a bit
-static CA_BOOL linux_nat_find_memory_regions(CA_BOOL create)
+/*
+ * For a live process, read the process's memory map from /proc
+ * when create is true, build ca_segments
+ * when create is false, return true if process's regions haven't changed a bit
+ */
+static bool
+linux_nat_find_memory_regions(bool create)
 {
 	int pid = ptid_get_pid (inferior_ptid);
 	char mapsfilename[MAXPATHLEN];
@@ -207,7 +210,7 @@ static CA_BOOL linux_nat_find_memory_regions(CA_BOOL create)
 	if ((mapsfile = fopen (mapsfilename, "r")) == NULL)
 	{
 		fprintf_filtered (gdb_stdout, "Could not open %s\n", mapsfilename);
-		return CA_FALSE;
+		return false;
 	}
 	/* Now iterate until end-of-file.  */
 	while (read_mapping (mapsfile, &addr, &endaddr, &permissions[0],
@@ -226,16 +229,17 @@ static CA_BOOL linux_nat_find_memory_regions(CA_BOOL create)
 			|| g_segments[count].m_read != read || g_segments[count].m_write != write || g_segments[count].m_exec != exec)
 		{
 			fclose(mapsfile);
-			return CA_FALSE;
+			return false;
 		}
 		count++;
 	}
 	fclose(mapsfile);
 
-	return CA_TRUE;
+	return true;
 }
 
-static void set_segment_module_type(enum storage_type type,
+static void
+set_segment_module_type(enum storage_type type,
 		address_t low, address_t high, const char* modname)
 {
 	while (low < high)
@@ -248,11 +252,12 @@ static void set_segment_module_type(enum storage_type type,
 			low = segment->m_vaddr + segment->m_vsize;
 		}
 		else
-			low += 4096; // system page size
+			low += 4096;	 /* system page size */
 	}
 }
 
-static int build_segments(void)
+static int
+build_segments(void)
 {
 	unsigned int i;
 	struct so_list *so = NULL;	/* link map state variable */
@@ -269,18 +274,18 @@ static int build_segments(void)
 	if (g_ptr_bit != 64 && g_ptr_bit != 32)
 	{
 		printf_filtered(_("Target's bit mode %d is not supported\n"), g_ptr_bit);
-		return CA_FALSE;
+		return false;
 	}
 
 	if (target_has_execution)
 	{
-		if (!linux_nat_find_memory_regions(CA_TRUE))
+		if (!linux_nat_find_memory_regions(true))
 			printf_filtered(_("No memory segments found\n"));
 	}
 	else if (core_bfd && core_bfd->xvec->flavour == bfd_target_elf_flavour)
 	{
 		Elf_Internal_Phdr *phdr = elf_tdata(core_bfd)->phdr;
-		g_debug_core = CA_TRUE;
+		g_debug_core = true;
 		for (i = 0; i < elf_elfheader(core_bfd)->e_phnum; i++, phdr++)
 		{
 			if (phdr->p_vaddr && phdr->p_memsz > 0)
@@ -291,22 +296,22 @@ static int build_segments(void)
 							(phdr->p_flags & PF_X) != 0 ? 1 : 0);
 			}
 		}
-		if (mmap_core_file(bfd_get_filename(core_bfd)) == CA_FALSE)
+		if (mmap_core_file(bfd_get_filename(core_bfd)) == false)
 		{
 			error (_("Failed to mmap core file %s"), bfd_get_filename(core_bfd));
-			return CA_FALSE;
+			return false;
 		}
 	}
 	else
 	{
 		error (_("Failed to build memory segments"));
-		return CA_FALSE;
+		return false;
 	}
-	// Verify that segments are sorted by address
-	if (!test_segments(CA_TRUE))
+	/* Verify that segments are sorted by address */
+	if (!test_segments(true))
 	{
 		error (_("Memory segments are not properly sorted"));
-		return CA_FALSE;
+		return false;
 	}
 	/*
 	 * find/set storage types of segments of shared modules
@@ -322,7 +327,7 @@ static int build_segments(void)
 				if (strcmp (sectptr->the_bfd_section->name, ".data") == 0
 					|| strcmp (sectptr->the_bfd_section->name, ".bss") == 0)
 					type = ENUM_MODULE_DATA;
-				// .rodata and .text sections are in the same segment
+				/* .rodata and .text sections are in the same segment */
 				else if (strcmp (sectptr->the_bfd_section->name, ".text") == 0
 						|| strcmp (sectptr->the_bfd_section->name, ".rodata") == 0)
 					type = ENUM_MODULE_TEXT;
@@ -352,9 +357,8 @@ static int build_segments(void)
 	{
 		ptid_t old;
 
-		// set the rsp/esp regnum
+		/* set the rsp/esp regnum */
 		g_rsp_regnum = gdbarch_sp_regnum (target_gdbarch());
-		target_find_new_threads();
 		/* remember current thread */
 		old = inferior_ptid;
 		/* switch to all threads */
@@ -364,23 +368,23 @@ static int build_segments(void)
 		registers_changed ();
 	}
 
-	// alloc buffer for future reference search
+	/* alloc buffer for future reference search */
 	alloc_bit_vec();
 
-	return CA_TRUE;
+	return true;
 }
 
-CA_BOOL update_memory_segments_and_heaps(void)
+bool
+update_memory_segments_and_heaps(void)
 {
-	struct cleanup *old_chain;
-	CA_BOOL rc = CA_TRUE;
+	bool rc = true;
 
-	// reset internal quit flag
-	g_quit = CA_FALSE;
+	/* reset internal quit flag */
+	g_quit = false;
 
-	// set up thread context
+	/* set up thread context */
 	{
-		// Get current function's low, pc and high instruction addresses
+		/* Get current function's low, pc and high instruction addresses */
 		struct frame_info *selected_frame = get_selected_frame (NULL);
 		if (selected_frame)
 		{
@@ -389,40 +393,40 @@ CA_BOOL update_memory_segments_and_heaps(void)
 		}
 		else
 			memset(&g_debug_context, 0, sizeof(g_debug_context));
-		g_debug_context.tid = pid_to_thread_id (inferior_ptid);
+		g_debug_context.tid = ptid_to_global_thread_id (inferior_ptid);
 	}
-	// clear up old types
+	/* clear up old types */
 	clear_addr_type_map();
 
 	if (g_segments && g_segment_count)
 	{
-		// Don't need to update if target is core file, or live process didn't change
-		if (g_debug_core || linux_nat_find_memory_regions(CA_FALSE))
-			return CA_TRUE;
+		/*
+		 * Don't need to update if target is core file, or live process
+		 * didn't change 
+		 */
+		if (g_debug_core || linux_nat_find_memory_regions(false))
+			return true;
 		printf_filtered(_("Target process has changed. Rebuild heap information\n"));
-		// release old ca_segments
+		/* release old ca_segments */
 		release_all_segments();
 	}
 
-	// make sure this function won't change debug context
-	old_chain = make_cleanup_restore_current_thread ();
-	// Query Target Process's address space
+	/* make sure this function won't change debug context */
+	scoped_restore_current_thread restore_current_thread;
+	/* Query Target Process's address space */
 	if (!build_segments())
 	{
 		error(_("Failed to build memory segments"));
-		rc = CA_FALSE;
-		goto exit_update_memory_segments_and_heaps;
+		return false;
 	}
-	// Probe for heap segments
+	/* Probe for heap segments */
 	init_heap();
-
-exit_update_memory_segments_and_heaps:
-	do_cleanups (old_chain);
 
 	return rc;
 }
 
-int get_frame_number(const struct ca_segment* segment, address_t addr, int* offset)
+int
+get_frame_number(const struct ca_segment* segment, address_t addr, int* offset)
 {
 	int frame;
 	address_t sp;
@@ -433,31 +437,28 @@ int get_frame_number(const struct ca_segment* segment, address_t addr, int* offs
 		return -1;
 
 	switch_to_thread (tp->ptid);
-	// find the frame that addr belongs to
-	// start from the innermost frame
+	/*
+	 * find the frame that addr belongs to
+	 * start from the innermost frame
+	 */
 	frame = -1;
 	*offset = -1;
 	fp = get_current_frame ();
 	while (fp)
 	{
-		volatile struct gdb_exception except;
 		sp = get_frame_sp(fp);
 		if (addr < sp)
 			break;
 		frame++;
 		*offset = (int)((long)addr - (long)sp);
-		TRY_CATCH (except, RETURN_MASK_ERROR)
-		{
-			fp = get_prev_frame(fp);
-		}
-		if (except.reason < 0)
-			break;
+		fp = get_prev_frame(fp);
 	}
 
 	return frame;
 }
 
-address_t get_rsp(const struct ca_segment* segment)
+address_t
+get_rsp(const struct ca_segment* segment)
 {
 	address_t rsp = 0;
 	const struct thread_info *info = (const struct thread_info*) segment->m_thread.context;
@@ -475,7 +476,8 @@ address_t get_rsp(const struct ca_segment* segment)
  * Get the value of the registers of the thread context
  * If buffer is NULL, return number of registers could be returned
  */
-int read_registers(const struct ca_segment* segment, struct reg_value* regs, int bufsz)
+int
+read_registers(const struct ca_segment* segment, struct reg_value* regs, int bufsz)
 {
 	size_t ptr_sz = g_ptr_bit >> 3;
 	struct gdbarch *gdbarch = get_current_arch();
@@ -509,12 +511,13 @@ int read_registers(const struct ca_segment* segment, struct reg_value* regs, int
 	return 0;
 }
 
-CA_BOOL search_registers(const struct ca_segment* segment,
-						struct CA_LIST* targets,
-						struct CA_LIST* refs)
+bool
+search_registers(const struct ca_segment* segment,
+		struct CA_LIST* targets,
+		struct CA_LIST* refs)
 {
 	size_t ptr_sz = g_ptr_bit >> 3;
-	int lbFound = CA_FALSE;
+	int lbFound = false;
 	const struct thread_info *info = (const struct thread_info*) segment->m_thread.context;
 	struct regcache *regcache = get_thread_regcache (info->ptid);
 	if (regcache)
@@ -534,16 +537,16 @@ CA_BOOL search_registers(const struct ca_segment* segment,
 				{
 					if (val >= target->low && val < target->high)
 					{
-						// this register contains a reference to the target
+						/* this register contains a reference to the target */
 						struct object_reference* ref = (struct object_reference*) malloc(sizeof(struct object_reference));
 						ref->storage_type  = ENUM_REGISTER;
-						ref->where.reg.tid = info->num;
+						ref->where.reg.tid = info->per_inf_num;
 						ref->where.reg.reg_num = i;
 						ref->where.reg.name    = gdbarch_register_name (gdbarch, i);
 						ref->vaddr        = 0;
 						ref->value        = val;
 						ca_list_push_back(refs, ref);
-						lbFound = CA_TRUE;
+						lbFound = true;
 						break;
 					}
 				}
@@ -554,13 +557,16 @@ CA_BOOL search_registers(const struct ca_segment* segment,
 	return lbFound;
 }
 
-CA_BOOL is_heap_object_with_vptr(const struct object_reference* ref, char* name_buf, size_t buf_sz)
+bool
+is_heap_object_with_vptr(const struct object_reference* ref,
+			 char* name_buf,
+			 size_t buf_sz)
 {
 	size_t ptr_sz = g_ptr_bit >> 3;
-	int rs = CA_FALSE;
+	int rs = false;
 	address_t addr = ref->where.heap.addr;
 	address_t val = 0;
-	if (target_read_memory(addr, (void*)&val, ptr_sz) == 0 && val)
+	if (target_read_memory(addr, (gdb_byte *)&val, ptr_sz) == 0 && val)
 	{
 		struct ca_segment* segment = get_segment(val, 0);
 		if (segment && (segment->m_type == ENUM_MODULE_DATA || segment->m_type == ENUM_MODULE_TEXT) )
@@ -578,12 +584,12 @@ CA_BOOL is_heap_object_with_vptr(const struct object_reference* ref, char* name_
 			/* Throw away both name and filename.  */
 			struct cleanup *cleanup_chain = make_cleanup (free_current_contents, &name);
 			make_cleanup (free_current_contents, &filename);
-			if (build_address_symbolic (get_current_arch(), vptr, CA_TRUE /*do_demangle*/,
+			if (build_address_symbolic (get_current_arch(), vptr, true /*do_demangle*/,
 									&name, &offset,	&filename, &line, &unmapped) == 0)
 			{
 				if (strncmp(name, "vtable for ", 11) == 0)
 				{
-					rs = CA_TRUE;
+					rs = true;
 					if (name_buf)
 					{
 						strncpy(name_buf, name+11, buf_sz);
@@ -596,9 +602,9 @@ CA_BOOL is_heap_object_with_vptr(const struct object_reference* ref, char* name_
 	return rs;
 }
 
-/////////////////////////////////////////////////////////////////////////
-// Type helper funcitons
-/////////////////////////////////////////////////////////////////////////
+/*
+ * Type helper funcitons
+ */
 struct ca_addr_type_pair
 {
 	address_t addr;
@@ -612,8 +618,10 @@ static struct ca_addr_type_pair* addr_type_map = NULL;
 static unsigned int addr_type_map_sz = 0;
 static unsigned int addr_type_map_buf_sz = 0;
 
-// return false if the address is already in the map, or invalid params
-static CA_BOOL
+/*
+ * return false if the address is already in the map, or invalid params
+ */
+static bool
 add_addr_type(address_t addr, struct type* type, struct symbol* sym)
 {
 	int i;
@@ -621,53 +629,56 @@ add_addr_type(address_t addr, struct type* type, struct symbol* sym)
 	if (sym)
 		type = SYMBOL_TYPE(sym);
 	if (!type)
-		return CA_FALSE;
+		return false;
 
-	CHECK_TYPEDEF(type);
+	check_typedef(type);
 	if (TYPE_CODE(type) == TYPE_CODE_PTR || TYPE_CODE(type) == TYPE_CODE_REF)
 		type = TYPE_TARGET_TYPE (type);
 
-	// check duplicate entry
+	/* check duplicate entry */
 	for (i = addr_type_map_sz - 1; i >= 0; i--)
 	{
-		// The new type is the sub-type of an existing one
-		if (addr >= addr_type_map[i].addr && addr + TYPE_LENGTH(type) <= addr_type_map[i].addr + addr_type_map[i].size)
-			return CA_TRUE;
-		// The new type is the super-type of an existing one
-		else if (addr_type_map[i].addr >= addr && addr_type_map[i].addr + addr_type_map[i].size <= addr + TYPE_LENGTH(type))
-		{
+		/* The new type is the sub-type of an existing one */
+		if (addr >= addr_type_map[i].addr &&
+		    addr + TYPE_LENGTH(type) <= addr_type_map[i].addr + addr_type_map[i].size) {
+			return true;
+		}
+		/* The new type is the super-type of an existing one */
+		else if (addr_type_map[i].addr >= addr &&
+		    addr_type_map[i].addr + addr_type_map[i].size <= addr + TYPE_LENGTH(type)) {
 			addr_type_map[i].addr = addr;
 			addr_type_map[i].type = type;
 			addr_type_map[i].sym  = sym;
 			addr_type_map[i].size = TYPE_LENGTH(type);
-			return CA_TRUE;
+			return true;
 		}
 	}
-	// expand buffer if necessary
+	/* expand buffer if necessary */
 	if (addr_type_map_sz >= addr_type_map_buf_sz)
 	{
 		if (addr_type_map_buf_sz == 0)
 			addr_type_map_buf_sz = 64;
 		else
 			addr_type_map_buf_sz = addr_type_map_buf_sz * 2;
-		addr_type_map = realloc(addr_type_map, addr_type_map_buf_sz * sizeof(struct ca_addr_type_pair));
+		addr_type_map = (struct ca_addr_type_pair *)
+		    realloc(addr_type_map, addr_type_map_buf_sz * sizeof(struct ca_addr_type_pair));
 	}
-	// append the newly-discovered type
+	/* append the newly-discovered type */
 	addr_type_map[addr_type_map_sz].addr = addr;
 	addr_type_map[addr_type_map_sz].type = type;
 	addr_type_map[addr_type_map_sz].sym = sym;
 	addr_type_map[addr_type_map_sz].size = TYPE_LENGTH(type);
 	addr_type_map_sz++;
 
-	return CA_TRUE;
+	return true;
 }
 
-// find a symbol or type associated with given address
+/* find a symbol or type associated with given address */
 static struct ca_addr_type_pair*
 lookup_type_by_addr(address_t addr)
 {
 	int i;
-	// pick up the latest first
+	/* pick up the latest first */
 	for (i=addr_type_map_sz-1; i>=0; i--)
 	{
 		if (addr >= addr_type_map[i].addr
@@ -677,40 +688,44 @@ lookup_type_by_addr(address_t addr)
 	return NULL;
 }
 
-// return the type of a struct's sub field, located exactly at offset
-// if nested structs exist, drill down to the last non-struct field
+/*
+ * return the type of a struct's sub field, located exactly at offset
+ * if nested structs exist, drill down to the last non-struct field
+ */
 struct type*
 get_struct_field_type_and_name(struct type *basetype,
-				size_t offset, int lea, char* namebuf, size_t bufsz, int* is_vptr)
+			       size_t offset, int lea, char* namebuf,
+			       size_t bufsz, int* is_vptr)
 {
 	*namebuf = '\0';
-	CHECK_TYPEDEF (basetype);
-	// deal with pointer type
-	//if (TYPE_CODE(basetype) == TYPE_CODE_PTR || TYPE_CODE(basetype) == TYPE_CODE_REF)
-	//	basetype = TYPE_TARGET_TYPE(basetype);
+	check_typedef (basetype);
 
 	if (TYPE_CODE(basetype) == TYPE_CODE_STRUCT || TYPE_CODE(basetype) == TYPE_CODE_UNION)
 	{
 		int i, num_fields, vptr_fieldno;
 		struct type *vptr_basetype = NULL;
-		// sanity check of offset
+		/* sanity check of offset */
 		if (offset >= TYPE_LENGTH(basetype))
 			return NULL;
 
 		num_fields = TYPE_NFIELDS (basetype);
-		vptr_fieldno = get_vptr_fieldno (basetype, &vptr_basetype); // -1 if the struct doesn't have a vptr
-		// The first num_baseclasses fields are base classes, followed by type's data member
-		// Their sum is num_fields
-		// Also make sure all field types are fleshed out
+		vptr_fieldno = get_vptr_fieldno (basetype, &vptr_basetype);	/* -1 if the struct doesn't have a vptr */
+		/*
+		 * The first num_baseclasses fields are base classes, followed
+		 * by type's data member
+		 * Their sum is num_fields
+		 * Also make sure all field types are fleshed out
+		 */
 		for (i = 0; i < num_fields; i++)
 		{
-			CHECK_TYPEDEF(TYPE_FIELD_TYPE (basetype, i));
+			check_typedef(TYPE_FIELD_TYPE (basetype, i));
 		}
 		for (i = 0; i < num_fields; i++)
 		{
 			size_t pos, field_size;
 			struct type* field_type = TYPE_FIELD_TYPE (basetype, i);
-			if (TYPE_FIELD_LOC_KIND(basetype, i) != FIELD_LOC_KIND_BITPOS)	// static member
+			/* static member */
+			if (TYPE_FIELD_LOC_KIND(basetype, i) != FIELD_LOC_KIND_BITPOS)
 				continue;
 			pos = TYPE_FIELD_BITPOS(basetype, i) / 8;
 			field_size = field_type->length;
@@ -725,9 +740,7 @@ get_struct_field_type_and_name(struct type *basetype,
 				strncpy(namebuf, field_name, bufsz);
 				namebuf += namelen;
 				bufsz   -= namelen;
-				// this is the vptr to "vtable for <basetype>"
-				//*sym_addr += pos;
-				//*sym_sz = field_size;
+				/* this is the vptr to "vtable for <basetype>" */
 				if (offset > pos)
 					return get_struct_field_type_and_name(field_type, offset - pos, lea, namebuf, bufsz, is_vptr);
 				else if (i == vptr_fieldno && basetype == vptr_basetype)
@@ -746,7 +759,10 @@ get_struct_field_type_and_name(struct type *basetype,
 						bufsz--;
 					}
 					subfield_type = get_struct_field_type_and_name(field_type, 0, lea, namebuf, bufsz, is_vptr);
-					// If _vptr belongs to a nested struct, the vtable should be of the outmost struct
+					/*
+					 * If _vptr belongs to a nested struct,
+					 * the vtable should be of the outmost struct
+					 */
 					if (*is_vptr)
 						return field_type;
 					else
@@ -770,10 +786,6 @@ get_struct_field_type_and_name(struct type *basetype,
 			unsigned int index = low_bound + offset / elem_sz;
 			if (index <= high_bound)
 			{
-				//*sym_addr += index * elem_sz;
-				//*sym_sz = elem_sz;
-				//if (offset > index * elem_sz)
-				//	return get_struct_field_type(target_type, offset - index * elem_sz);
 				if (offset == index * elem_sz)
 				{
 					sprintf(namebuf, "[%d]", index);
@@ -785,34 +797,34 @@ get_struct_field_type_and_name(struct type *basetype,
 	}
 	else if (offset == 0)
 	{
-		//*sym_addr = *sym_addr + offset;
-		//*sym_sz   = TYPE_LENGTH(type);
 		return basetype;
 	}
 
 	return NULL;
 }
 
-void clear_addr_type_map(void)
+void
+clear_addr_type_map(void)
 {
 	addr_type_map_sz = 0;
 }
 
-/////////////////////////////////////////////////////////////////////////
-// Display a reference
-/////////////////////////////////////////////////////////////////////////
+/*
+ * Display a reference
+ */
 void
-print_type_name(struct type *type, const char* field_name, const char* prefix, const char* postfix)
+print_type_name(struct type *type, const char* field_name,
+		const char* prefix, const char* postfix)
 {
 	int deref_count = 0;
-	CA_BOOL pointer_type = CA_TRUE;
+	bool pointer_type = true;
 
-	CHECK_TYPEDEF (type);
+	check_typedef (type);
 
-	// get base type if it is pointer/reference type
+	/* get base type if it is pointer/reference type */
 	if (TYPE_CODE (type) == TYPE_CODE_PTR)
 	{
-		pointer_type = CA_TRUE;
+		pointer_type = true;
 		while (TYPE_CODE (type) == TYPE_CODE_PTR)
 		{
 			type = TYPE_TARGET_TYPE(type);
@@ -821,13 +833,13 @@ print_type_name(struct type *type, const char* field_name, const char* prefix, c
 	}
 	else if (TYPE_CODE (type) == TYPE_CODE_REF)
 	{
-		pointer_type = CA_FALSE;
+		pointer_type = false;
 		deref_count++;
 		type = TYPE_TARGET_TYPE(type);
 	}
 	else if (TYPE_CODE (type) == TYPE_CODE_ARRAY)
 	{
-		// special treatment of array
+		/* special treatment of array */
 		struct type *range_type;
 		struct type *target_type = TYPE_TARGET_TYPE (type);
 		if (prefix)
@@ -870,52 +882,16 @@ print_type_name(struct type *type, const char* field_name, const char* prefix, c
 	}
 }
 
-// the input type is a struct or union
-// return the first field's type if it is a pointer or ref
-/*static struct type* first_pointer_field(struct type* type)
-{
-	int i, num_fields, num_baseclasses;
-	num_fields = TYPE_NFIELDS (type);
-	num_baseclasses = TYPE_N_BASECLASSES (type);
-	// The first num_baseclasses fields are base classes, followed by type's data member
-	// Their sum is num_fields
-	// Also make sure all field types are fleshed out
-	for (i = 0; i < num_fields; i++)
-	{
-		struct type* field_type;
-		size_t pos, field_size;
-
-		field_type = TYPE_FIELD_TYPE (type, i);
-		CHECK_TYPEDEF(field_type);
-		pos = TYPE_FIELD_BITPOS(type, i) / 8;
-		field_size = field_type->length;
-		if (TYPE_FIELD_LOC_KIND(type, i) != FIELD_LOC_KIND_BITPOS)	// static member
-			continue;
-		if ( i+1 < num_fields
-			&& field_size == 1
-			&& (TYPE_FIELD_BITPOS(type, i+1) / 8) == pos )
-			continue;
-		else if (field_size > 0)
-		{
-			// base classes come first in the type's fields
-			if (i < num_baseclasses || TYPE_CODE(field_type) == TYPE_CODE_STRUCT || TYPE_CODE(field_type) == TYPE_CODE_UNION)
-				return first_pointer_field(field_type);
-			else if (TYPE_CODE(field_type) == TYPE_CODE_PTR || TYPE_CODE(field_type) == TYPE_CODE_REF)
-				return field_type;
-			else
-				return NULL;
-		}
-	}
-	return NULL;
-}*/
-
-// Display the struct's data member at offset
+/*
+ * Display the struct's data member at offset
+ */
 static void
-print_struct_field(const struct object_reference* ref, struct type *type, size_t offset)
+print_struct_field(const struct object_reference* ref,
+		   struct type *type, size_t offset)
 {
-	CHECK_TYPEDEF (type);
+	check_typedef (type);
 
-	// If there is nothing referenced, don't drill down to sub field
+	/* If there is nothing referenced, don't drill down to sub field */
 	if (offset == 0 && (ref->value==0 || !get_segment(ref->value, 1)) )
 		return;
 
@@ -950,18 +926,22 @@ print_struct_field(const struct object_reference* ref, struct type *type, size_t
 		int i, num_fields, num_baseclasses;
 		num_fields = TYPE_NFIELDS (type);
 		num_baseclasses = TYPE_N_BASECLASSES (type);
-		// The first num_baseclasses fields are base classes, followed by type's data member
-		// Their sum is num_fields
-		// Also make sure field type is fleshed out before use
+		/*
+		 * The first num_baseclasses fields are base classes, followed
+		 * by type's data member
+		 * Their sum is num_fields
+		 * Also make sure field type is fleshed out before use
+		 */
 		for (i = 0; i < num_fields; i++)
 		{
 			struct type* field_type = TYPE_FIELD_TYPE (type, i);
 			size_t pos, field_size;
 
-			CHECK_TYPEDEF(TYPE_FIELD_TYPE (type, i));
+			check_typedef(TYPE_FIELD_TYPE (type, i));
 			pos = TYPE_FIELD_BITPOS(type, i) / 8;
 			field_size = field_type->length;
-			if (TYPE_FIELD_LOC_KIND(type, i) != FIELD_LOC_KIND_BITPOS)	// static member
+			/* static member */
+			if (TYPE_FIELD_LOC_KIND(type, i) != FIELD_LOC_KIND_BITPOS)
 				continue;
 			if ( i+1 < num_fields
 				&& field_size == 1
@@ -969,11 +949,11 @@ print_struct_field(const struct object_reference* ref, struct type *type, size_t
 				continue;
 			else if (field_size > 0 && offset >= pos && offset < pos + field_size)
 			{
-				// base classes come first in the type's fields
+				/* base classes come first in the type's fields */
 				if (i < num_baseclasses)
 				{
 					const char* name = TYPE_NAME(field_type);
-					// quote the base name that consists of namespace specifier
+					/* quote the base name that consists of namespace specifier */
 					if (strstr(name, "::"))
 						printf_filtered(_("::\"%s\""), name);
 					else
@@ -991,7 +971,8 @@ print_struct_field(const struct object_reference* ref, struct type *type, size_t
 		add_addr_type(ref->value, TYPE_TARGET_TYPE(type), NULL);
 }
 
-void print_register_ref(const struct object_reference* ref)
+void
+print_register_ref(const struct object_reference* ref)
 {
 	const char* reg_name;
 	if (!ref->where.reg.name)
@@ -1003,69 +984,58 @@ void print_register_ref(const struct object_reference* ref)
 		reg_name = ref->where.reg.name;
 	if (g_debug_context.tid != ref->where.stack.tid)
 		CA_PRINT(" thread %d", ref->where.reg.tid);
-	CA_PRINT(" %s="PRINT_FORMAT_POINTER, reg_name, ref->value);
+	CA_PRINT(" %s=" PRINT_FORMAT_POINTER, reg_name, ref->value);
 }
 
-int get_thread_id (const struct ca_segment* segment)
+int
+get_thread_id (const struct ca_segment* segment)
 {
 	const struct thread_info *info = (const struct thread_info*) segment->m_thread.context;
-	return info->num;
+	return info->per_inf_num;
 }
 
-static struct minimal_symbol* get_global_minimal_sym(const struct object_reference* ref, address_t* sym_addr, size_t* sym_sz)
+static struct minimal_symbol*
+get_global_minimal_sym(const struct object_reference* ref,
+		       address_t* sym_addr, size_t* sym_sz)
 {
 	struct objfile *objfile;
 	struct obj_section *osect;
 
-	//if (ref->storage_type != ENUM_MODULE_DATA)
-	//	return NULL;
-
-	ALL_OBJSECTIONS (objfile, osect)
-	{
+	ALL_OBJSECTIONS (objfile, osect) {
 		address_t sect_addr;
-		struct minimal_symbol *msymbol;
-		/* Only process each object file once, even if there's a separate
-		debug file.  */
+		struct bound_minimal_symbol bmsymbol;
+
+		/*
+		 * Only process each object file once, even if there's a
+		 * separate debug file.
+		 */
 		if (objfile->separate_debug_objfile_backlink)
 			continue;
 
 		sect_addr = overlay_mapped_address (ref->vaddr, osect);
 
-		if (obj_section_addr (osect) <= sect_addr
-			&& sect_addr < obj_section_endaddr (osect)
-			&& (msymbol = lookup_minimal_symbol_by_pc_section (sect_addr, osect).minsym))
-		{
-			if (sym_addr && sym_sz)
-			{
-				*sym_addr = SYMBOL_VALUE_ADDRESS (msymbol);
-				*sym_sz   = MSYMBOL_SIZE (msymbol);
-			}
-			return msymbol;
-		}
-		/*if (obj_section_addr (osect) <= sect_addr
-			&& sect_addr < obj_section_endaddr (osect))
-		{
-			struct minimal_symbol *msymbol;
-			msymbol = lookup_minimal_symbol_by_pc_section (sect_addr, osect).minsym;
-			if (msymbol)
-			{
-				if (sym_addr && sym_sz)
-				{
-					*sym_addr = SYMBOL_VALUE_ADDRESS (msymbol);
-					*sym_sz   = MSYMBOL_SIZE (msymbol);
+		if (obj_section_addr(osect) <= sect_addr &&
+		    sect_addr < obj_section_endaddr(osect)) {
+			bmsymbol = lookup_minimal_symbol_by_pc_section(sect_addr, osect);
+			if (bmsymbol.minsym != NULL && bmsymbol.objfile != NULL) {
+				if (sym_addr != NULL && sym_sz != NULL) {
+					*sym_addr = BMSYMBOL_VALUE_ADDRESS(bmsymbol);
+					*sym_sz   = MSYMBOL_SIZE (bmsymbol.minsym);
 				}
-				return msymbol;
+				return bmsymbol.minsym;
 			}
 			break;
-		}*/
+		}
 	}
 
 	return NULL;
 }
 
-struct symbol* get_global_sym(const struct object_reference* ref, address_t* sym_addr, size_t* sym_sz)
+struct symbol*
+get_global_sym(const struct object_reference* ref,
+	       address_t* sym_addr, size_t* sym_sz)
 {
-	struct minimal_symbol *msymbol;
+	struct bound_minimal_symbol bmsymbol;
 	struct objfile *objfile;
 	struct obj_section *osect;
 	address_t sect_addr;
@@ -1077,27 +1047,25 @@ struct symbol* get_global_sym(const struct object_reference* ref, address_t* sym
 
 	ALL_OBJSECTIONS (objfile, osect)
 	{
-		/* Only process each object file once, even if there's a separate
-		debug file.  */
+		/*
+		 * Only process each object file once, even if there's a separate
+		 * debug file.
+		 */
 		if (objfile->separate_debug_objfile_backlink)
 			continue;
 
 		sect_addr = overlay_mapped_address (ref->vaddr, osect);
 
-		if (obj_section_addr (osect) <= sect_addr
-			&& sect_addr < obj_section_endaddr (osect)
-			&& (msymbol = lookup_minimal_symbol_by_pc_section (sect_addr, osect).minsym))
-		{
-			//const char *obj_name;
-			const char *mapped, *sec_name, *msym_name;
-			char *loc_string;
-			struct cleanup *old_chain = NULL;
+		if (obj_section_addr (osect) <= sect_addr &&
+		    sect_addr < obj_section_endaddr (osect)) {
+			bmsymbol = lookup_minimal_symbol_by_pc_section (sect_addr, osect);
+			if (bmsymbol.minsym != NULL && bmsymbol.objfile != NULL) {
+				const char *msym_name;
+				char *loc_string;
+				struct cleanup *old_chain = NULL;
 
-			{
-				offset = sect_addr - SYMBOL_VALUE_ADDRESS (msymbol);
-				mapped = section_is_mapped (osect) ? _("mapped") : _("unmapped");
-				sec_name = osect->the_bfd_section->name;
-				msym_name = SYMBOL_PRINT_NAME (msymbol);
+				offset = sect_addr - BMSYMBOL_VALUE_ADDRESS(bmsymbol);
+				msym_name = MSYMBOL_PRINT_NAME(bmsymbol.minsym);
 
 				loc_string = xstrprintf ("%s", msym_name);
 
@@ -1107,23 +1075,17 @@ struct symbol* get_global_sym(const struct object_reference* ref, address_t* sym
 
 				gdb_assert (osect->objfile && osect->objfile->original_name);
 
-				{
-					sym = lookup_symbol (loc_string, 0, VAR_DOMAIN, 0);
-					if (sym)
-					{
-						struct type* type = sym->type;
-						add_addr_type (ref->vaddr - offset, type, sym);
-						if (sym_addr && sym_sz)
-						{
-							*sym_addr = ref->vaddr - offset;
-							*sym_sz   = TYPE_LENGTH(type);
-						}
+				sym = lookup_symbol(loc_string, 0, VAR_DOMAIN, 0).symbol;
+				if (sym != NULL) {
+					struct type* type = sym->type;
+					add_addr_type (ref->vaddr - offset, type, sym);
+					if (sym_addr && sym_sz) {
+						*sym_addr = ref->vaddr - offset;
+						*sym_sz   = TYPE_LENGTH(type);
 					}
-					else if (sym_addr && sym_sz)
-					{
-						*sym_addr = SYMBOL_VALUE_ADDRESS (msymbol);
-						*sym_sz   = MSYMBOL_SIZE (msymbol);
-					}
+				} else if (sym_addr != 0 && sym_sz != 0) {
+					*sym_addr = BMSYMBOL_VALUE_ADDRESS(bmsymbol);
+					*sym_sz   = MSYMBOL_SIZE(bmsymbol.minsym);
 				}
 
 				do_cleanups (old_chain);
@@ -1136,59 +1098,56 @@ struct symbol* get_global_sym(const struct object_reference* ref, address_t* sym
 }
 
 struct symbol*
-get_stack_sym(const struct object_reference* ref, address_t* sym_addr, size_t* sym_sz)
+get_stack_sym(const struct object_reference* ref,
+	      address_t* sym_addr, size_t* sym_sz)
 {
 	struct symbol *sym;
-	CA_BOOL found_local_var = CA_FALSE;
+	bool found_local_var = false;
 	struct ca_segment*segment = get_segment (ref->vaddr, 1);
 	if (ref->where.stack.frame >= 0 && segment && segment->m_type == ENUM_STACK)
 	{
 		struct frame_info* frame;
-		struct block *block;
+		const struct block *block;
 		address_t pc;
 		int i;
 		const struct thread_info *tp = (const struct thread_info*) segment->m_thread.context;
 
-		// switch to the thread/frame
+		/* switch to the thread/frame */
 		switch_to_thread (tp->ptid);
 		frame = get_current_frame ();
 		for (i=0; i<ref->where.stack.frame; i++)
 			frame = get_prev_frame(frame);
 
-		// check local vars
-		if (get_frame_pc_if_available (frame, &pc)
-			&& (block = get_frame_block (frame, 0) ) )
-		{
-			while (block && !found_local_var)
-			{
+		/* check local vars */
+		if (get_frame_pc_if_available (frame, &pc) &&
+		    (block = get_frame_block (frame, 0) ) ) {
+			while (block && !found_local_var) {
 				struct block_iterator iter;
 				volatile struct gdb_exception except;
 
-				ALL_BLOCK_SYMBOLS (block, iter, sym)
-				{
-					switch (SYMBOL_CLASS (sym))
-					{
+				ALL_BLOCK_SYMBOLS (block, iter, sym) {
+					switch (SYMBOL_CLASS (sym)) {
 					case LOC_LOCAL:
 					case LOC_REGISTER:
 					case LOC_STATIC:
 					case LOC_COMPUTED:
-						TRY_CATCH (except, RETURN_MASK_ERROR)
-						{
-							struct value *val = read_var_value (sym, frame);
+						TRY {
+							struct value *val = read_var_value (sym, NULL, frame);
 							address_t val_addr = value_address(val);
 							struct type * type = value_type(val);
 							size_t val_size = type->length;
 							if (ref->vaddr >= val_addr && ref->vaddr < val_addr + val_size)
 							{
-								found_local_var = CA_TRUE;
+								found_local_var = true;
 								if (sym_addr && sym_sz)
 								{
 									*sym_addr = val_addr;
 									*sym_sz = val_size;
-									//get_struct_field_type(type, ref->vaddr - val_addr, sym_addr, sym_sz);
 								}
 							}
+						} CATCH (except, RETURN_MASK_ERROR) {
 						}
+						END_CATCH
 						break;
 					default:
 						break;
@@ -1197,7 +1156,7 @@ get_stack_sym(const struct object_reference* ref, address_t* sym_addr, size_t* s
 						break;
 				}
 
-				// move up to super block until reach function scope
+				/* move up to super block until reach function scope */
 				if (BLOCK_FUNCTION (block))
 					break;
 				block = BLOCK_SUPERBLOCK (block);
@@ -1207,7 +1166,8 @@ get_stack_sym(const struct object_reference* ref, address_t* sym_addr, size_t* s
 	return found_local_var ? sym : NULL;
 }
 
-struct type* get_heap_object_type(const struct object_reference* ref)
+struct type*
+get_heap_object_type(const struct object_reference* ref)
 {
 	struct type* type = NULL;
 
@@ -1215,21 +1175,23 @@ struct type* get_heap_object_type(const struct object_reference* ref)
 	{
 		size_t size_t_sz = g_ptr_bit >> 3;
 		char obj_name[NAME_BUF_SZ];
-		// some application put multiple objects on a pre-allocated buffer
-		// make sure we get the type right
+		/*
+		 * some application put multiple objects on a pre-allocated
+		 * buffer; make sure we get the type right
+		 */
 		struct ca_addr_type_pair* addr_type = lookup_type_by_addr(ref->vaddr);
 		if (addr_type)
 			type = addr_type->type;
-		// special care is taken for heap object w/ _vptr
-		else if (is_heap_object_with_vptr(ref, obj_name, NAME_BUF_SZ))
-		{
-			// make sure the size of the object agrees with the size of the heap block
-			struct symbol *sym = lookup_symbol (obj_name, 0, STRUCT_DOMAIN, 0);
-			if (sym)
-			{
-				if (TYPE_LENGTH(sym->type) <= ref->where.heap.size
-					&& TYPE_LENGTH(sym->type) + 2 * size_t_sz >= ref->where.heap.size)
-				{
+		/* special care is taken for heap object w/ _vptr */
+		else if (is_heap_object_with_vptr(ref, obj_name, NAME_BUF_SZ)) {
+			/*
+			 * make sure the size of the object agrees with the
+			 * size of the heap block
+			 */
+			struct symbol *sym = lookup_symbol(obj_name, 0, STRUCT_DOMAIN, 0).symbol;
+			if (sym != NULL) {
+				if (TYPE_LENGTH(sym->type) <= ref->where.heap.size &&
+				    TYPE_LENGTH(sym->type) + 2 * size_t_sz >= ref->where.heap.size) {
 					type = sym->type;
 					add_addr_type (ref->where.heap.addr, type, NULL);
 				}
@@ -1240,31 +1202,37 @@ struct type* get_heap_object_type(const struct object_reference* ref)
 	return type;
 }
 
-CA_BOOL known_global_sym(const struct object_reference* ref, address_t* sym_addr, size_t* sym_sz)
+bool
+known_global_sym(const struct object_reference* ref,
+		 address_t* sym_addr, size_t* sym_sz)
 {
 	struct minimal_symbol* msym = get_global_minimal_sym(ref, sym_addr, sym_sz);
 	return (msym != NULL);
 }
 
-CA_BOOL known_stack_sym(const struct object_reference* ref, address_t* sym_addr, size_t* sym_sz)
+bool
+known_stack_sym(const struct object_reference* ref,
+		address_t* sym_addr, size_t* sym_sz)
 {
 	struct symbol* sym = get_stack_sym(ref, sym_addr, sym_sz);
 	return (sym != NULL);
 }
 
-static CA_BOOL known_heap_block(const struct object_reference* ref)
+static bool
+known_heap_block(const struct object_reference* ref)
 {
 	struct type* type = get_heap_object_type(ref);
 	return (type != NULL);
 }
 
-void print_stack_ref(const struct object_reference* ref)
+void
+print_stack_ref(const struct object_reference* ref)
 {
 	struct symbol* sym;
 	address_t sym_addr;
 	size_t    sym_size;
 
-	// display thread id and frame number if they are not selected values
+	/* display thread id and frame number if they are not selected values */
 	if (g_debug_context.tid != ref->where.stack.tid)
 	{
 		CA_PRINT(" thread %d", ref->where.stack.tid);
@@ -1276,13 +1244,13 @@ void print_stack_ref(const struct object_reference* ref)
 	sym = get_stack_sym(ref, &sym_addr, &sym_size);
 	if (sym)
 	{
-		// if the ref belongs to a local symbol, display in detail
+		/* if the ref belongs to a local symbol, display in detail */
 		printf_filtered(_(" %s"), SYMBOL_PRINT_NAME (sym));
 		print_struct_field(ref, SYMBOL_TYPE(sym), ref->vaddr - sym_addr);
 	}
 	else
 	{
-		// if no named local var is found, just print its sp offset
+		/* if no named local var is found, just print its sp offset */
 		if (ref->where.stack.frame >= 0)
 		{
 			if (ref->where.stack.offset == 0)
@@ -1299,7 +1267,8 @@ void print_stack_ref(const struct object_reference* ref)
 		printf_filtered(_(": 0x%lx"), ref->value);
 }
 
-void print_global_ref (const struct object_reference* ref)
+void
+print_global_ref (const struct object_reference* ref)
 {
 	struct symbol* sym;
 	struct minimal_symbol* msym;
@@ -1307,27 +1276,27 @@ void print_global_ref (const struct object_reference* ref)
 	size_t    sym_size;
 
 	printf_filtered(_(" %s"), ref->where.module.name);
-	if ( (sym = get_global_sym(ref, &sym_addr, &sym_size)) )
-	{
-		// if the ref belongs to a global symbol, display in detail
+	if ( (sym = get_global_sym(ref, &sym_addr, &sym_size)) ) {
+		/* if the ref belongs to a global symbol, display in detail */
 		printf_filtered(_(" %s"), SYMBOL_PRINT_NAME (sym));
 		print_struct_field(ref, SYMBOL_TYPE(sym), ref->vaddr - sym_addr);
 		if (ref->target_index >= 0)
 			printf_filtered (_(" @0x%lx"), ref->vaddr);
-	}
-	else if ( (msym = get_global_minimal_sym(ref, &sym_addr, &sym_size)) )
-	{
-		printf_filtered(_(" %s (0x%lx--0x%lx)"), SYMBOL_PRINT_NAME (msym), sym_addr, sym_addr+sym_size);
+	} else if ( (msym = get_global_minimal_sym(ref, &sym_addr, &sym_size)) ) {
+		printf_filtered(_(" %s (0x%lx--0x%lx)"),
+		    MSYMBOL_PRINT_NAME(msym), sym_addr, sym_addr+sym_size);
 		if (ref->target_index >= 0)
 			printf_filtered (_(" @0x%lx"), ref->vaddr);
-	}
-	else
+	} else {
 		printf_filtered (_(" Unknown global 0x%lx"), ref->vaddr);
+	}
+
 	if (ref->target_index >= 0 && ref->value)
 		printf_filtered (_(": 0x%lx"), ref->value);
 }
 
-void print_heap_ref(const struct object_reference* ref)
+void
+print_heap_ref(const struct object_reference* ref)
 {
 	if (ref->where.heap.inuse)
 	{
@@ -1336,130 +1305,146 @@ void print_heap_ref(const struct object_reference* ref)
 		struct type *type = NULL;
 		size_t offset = 0;
 
-		// some application put multiple objects on a pre-allocated buffer
-		// make sure we get the type right
+		/*
+		 * some application put multiple objects on a pre-allocated buffer
+		 * make sure we get the type right
+		 */
 		struct ca_addr_type_pair* addr_type = lookup_type_by_addr(ref->vaddr);
 		if (addr_type)
 		{
 			type = addr_type->type;
 			if (addr_type->sym)
 			{
-				// the heap block is pointed to by a symbol (e.g. local/global variable)
+				/*
+				 * the heap block is pointed to by a symbol
+				 * (e.g. local/global variable)
+				 */
 				printf_filtered (" %s", SYMBOL_PRINT_NAME (addr_type->sym));
 			}
 			else if (addr_type->type)
 			{
-				// This heap block is referenced by an object whose type is known
+				/* This heap block is referenced by an object
+				 * whose type is known
+				 */
 				print_type_name(type, NULL, " (type=\"", "\")");
 			}
 			offset = ref->vaddr - addr_type->addr;
 		}
-		// special care is taken for heap object w/ _vptr
+		/* special care is taken for heap object w/ _vptr */
 		else if (is_heap_object_with_vptr(ref, obj_name, NAME_BUF_SZ))
 		{
 			size_t size_t_sz = g_ptr_bit >> 3;
-			// make sure the size of the object agrees with the size of the heap block
-			struct symbol *sym = lookup_symbol (obj_name, 0, STRUCT_DOMAIN, 0);
-			if (sym && TYPE_LENGTH(sym->type) <= ref->where.heap.size
-					&& TYPE_LENGTH(sym->type) + 2 * size_t_sz >= ref->where.heap.size)
-			{
+			/*
+			 * make sure the size of the object agrees with the size
+			 * of the heap block
+			 */
+			struct symbol *sym = lookup_symbol(obj_name, 0, STRUCT_DOMAIN, 0).symbol;
+			if (sym != NULL &&
+			    TYPE_LENGTH(sym->type) <= ref->where.heap.size &&
+			    TYPE_LENGTH(sym->type) + 2 * size_t_sz >= ref->where.heap.size) {
 				type = sym->type;
 				print_type_name(type, NULL, " (type=\"", "\")");
 				add_addr_type (ref->where.heap.addr, type, NULL);
-			}
-			else
+			} else {
 				printf_filtered(_(" (type=\"%s\")"), obj_name);
+			}
 			offset = ref->vaddr - ref->where.heap.addr;
 		}
 
-		// print sub field if any
-		if (type
-			&& (TYPE_CODE (type) == TYPE_CODE_STRUCT || TYPE_CODE (type) == TYPE_CODE_UNION)
-			//&& ref->vaddr >= type_addr && ref->vaddr <= type_addr + TYPE_LENGTH(type)
-			&& (ref->value || offset > 0) )
-		{
+		/* print sub field if any */
+		if (type &&
+		    (TYPE_CODE (type) == TYPE_CODE_STRUCT || TYPE_CODE (type) == TYPE_CODE_UNION) &&
+		    (ref->value || offset > 0) ) {
 			print_struct_field(ref, type, offset);
 		}
 	}
-	else
+	else {
 		CA_PRINT(" FREE");
+	}
 }
 
-address_t get_var_addr_by_name(const char* var_name, CA_BOOL ask)
+address_t
+get_var_addr_by_name(const char* var_name, bool ask)
 {
-	struct symbol *sym = lookup_symbol (var_name, 0, VAR_DOMAIN, 0);
-	if (sym)
+	struct symbol *sym = lookup_symbol (var_name, 0, VAR_DOMAIN, 0).symbol;
+	if (sym != NULL) {
 		return SYMBOL_VALUE(sym);
-	else
-	{
-		struct minimal_symbol *msymbol = lookup_minimal_symbol (var_name, NULL, NULL);
-		if (msymbol != NULL)
-			return SYMBOL_VALUE_ADDRESS (msymbol);
+	} else {
+		struct bound_minimal_symbol bmsymbol;
+
+		bmsymbol = lookup_minimal_symbol(var_name, NULL, NULL);
+		if (bmsymbol.minsym != NULL && bmsymbol.objfile != NULL)
+			return BMSYMBOL_VALUE_ADDRESS (bmsymbol);
 	}
 	return 0;
 }
 
-void print_func_locals (void)
+void
+print_func_locals (void)
 {
 	struct frame_info* frame;
-	struct block *block;
+	const struct block *block;
 
-	// switch to the thread/frame
+	/* switch to the thread/frame */
 	frame = get_selected_frame (NULL);
-	// check local vars
+	/* check local vars */
 	block = get_frame_block (frame, 0);
-	while (block)
-	{
+	while (block) {
 		struct block_iterator iter;
 		struct symbol *sym;
 		volatile struct gdb_exception except;
+		struct value *val;
+		address_t val_addr;
 
-		ALL_BLOCK_SYMBOLS (block, iter, sym)
-		{
-			switch (SYMBOL_CLASS (sym))
-			{
+		ALL_BLOCK_SYMBOLS (block, iter, sym) {
+			switch (SYMBOL_CLASS (sym)) {
 			case LOC_LOCAL:
 			case LOC_REGISTER:
 			case LOC_STATIC:
 			case LOC_COMPUTED:
-				TRY_CATCH (except, RETURN_MASK_ERROR)
-				{
-					struct value *val = read_var_value (sym, frame);
-					address_t val_addr = value_address(val);
-					struct type * type = value_type(val);
-					size_t val_size = type->length;
-					printf_filtered(_("%s: %p\n"), SYMBOL_PRINT_NAME (sym), (void*)val_addr);
+				TRY {
+					val = read_var_value (sym, NULL, frame);
+					val_addr = value_address(val);
+					printf_filtered(_("%s: %p\n"),
+					    SYMBOL_PRINT_NAME (sym), (void*)val_addr);
+				} CATCH (except, RETURN_MASK_ERROR) {
 				}
+				END_CATCH
 				break;
 			default:
 				break;
 			}
 		}
-		// move up to super block until reach function scope
+		/* move up to super block until reach function scope */
 		if (BLOCK_FUNCTION (block))
 			break;
 		block = BLOCK_SUPERBLOCK (block);
 	}
 }
 
-static void print_type_members(struct type *type, int indent)
+static void
+print_type_members(struct type *type, int indent)
 {
 	int i, num_fields, num_baseclasses, offset=0;
 	num_fields = TYPE_NFIELDS (type);
 	num_baseclasses = TYPE_N_BASECLASSES (type);
-	// The first num_baseclasses fields are base classes, followed by type's data member
-	// Their sum is num_fields
-	// Also make sure all field types are fleshed out
+	/*
+	 * The first num_baseclasses fields are base classes, followed by type's
+	 * data member
+	 * Their sum is num_fields
+	 * Also make sure all field types are fleshed out
+	 */
 	for (i = 0; i < num_fields; i++)
 	{
 		struct type* field_type = TYPE_FIELD_TYPE (type, i);
 		int pos, k;
 
-		CHECK_TYPEDEF (field_type);
-		// print indent
+		check_typedef (field_type);
+		/* print indent */
 		for (k=0; k<indent; k++)
 			printf_filtered(_("  "));
-		if (TYPE_FIELD_LOC_KIND(type, i) != FIELD_LOC_KIND_BITPOS)	// static member
+		/* static member */
+		if (TYPE_FIELD_LOC_KIND(type, i) != FIELD_LOC_KIND_BITPOS)
 		{
 			printf_filtered("static ");
 			print_type_name(field_type, NULL, NULL, NULL);
@@ -1469,7 +1454,7 @@ static void print_type_members(struct type *type, int indent)
 		pos = TYPE_FIELD_BITPOS(type, i) / 8;
 		if (pos < 0)
 			pos = offset;
-		// print offset of data member
+		/* print offset of data member */
 		printf_filtered(_("+%d"), pos);
 		if (pos >= 100)
 			printf_filtered(" ");
@@ -1477,7 +1462,7 @@ static void print_type_members(struct type *type, int indent)
 			printf_filtered("  ");
 		else
 			printf_filtered("   ");
-		// print base class if applicable
+		/* print base class if applicable */
 		if (i < num_baseclasses)
 		{
 			printf_filtered("(base) ");
@@ -1487,7 +1472,7 @@ static void print_type_members(struct type *type, int indent)
 			print_type_name(field_type, TYPE_FIELD_NAME(type, i), NULL, NULL);
 		printf_filtered(_("  size=%d\n"), field_type->length);
 		offset += field_type->length;
-		// the field is a base class
+		/* the field is a base class */
 		if (i < num_baseclasses)
 		{
 			for (k=0; k<indent; k++)
@@ -1501,21 +1486,20 @@ static void print_type_members(struct type *type, int indent)
 	}
 }
 
-static struct type * get_real_type_from_exp(char* exp)
+static struct type *
+get_real_type_from_exp(char* exp)
 {
-	struct expression *expr;
+	expression_up expr;
 	struct value *val;
-	struct cleanup *old_chain = NULL;
 	struct type *type;
 
     expr = parse_expression (exp);
-    old_chain = make_cleanup (free_current_contents, &expr);
-    val = evaluate_type (expr);
+    val = evaluate_type (expr.get());
     type = value_type (val);
     if (type)
     {
     	int full = 0;
-    	int top = -1;
+    	LONGEST top = -1;
     	int using_enc = 0;
     	int indirect = 0;
     	struct type *real_type = NULL;
@@ -1528,7 +1512,7 @@ static struct type * get_real_type_from_exp(char* exp)
     		is_ref = 1;
     	/* given base pointer, find out the concrete class type */
 		if ((is_ptr || is_ref)
-		  && (TYPE_CODE (TYPE_TARGET_TYPE (type)) == TYPE_CODE_CLASS))
+		  && (TYPE_CODE (TYPE_TARGET_TYPE (type)) == TYPE_CODE_STRUCT))
 		{
 			real_type = value_rtti_indirect_type (val, &full, &top, &using_enc);
 			if (real_type)
@@ -1536,62 +1520,67 @@ static struct type * get_real_type_from_exp(char* exp)
 				if (is_ptr)
 					real_type = lookup_pointer_type (real_type);
 				else
-					real_type = lookup_reference_type (real_type);
+					real_type = lookup_lvalue_reference_type (real_type);
 			}
 		}
-		else if (TYPE_CODE (type) == TYPE_CODE_CLASS)
+		else if (TYPE_CODE (type) == TYPE_CODE_STRUCT)
 			real_type = value_rtti_type (val, &full, &top, &using_enc);
 
 		if (real_type)
 			type = real_type;
     }
-	if (exp)
-		do_cleanups (old_chain);
 	return type;
 }
 
 /* search C++ vtables of the type of the input expression */
-CA_BOOL get_vtable_from_exp(const char*expression, struct CA_LIST*vtables, char* type_name, size_t bufsz, size_t* type_sz)
+bool
+get_vtable_from_exp(const char*expression,
+		    struct CA_LIST*vtables,
+		    char* type_name,
+		    size_t bufsz, size_t* type_sz)
 {
 	char* exp = strdup (expression);
 	struct type *type = get_real_type_from_exp (exp);
 	size_t vtbl_sz = 0;
 	address_t vtbl_addr = 0;
-	CA_BOOL rc = CA_FALSE;
+	bool rc = false;
 
-    if (type)
-    {
-		// if the type is pointer/reference, print the base type
-		while (TYPE_CODE (type) == TYPE_CODE_PTR || TYPE_CODE (type) == TYPE_CODE_REF)
+	if (type) {
+		/* if the type is pointer/reference, print the base type */
+		while (TYPE_CODE (type) == TYPE_CODE_PTR ||
+		    TYPE_CODE (type) == TYPE_CODE_REF) {
 			type = TYPE_TARGET_TYPE(type);
-		if (TYPE_CODE(type) == TYPE_CODE_CLASS && TYPE_NAME (type))
-		{
-			char* vtbl_name;
-			struct minimal_symbol * msym;
+		}
 
-			vtbl_name = xmalloc(strlen(TYPE_NAME (type)) + 16);
+		if (TYPE_CODE(type) == TYPE_CODE_STRUCT && TYPE_NAME (type)) {
+			char* vtbl_name;
+			struct bound_minimal_symbol bmsym;
+
+			vtbl_name = (char *)xmalloc(strlen(TYPE_NAME (type)) + 16);
 			sprintf(vtbl_name, "vtable for %s", TYPE_NAME (type));
 
-			msym = lookup_minimal_symbol (vtbl_name, NULL, NULL);
-			if (msym)
-			{
-				struct object_range* vtable = (struct object_range*) malloc(sizeof(struct object_range));
-				vtable->low = SYMBOL_VALUE_ADDRESS(msym);
-				vtable->high = vtable->low  + msym->size;
+			bmsym = lookup_minimal_symbol (vtbl_name, NULL, NULL);
+			if (bmsym.minsym != NULL && bmsym.objfile != NULL) {
+				struct object_range* vtable = (struct object_range*)
+				    malloc(sizeof(struct object_range));
+
+				vtable->low = BMSYMBOL_VALUE_ADDRESS(bmsym);
+				vtable->high = vtable->low  + MSYMBOL_SIZE(bmsym.minsym);
 				ca_list_push_front(vtables, vtable);
 				snprintf(type_name, bufsz, "%s", TYPE_NAME (type));
 				*type_sz = TYPE_LENGTH (type);
-				rc = CA_TRUE;
+				rc = true;
 			}
 			xfree (vtbl_name);
 		}
-    }
-    xfree (exp);
-    return rc;
+	}
+	xfree (exp);
+	return rc;
 }
 
 /* print structure layout in windbg "dt" style */
-void print_type_layout (char* exp)
+void
+print_type_layout (char* exp)
 {
 	struct type *type = get_real_type_from_exp (exp);
     if (type)
@@ -1599,12 +1588,12 @@ void print_type_layout (char* exp)
     	int indirect = 0;
     	int is_ptr = 0;
     	if (TYPE_CODE (type) == TYPE_CODE_PTR)
-    		is_ptr = 1;
+			is_ptr = 1;
 		/* print type name */
 		printf_filtered (_("type="));
 		type_print (type, "", gdb_stdout, -1);
 		printf_filtered (_("  size=%d\n"), type->length);
-		// if the type is pointer/reference, print the base type
+		/* if the type is pointer/reference, print the base type */
 		while (TYPE_CODE (type) == TYPE_CODE_PTR || TYPE_CODE (type) == TYPE_CODE_REF)
 		{
 			type = TYPE_TARGET_TYPE(type);
@@ -1628,11 +1617,15 @@ void print_type_layout (char* exp)
     }
 }
 
-// SIGINT or Control-C is pressed
-CA_BOOL user_request_break(void)
+/*
+ * SIGINT or Control-C is pressed
+ */
+bool
+user_request_break(void)
 {
-	if (check_quit_flag ())	// this call will reset the flag
-		g_quit = CA_TRUE;
+	/* this call will reset the flag */
+	if (check_quit_flag ())
+		g_quit = true;
 	return g_quit;
 }
 
@@ -1641,20 +1634,22 @@ CA_BOOL user_request_break(void)
  ********************************************************************/
 struct ca_x86_register
 {
-	const char*  name;			// intel syntax
-	unsigned int index:6;		// internal index (see x_type.h)
-	unsigned int size:5;		// 1/2/4/8/16 bytes
-	unsigned int x64_only:1;	// set if only used by 64bit
-	unsigned int param_x64:4;	// nth (1..6) parameter, 0 means not a param reg
-	unsigned int preserved_x64:1;	// 64bit - preserved across function call
-	unsigned int preserved_x32:1;	// 32bit - preserved across function call
-	unsigned int float_reg:1;	// 1=float 0=integer
-	int gdb_regnum;				// regnum known to gdb
+	const char*  name;		/* intel syntax */
+	unsigned int index:6;		/* internal index (see x_type.h) */
+	unsigned int size:5;		/* 1/2/4/8/16 bytes */
+	unsigned int x64_only:1;	/* set if only used by 64bit */
+	unsigned int param_x64:4;	/* nth (1..6) parameter, 0 means not a param reg */
+	unsigned int preserved_x64:1;	/* 64bit - preserved across function call */
+	unsigned int preserved_x32:1;	/* 32bit - preserved across function call */
+	unsigned int float_reg:1;	/* 1=float 0=integer */
+	int gdb_regnum;			/* regnum known to gdb */
 };
 
-// this name list corresponds to the register index defined in x_type.h
+/*
+ * this name list corresponds to the register index defined in x_type.h
+ */
 static struct ca_x86_register g_reg_infos[] = {
-	//name  index  size x64 par64 prsv64 prev32 float regnum
+	/* name  index  size x64 par64 prsv64 prev32 float regnum */
 	{"rax",   RAX,    8,  1,    0,     0,     0,    0,    -1},
 	{"rcx",   RCX,    8,  1,    4,     0,     0,    0,    -1},
 	{"rdx",   RDX,    8,  1,    3,     0,     0,    0,    -1},
@@ -1672,7 +1667,7 @@ static struct ca_x86_register g_reg_infos[] = {
 	{"r14",   R14,    8,  1,    0,     1,     0,    0,    -1},
 	{"r15",   R15,    8,  1,    0,     1,     0,    0,    -1},
 	{"rip",   RIP,    8,  1,    0,     0,     0,    0,    -1},
-	//name  index  size x64 par64 prsv64 prev32 float regnum
+	/* name  index  size x64 par64 prsv64 prev32 float regnum */
 	{"eax",   RAX,    4,  0,    0,     0,     0,    0,    -1},
 	{"ecx",   RCX,    4,  0,    4,     0,     0,    0,    -1},
 	{"edx",   RDX,    4,  0,    3,     0,     0,    0,    -1},
@@ -1689,23 +1684,21 @@ static struct ca_x86_register g_reg_infos[] = {
 	{"r13d",  R13,    4,  1,    0,     0,     0,    0,    -1},
 	{"r14d",  R14,    4,  1,    0,     0,     0,    0,    -1},
 	{"r15d",  R15,    4,  1,    0,     0,     0,    0,    -1},
-	//name  index  size x64 par64 prsv64 prev32 float regnum
+	/* name  index  size x64 par64 prsv64 prev32 float regnum */
 	{"di",    RDI,    2,  0,    1,     0,     0,    0,    -1},
 	{"si",    RSI,    2,  0,    2,     0,     0,    0,    -1},
 	{"dx",    RDX,    2,  0,    3,     0,     0,    0,    -1},
 	{"cx",    RCX,    2,  0,    4,     0,     0,    0,    -1},
 	{"r8w",   R8,     2,  0,    5,     0,     0,    0,    -1},
 	{"r9w",   R9,     2,  0,    6,     0,     0,    0,    -1},
-	//  "%r10w", "%r11w", "%r12w", "%r13w", "%r14w", "%r15w",
-	//name  index  size x64 par64 prsv64 prev32 float regnum
+	/* name  index  size x64 par64 prsv64 prev32 float regnum */
 	{"dil",  RDI,    1,  0,    1,     0,     0,    0,    -1},
 	{"sil",  RSI,    1,  0,    2,     0,     0,    0,    -1},
 	{"dl",   RDX,    1,  0,    3,     0,     0,    0,    -1},
 	{"cl",   RCX,    1,  0,    4,     0,     0,    0,    -1},
 	{"r8b",  R8,     1,  0,    5,     0,     0,    0,    -1},
 	{"r9b",  R9,     1,  0,    6,     0,     0,    0,    -1},
-	// "%r10b", "%r11b", "%r12b", "%r13b", "%r14b", "%r15b" };
-	//name    index size x64 par64 prsv64 prev32 float regnum
+	/* name  index  size x64 par64 prsv64 prev32 float regnum */
 	{"xmm0",  RXMM0,  16,  0,    1,     0,     0,    1,    -1},
 	{"xmm1",  RXMM1,  16,  0,    2,     0,     0,    1,    -1},
 	{"xmm2",  RXMM2,  16,  0,    3,     0,     0,    1,    -1},
@@ -1722,15 +1715,16 @@ static struct ca_x86_register g_reg_infos[] = {
 	{"xmm13", RXMM13, 16,  1,    0,     0,     0,    1,    -1},
 	{"xmm14", RXMM14, 16,  1,    0,     0,     0,    1,    -1},
 	{"xmm15", RXMM15, 16,  1,    0,     0,     0,    1,    -1}
-	//name      index size x64 par64 prsv64 prev32 float regnum
-	//{"st(0)", RXMM0,   8,  0,    0,     0,     0,    1,    -1}
-	//"st(1-7)"
+	/* name  index  size x64 par64 prsv64 prev32 float regnum */
 };
 #define NUM_KNOWN_REGS (sizeof(g_reg_infos)/sizeof(g_reg_infos[0]))
 
-// return my internal index (g_reg_infos[]::index) by name
-// -1 when not found
-static int reg_name_to_index(const char* regname)
+/*
+ * return my internal index (g_reg_infos[]::index) by name
+ * -1 when not found
+ */
+static int
+reg_name_to_index(const char* regname)
 {
 	int i;
 	for (i = 0; i < NUM_KNOWN_REGS; i++)
@@ -1741,7 +1735,8 @@ static int reg_name_to_index(const char* regname)
 	return -1;
 }
 
-static void build_regno_map(struct gdbarch *gdbarch)
+static void
+build_regno_map(struct gdbarch *gdbarch)
 {
 	if (g_reg_infos[0].gdb_regnum == -1)
 	{
@@ -1754,7 +1749,9 @@ static void build_regno_map(struct gdbarch *gdbarch)
 	}
 }
 
-static int get_reg_param_index(unsigned int int_reg_param_ordinal, unsigned int reg_size, int float_param)
+static int
+get_reg_param_index(unsigned int int_reg_param_ordinal,
+		    unsigned int reg_size, int float_param)
 {
 	int i;
 	for (i = 0; i < NUM_KNOWN_REGS; i++)
@@ -1767,7 +1764,8 @@ static int get_reg_param_index(unsigned int int_reg_param_ordinal, unsigned int 
 	return -1;
 }
 
-static CA_BOOL ca_get_frame_register(struct frame_info *frame, int regnum, size_t* valp)
+static bool
+ca_get_frame_register(struct frame_info *frame, int regnum, size_t* valp)
 {
 	int optimized;
 	int unavailable;
@@ -1779,12 +1777,13 @@ static CA_BOOL ca_get_frame_register(struct frame_info *frame, int regnum, size_
 			&lval, &addr, &realnum, (gdb_byte *)valp);
 
 	if (optimized || unavailable)
-		return CA_FALSE;
+		return false;
 	else
-		return CA_TRUE;
+		return true;
 }
 
-static int sse_class(struct type* type)
+static int
+sse_class(struct type* type)
 {
 	if (TYPE_CODE(type) == TYPE_CODE_FLT)
 		return 1;
@@ -1792,7 +1791,8 @@ static int sse_class(struct type* type)
 		return 0;
 }
 
-static int integer_class(struct type* type)
+static int
+integer_class(struct type* type)
 {
 	size_t ptr_sz = g_ptr_bit >> 3;
 	int len = TYPE_LENGTH(type);
@@ -1824,7 +1824,7 @@ static int integer_class(struct type* type)
 #define MAX_INT_PARAM_BY_REG 6
 #define MAX_FLT_PARAM_BY_REG 8
 
-static CA_BOOL
+static bool
 validate_and_set_reg_param(const char* cursor, struct ca_reg_value* param_regs)
 {
 	int ptr_bit = g_ptr_bit;
@@ -1842,82 +1842,73 @@ validate_and_set_reg_param(const char* cursor, struct ca_reg_value* param_regs)
 				int index = g_reg_infos[i].index;
 				param_regs[index].has_value = 1;
 				param_regs[index].value = parse_and_eval_address ((char*)(cursor + len + 1));
-				return CA_TRUE;
+				return true;
 			}
 		}
 	}
-	return CA_FALSE;
+	return false;
 }
 
 /*
  * By x86_64 ABI, the frist six integer parameters are passed through
  *  registers (rdi, rsi, rdx, rcx, r8, r9)
  */
-static void get_function_parameters(struct gdbarch *gdbarch, struct frame_info *selected_frame, struct ca_reg_value* param_regs)
+static void
+get_function_parameters(struct gdbarch *gdbarch,
+			struct frame_info *selected_frame,
+			struct ca_reg_value* param_regs)
 {
 	int ptr_bit = g_ptr_bit;
 	struct ui_out *uiout = current_uiout;
 	struct symbol *func = get_frame_function (selected_frame);
-	if (func && ptr_bit == 64)
-	{
+	if (func && ptr_bit == 64) {
 		/* Address of the argument list for this frame, or 0.  */
 		CORE_ADDR arg_list = get_frame_args_address (selected_frame);
-		if (arg_list != 0)
-		{
-			//print_frame_args (func, fi, -1, gdb_stdout);
+		if (arg_list != 0) {
+			/* print_frame_args (func, fi, -1, gdb_stdout); */
 			int num_params = 0;
-			struct block *b;
+			const struct block *b;
 			struct block_iterator iter;
 			struct symbol *sym;
 			struct value *val;
-			//struct ui_stream *stb;
-			struct ui_file *stb;
-			struct cleanup *old_chain, *list_chain;
+			struct cleanup *list_chain;
 			int int_reg_param_ordinal = 1, float_reg_param_ordinal = 1;
 			int reg_index = -1;
 			struct type* param_type = NULL;
 			int reg_size = 0;
+			string_file stb;
 
-			//stb = ui_out_stream_new (uiout);
-			//old_chain = make_cleanup_ui_out_stream_delete (stb);
-			stb = mem_fileopen ();
-			old_chain = make_cleanup_ui_file_delete (stb);
 			printf_filtered (_("\nParameters: "));
 			b = SYMBOL_BLOCK_VALUE (func);
-			ALL_BLOCK_SYMBOLS (b, iter, sym)
-			{
+			ALL_BLOCK_SYMBOLS (b, iter, sym) {
+
 				QUIT;
+
 				if (!SYMBOL_IS_ARGUMENT (sym))
 					continue;
-				if (*SYMBOL_LINKAGE_NAME (sym))
-				{
-					struct symbol *nsym;
 
-					nsym = lookup_symbol (SYMBOL_LINKAGE_NAME (sym),
-							b, VAR_DOMAIN, NULL);
+				if (*SYMBOL_LINKAGE_NAME(sym) != '\0') {
+					struct block_symbol bsym;
 
-					if (SYMBOL_CLASS (nsym) == LOC_REGISTER
-							&& !SYMBOL_IS_ARGUMENT (nsym))
-					{
-						;
-					}
-					else
-						sym = nsym;
+					bsym = lookup_symbol(SYMBOL_LINKAGE_NAME (sym),
+					    b, VAR_DOMAIN, NULL);
+
+					if (SYMBOL_CLASS(bsym.symbol) != LOC_REGISTER)
+						sym = bsym.symbol;
 				}
 				if (num_params)
-					ui_out_text (uiout, ", ");
-				//ui_out_wrap_hint (uiout, "    "); // if line overflows, start a new line and indent
+					uiout->text(", ");
 				list_chain = make_cleanup_ui_out_tuple_begin_end (uiout, NULL);
-				fprintf_symbol_filtered (stb, SYMBOL_PRINT_NAME (sym),
+				fprintf_symbol_filtered (&stb, SYMBOL_PRINT_NAME (sym),
 										SYMBOL_LANGUAGE (sym),
 										DMGL_PARAMS | DMGL_ANSI);
-				ui_out_field_stream (uiout, "name", stb);
-				// find the corresponding register used to pass this parameter
+				uiout->field_stream("name", stb);
+				/* find the corresponding register used to pass this parameter */
 				{
 					const char* reg_name = NULL;
 					int internal_index = -1;
 					param_type = SYMBOL_TYPE(sym);
-					CHECK_TYPEDEF(param_type);
+					check_typedef(param_type);
 					if (int_reg_param_ordinal <= MAX_INT_PARAM_BY_REG && integer_class(param_type))
 					{
 						reg_size = TYPE_LENGTH(param_type);
@@ -1929,19 +1920,19 @@ static void get_function_parameters(struct gdbarch *gdbarch, struct frame_info *
 						internal_index = get_reg_param_index(float_reg_param_ordinal, 16, 1);
 						float_reg_param_ordinal++;
 					}
-					// if the parameter is passed by a integer/float register
+					/* if the parameter is passed by a integer/float register */
 					if (internal_index > 0)
 					{
 						reg_name = g_reg_infos[internal_index].name;
 						reg_index = g_reg_infos[internal_index].index;
 					}
-					// we have determine a register class parameter and its register
+					/* we have determine a register class parameter and its register */
 					if (reg_name)
 					{
-						fputs_filtered ("(", stb);
-						fputs_filtered (reg_name, stb);
-						fputs_filtered (")", stb);
-						ui_out_field_stream (uiout, "reg", stb);
+						fputs_filtered ("(", &stb);
+						fputs_filtered (reg_name, &stb);
+						fputs_filtered (")", &stb);
+						uiout->field_stream("reg", stb);
 					}
 					if (reg_index >= 0)
 					{
@@ -1951,9 +1942,9 @@ static void get_function_parameters(struct gdbarch *gdbarch, struct frame_info *
 						param_regs[reg_index].type = param_type;
 					}
 				}
-				ui_out_text (uiout, "=");
+				uiout->text("=");
 
-				val = read_var_value (sym, selected_frame);
+				val = read_var_value (sym, NULL, selected_frame);
 				if (val)
 				{
 					int summary = 1;
@@ -1968,28 +1959,20 @@ static void get_function_parameters(struct gdbarch *gdbarch, struct frame_info *
 					get_user_print_options (&opts);
 					opts.deref_ref = 0;
 					opts.summary = summary;
-					TRY_CATCH (ex, RETURN_MASK_ERROR)
-					{
-						common_val_print (val, stb, 2, &opts, language);
-						ui_out_field_stream (uiout, "value", stb);
-					}
+					common_val_print (val, &stb, 2, &opts, language);
+					uiout->field_stream("value", stb);
 					if (reg_index >= 0 && !param_regs[reg_index].has_value && !value_optimized_out(val))
 					{
-						TRY_CATCH (ex, RETURN_MASK_ERROR)
-						{
-							size_t param_val = (size_t) value_as_long (val);
-							param_regs[reg_index].value = param_val;
-							if ((TYPE_CODE(param_type) == TYPE_CODE_PTR || TYPE_CODE(param_type) == TYPE_CODE_REF))
-								add_addr_type (param_val, NULL, sym);
-						}
-						if (ex.reason >= 0)
-							param_regs[reg_index].has_value = 1;
+						size_t param_val = (size_t) value_as_long (val);
+						param_regs[reg_index].value = param_val;
+						if ((TYPE_CODE(param_type) == TYPE_CODE_PTR || TYPE_CODE(param_type) == TYPE_CODE_REF))
+							add_addr_type (param_val, NULL, sym);
+						param_regs[reg_index].has_value = 1;
 					}
 				}
 				do_cleanups (list_chain);
 				num_params++;
 			}
-			do_cleanups (old_chain);
 			printf_filtered (_("\n"));
 		}
 	}
@@ -1997,9 +1980,9 @@ static void get_function_parameters(struct gdbarch *gdbarch, struct frame_info *
 
 static void
 display_saved_registers(struct gdbarch *gdbarch,
-					struct frame_info *selected_frame,
-					struct ca_reg_value* param_regs,
-					CA_BOOL verbose)
+			struct frame_info *selected_frame,
+			struct ca_reg_value* param_regs,
+			bool verbose)
 {
 	int i, count, numregs;
 	int ptr_bit = g_ptr_bit;
@@ -2029,11 +2012,11 @@ display_saved_registers(struct gdbarch *gdbarch,
 					printf_filtered (" %s", regname);
 				}
 				count++;
-				if (target_read_memory(addr, (void*)&value, ptr_sz) == 0)
+				if (target_read_memory(addr, (gdb_byte *)&value, ptr_sz) == 0)
 				{
 					if (param_regs && my_index >= 0)
 					{
-						// the value should have been set previously, set it again anyway
+						/* the value should have been set previously, set it again anyway */
 						param_regs[my_index].value = value;
 						param_regs[my_index].has_value = 1;
 					}
@@ -2051,7 +2034,8 @@ display_saved_registers(struct gdbarch *gdbarch,
  * Parse user options and prepare execution context at function entry,
  * then call disassemble function
  */
-void decode_func(char *arg)
+void
+decode_func(const char *arg)
 {
 	int ptr_bit = g_ptr_bit;
 	size_t ptr_sz = ptr_bit >> 3;
@@ -2060,54 +2044,55 @@ void decode_func(char *arg)
 	struct gdbarch *gdbarch;
 	CORE_ADDR user_low=0, user_high=0;
 	int i, count, numregs;
-	CA_BOOL multi_frame = CA_FALSE;
+	bool multi_frame = false;
 	int frame_lo = 0;
 	int frame_hi = 0;
 	int  frame;
 	struct ca_reg_value user_input_regs[TOTAL_REGS];
 	struct ca_reg_value param_regs[TOTAL_REGS];
-	CA_BOOL verbose = CA_FALSE;
-	CA_BOOL user_regs = CA_FALSE;
+	bool verbose = false;
+	bool user_regs = false;
 
-	// Get current frame
+	/* Get current frame */
 	selected_frame = get_selected_frame (_("No frame selected."));
 	if (!selected_frame)
 		return;
 	frame = frame_relative_level(selected_frame);
-	// build map to gdb used register number for the first time
+	/* build map to gdb used register number for the first time */
 	gdbarch = get_frame_arch (selected_frame);
 	build_regno_map(gdbarch);
 
-	// Init registers' state
+	/* Init registers' state */
 	memset(param_regs, 0, REG_SET_SZ);
 	memset(user_input_regs, 0, REG_SET_SZ);
 
-	// initialize type map for heap objects
+	/* initialize type map for heap objects */
 	clear_addr_type_map();
 
-	// Parse user input options
+	/* Parse user input options */
 	if (arg)
 	{
+		gdb::unique_xmalloc_ptr<char> myarg(xstrdup(arg));
 		char* options[MAX_NUM_OPTIONS];
-		int num_options = ca_parse_options(arg, options);
+		int num_options = ca_parse_options(myarg.get(), options);
 		for (i = 0; i < num_options; i++)
 		{
 			char* option = options[i];
 			if (*option == '%')
 			{
-				// Take register entry value, such as %rdi=0x12345678
+				/* Take register entry value, such as %rdi=0x12345678 */
 				if (!validate_and_set_reg_param(option+1, user_input_regs))
 				{
 					printf_filtered ("Error: unsupported register: %s\n", option);
 					return;
 				}
-				user_regs = CA_TRUE;
+				user_regs = true;
 			}
 			else if (strcmp(option, "/v") == 0)
-				verbose = CA_TRUE;
+				verbose = true;
 			else if (strncmp(option, "from=", 5) == 0)
 			{
-				// disassemble from this address instead of function start
+				/* disassemble from this address instead of function start */
 				user_low = parse_and_eval_address(option+5);
 			}
 			else if (strncmp(option, "to=", 3) == 0)
@@ -2116,11 +2101,13 @@ void decode_func(char *arg)
 			}
 			else if (strncmp(option, "frame=", 6) == 0)
 			{
-				// frame=n or frame=n-m
+				/* frame=n or frame=n-m */
 				const char* subexp = option+6;
 				const char* hyphen = strchr(subexp, '-');
-				// count total number of frames of selected thread
-				// start from the innermost frame
+				/*
+				 * count total number of frames of selected thread
+				 * start from the innermost frame
+				 */
 				int max_frame = 0;
 				fi = get_current_frame ();
 				while (fi)
@@ -2128,7 +2115,7 @@ void decode_func(char *arg)
 					max_frame = frame_relative_level (fi);
 					fi = get_prev_frame(fi);
 				}
-				// retrieve frame number
+				/* retrieve frame number */
 				if (hyphen && hyphen > subexp)
 				{
 					int k;
@@ -2140,7 +2127,7 @@ void decode_func(char *arg)
 					numbuf[k] = '\0';
 					frame_lo = atoi(numbuf);
 					frame_hi = atoi(hyphen + 1);
-					// check the frame number
+					/* check the frame number */
 					if (frame_lo < 0 || frame_lo > max_frame || frame_hi < 0 || frame_hi > max_frame)
 					{
 						CA_PRINT("Valid frame # for current thread is [0 - %d]\n", max_frame);
@@ -2152,7 +2139,7 @@ void decode_func(char *arg)
 								option, frame_lo, frame_hi);
 						return;
 					}
-					multi_frame = CA_TRUE;
+					multi_frame = true;
 					frame = frame_hi;
 				}
 				else
@@ -2173,8 +2160,10 @@ void decode_func(char *arg)
 		}
 	}
 
-	// if user chooses a frame other than the current frame
-	// get the frame by number
+	/*
+	 * if user chooses a frame other than the current frame
+	 * get the frame by number
+	 */
 	if (frame != frame_relative_level(selected_frame))
 	{
 		fi = get_current_frame ();
@@ -2189,33 +2178,34 @@ void decode_func(char *arg)
 		}
 	}
 
-	// disassemble one frame or multiple frames
+	/* disassemble one frame or multiple frames */
 	do
 	{
-		CORE_ADDR pc, dis_lo, dis_hi, sp, func_lo, func_hi;
+		CORE_ADDR pc, dis_hi, sp, func_lo, func_hi;
 		const char *funcname;
 
 		g_debug_context.frame_level = frame_relative_level(selected_frame);
 		g_debug_context.sp = get_frame_sp (selected_frame);
 		g_debug_context.segment = get_segment(g_debug_context.sp, 1);
-		// Get function's instruction address range
-		pc = get_frame_pc (selected_frame); // include the "call" instr
+		/* Get function's instruction address range */
+		pc = get_frame_pc (selected_frame); /* include the "call" instr */
 		if (frame == 0)
 			pc += 1;
 		if (find_pc_partial_function (pc, &funcname, &func_lo, &func_hi) == 0)
 			error (_("No function contains program counter for selected frame."));
 		func_lo += gdbarch_deprecated_function_start_offset (gdbarch);
-		// By default, disassemble from function entry to current instruction
-		dis_lo = func_lo;
+		/* By default, disassemble from function entry to current instruction */
 		dis_hi = pc;
 
-		// rsp at function entry
-		sp = get_frame_base (selected_frame);	// sp address before function prologue
-		param_regs[RSP].value = sp - ptr_sz; 	// "CALL" would push return address on stack
+		/* rsp at function entry */
+		sp = get_frame_base (selected_frame);	/* sp address before function prologue */
+		param_regs[RSP].value = sp - ptr_sz; 	/* "CALL" would push return address on stack */
 		param_regs[RSP].has_value = 1;
 
-		// For single frame, or the 1st frame of multi-frame disassembling
-		// validate user-input start/end instruction addresses
+		/*
+		 * For single frame, or the 1st frame of multi-frame disassembling
+		 * validate user-input start/end instruction addresses
+		 */
 		if (!multi_frame || frame == frame_hi)
 		{
 			if (user_low)
@@ -2242,8 +2232,10 @@ void decode_func(char *arg)
 		if (multi_frame)
 			CA_PRINT("\n------------------------------ Frame %d ------------------------------\n", frame_relative_level(selected_frame));
 
-		// Get the preserved registers' initial values at the entry of the current function
-		// i.e. the values before the function prologue
+		/*
+		 * Get the preserved registers' initial values at the entry of the current function
+		 * i.e. the values before the function prologue
+		 */
 		for (i = 0; i < NUM_KNOWN_REGS; i++)
 		{
 			if ( (ptr_bit == 64 && g_reg_infos[i].preserved_x64)
@@ -2255,25 +2247,27 @@ void decode_func(char *arg)
 			}
 		}
 
-		// parameters at function entry
+		/* parameters at function entry */
 		get_function_parameters(gdbarch, selected_frame, param_regs);
 
-		// Debugger may know better what registers are saved across function call
-		// mark saved registers
+		/*
+		 * Debugger may know better what registers are saved across function call
+		 * mark saved registers
+		 */
 		if (verbose)
 			printf_filtered (_("\nSaved registers:"));
 		display_saved_registers(gdbarch, selected_frame, param_regs, verbose);
 		if (verbose)
 			printf_filtered (_("\n"));
 
-		// display the registers at function entry
+		/* display the registers at function entry */
 		if (verbose)
 		{
 			printf_filtered (_("\nThe following registers are assumed at the beginning: "));
 			count = 0;
 			for (i=0; i<TOTAL_REGS; i++)
 			{
-				// saved RIP is the next instruction address when current function returns
+				/* saved RIP is the next instruction address when current function returns */
 				if (param_regs[i].has_value && i != RIP)
 				{
 					if (count > 0)
@@ -2291,11 +2285,7 @@ void decode_func(char *arg)
 
 		printf_filtered ("\nDump of assembler code for function %s:\n", funcname);
 		{
-			int num_displayed = 0;
-			struct cleanup *ui_out_chain;
 			struct decode_control_block decode_cb;
-
-			ui_out_chain = make_cleanup_ui_out_list_begin_end (uiout, "asm_insns");
 
 			decode_cb.gdbarch = gdbarch;
 			decode_cb.uiout   = uiout;
@@ -2304,8 +2294,6 @@ void decode_func(char *arg)
 			decode_cb.current = pc;
 			decode_cb.func_start = func_lo;
 			decode_cb.func_end   = func_hi;
-			//decode_cb.how_many = how_many;
-			//decode_cb.flags    = flags;
 			decode_cb.param_regs = param_regs;
 			if (user_regs)
 				decode_cb.user_regs = user_input_regs;
@@ -2314,11 +2302,11 @@ void decode_func(char *arg)
 			decode_cb.verbose    = verbose ? 1:0;
 			decode_cb.innermost_frame = frame == 0 ? 1:0;
 
-			num_displayed = decode_insns(&decode_cb);
+			decode_insns(&decode_cb);
 		}
 		printf_filtered ("End of assembler dump.\n");
 
-		// display registers at the call site if this is not the innermost function
+		/* display registers at the call site if this is not the innermost function */
 		if (frame > 0 && verbose)
 		{
 			printf_filtered (_("\nThe following registers are known at the call: "));
@@ -2338,7 +2326,7 @@ void decode_func(char *arg)
 			printf_filtered (_("\n"));
 		}
 
-		// Move to the next frame or wrap up the last one
+		/* Move to the next frame or wrap up the last one */
 		if (multi_frame && frame_relative_level(selected_frame) > frame_lo)
 		{
 			selected_frame = get_next_frame(selected_frame);
@@ -2346,7 +2334,10 @@ void decode_func(char *arg)
 		}
 		else
 		{
-			// if there is a next frame, get the saved registers to collaborate our deduced values
+			/*
+			 * if there is a next frame, get the saved registers to
+			 * collaborate our deduced values
+			 */
 			if (verbose && frame_relative_level(selected_frame) > 0)
 			{
 				selected_frame = get_next_frame(selected_frame);
@@ -2378,7 +2369,7 @@ void decode_func(char *arg)
 		}
 	} while (1);
 
-	// scrub and clean register values
+	/* scrub and clean register values */
 	for (i = 0; i < TOTAL_REGS; i++)
 	{
 		if (param_regs[i].sym_name)
@@ -2389,24 +2380,26 @@ void decode_func(char *arg)
 	memset(param_regs, 0, REG_SET_SZ);
 	memset(user_input_regs, 0, REG_SET_SZ);
 
-	// flush output
+	/* flush output */
 	gdb_flush (gdb_stdout);
 
-	// clean up type/context states
+	/* clean up type/context states */
 	clear_addr_type_map();
 }
 
 /*
  * Display known symbol/type of an instruction's operand value
  */
-void print_op_value_context(size_t op_value, int op_size, address_t loc, int offset, int lea)
+void
+print_op_value_context(size_t op_value, int op_size,
+		       address_t loc, int offset, int lea)
 {
 	size_t ptr_sz = g_ptr_bit >> 3;
 	struct type* type = NULL;
 	struct ca_addr_type_pair* addr_type;
 	struct object_reference aref;
 
-	// if op_value is known stack or global symbol
+	/* if op_value is known stack or global symbol */
 	if (op_size == ptr_sz && op_value)
 	{
 		memset(&aref, 0, sizeof(aref));
@@ -2417,29 +2410,31 @@ void print_op_value_context(size_t op_value, int op_size, address_t loc, int off
 		if ( (aref.storage_type == ENUM_MODULE_TEXT || aref.storage_type == ENUM_MODULE_DATA)
 			&& known_global_sym(&aref, NULL, NULL) )
 		{
-			// global symbol
+			/* global symbol */
 			printf_filtered (" ");
-			print_ref(&aref, 0, CA_FALSE, CA_TRUE);
+			print_ref(&aref, 0, false, true);
 			return;
 		}
 		else if (aref.storage_type == ENUM_STACK && known_stack_sym(&aref, NULL, NULL))
 		{
-			// stack symbol
+			/* stack symbol */
 			printf_filtered (" ");
-			print_ref(&aref, 0, CA_FALSE, CA_TRUE);
+			print_ref(&aref, 0, false, true);
 			return;
 		}
 		else if (aref.storage_type == ENUM_HEAP && known_heap_block(&aref))
 		{
-			// heap block with known type
+			/* heap block with known type */
 			printf_filtered (" ");
-			print_ref(&aref, 0, CA_FALSE, CA_TRUE);
+			print_ref(&aref, 0, false, true);
 			return;
 		}
 	}
 
-	// we are here because we don't know anything about the op_value
-	// try if we know anything of its source if any
+	/*
+	 * we are here because we don't know anything about the op_value
+	 * try if we know anything of its source if any
+	 */
 	if (loc && (addr_type = lookup_type_by_addr(loc)) )
 	{
 		aref.vaddr = loc + offset;
@@ -2473,7 +2468,7 @@ void print_op_value_context(size_t op_value, int op_size, address_t loc, int off
 		return;
 	}
 
-	// lastly, we can still provide something useful, like heap/stack info
+	/* lastly, we can still provide something useful, like heap/stack info */
 	if (op_size == ptr_sz && op_value)
 	{
 		aref.vaddr = op_value;
@@ -2483,7 +2478,7 @@ void print_op_value_context(size_t op_value, int op_size, address_t loc, int off
 		if (aref.storage_type != ENUM_UNKNOWN)
 		{
 			printf_filtered (" ");
-			print_ref(&aref, 0, CA_FALSE, CA_TRUE);
+			print_ref(&aref, 0, false, true);
 			return;
 		}
 	}
@@ -2491,15 +2486,14 @@ void print_op_value_context(size_t op_value, int op_size, address_t loc, int off
 	printf_filtered ("\n");
 }
 
-void calc_heap_usage(char *exp)
+void
+calc_heap_usage(char *exp)
 {
-	struct expression *expr;
-	struct cleanup *old_chain = make_cleanup (null_cleanup, NULL);
+	expression_up expr;
 	struct value *val;
 
 	expr = parse_expression (exp);
-	make_cleanup (free_current_contents, &expr);
-	val = evaluate_expression (expr);
+	val = evaluate_expression (expr.get());
 	if (val && value_type(val))
 	{
 		struct type *type = value_type (val);
@@ -2507,11 +2501,11 @@ void calc_heap_usage(char *exp)
 		size_t var_len;
 		size_t ptr_sz = g_ptr_bit >> 3;
 
-		CHECK_TYPEDEF(type);
+		check_typedef(type);
 		var_len = TYPE_LENGTH(type);
 		val_type = value_lval_const (val);
 
-		// treat all integer (short,int,long), e.g. 0x100, as pointer
+		/* treat all integer (short,int,long), e.g. 0x100, as pointer */
 		if (TYPE_CODE(type) == TYPE_CODE_INT)
 			var_len = ptr_sz;
 
@@ -2538,20 +2532,20 @@ void calc_heap_usage(char *exp)
 				ref.storage_type = ENUM_REGISTER;
 				ref.vaddr = value_as_address(val);
 				ref.value = ref.vaddr;
-				ref.where.reg.tid = pid_to_thread_id (inferior_ptid);
+				ref.where.reg.tid = ptid_to_global_thread_id (inferior_ptid);
 				ref.where.reg.reg_num = VALUE_REGNUM(val);
 				ref.where.reg.name = NULL;
 			}
 			else
 				printf_filtered("Expect input expression is associated with a register or memory\n");
 
-			// we understand the input expression enough
+			/* we understand the input expression enough */
 			if (ref.vaddr)
 			{
 				struct inuse_block *inuse_blocks = NULL;
 				unsigned long num_inuse_blocks;
 
-				// First, create and populate an array of all in-use blocks
+				/* First, create and populate an array of all in-use blocks */
 				inuse_blocks = build_inuse_heap_blocks(&num_inuse_blocks);
 				if (!inuse_blocks || num_inuse_blocks == 0)
 				{
@@ -2563,9 +2557,9 @@ void calc_heap_usage(char *exp)
 					size_t aggr_size = 0;
 
 					CA_PRINT("Heap memory consumed by ");
-					print_ref(&ref, 0, CA_FALSE, CA_FALSE);
-					// Include all reachable blocks
-					if (calc_aggregate_size(&ref, var_len, CA_TRUE, inuse_blocks, num_inuse_blocks, &aggr_size, &aggr_count))
+					print_ref(&ref, 0, false, false);
+					/* Include all reachable blocks */
+					if (calc_aggregate_size(&ref, var_len, true, inuse_blocks, num_inuse_blocks, &aggr_size, &aggr_count))
 					{
 						CA_PRINT("All reachable:\n");
 						CA_PRINT("    |--> ");
@@ -2574,15 +2568,15 @@ void calc_heap_usage(char *exp)
 					}
 					else
 						CA_PRINT("Failed to calculate heap usage\n");
-					// Directly referenced heap blocks only
-					if (calc_aggregate_size(&ref, var_len, CA_FALSE, inuse_blocks, num_inuse_blocks, &aggr_size, &aggr_count))
+					/* Directly referenced heap blocks only */
+					if (calc_aggregate_size(&ref, var_len, false, inuse_blocks, num_inuse_blocks, &aggr_size, &aggr_count))
 					{
 						CA_PRINT("Directly referenced:\n");
 						CA_PRINT("    |--> ");
 						print_size(aggr_size);
 						CA_PRINT(" (%ld blocks)\n", aggr_count);
 					}
-					// remember to cleanup
+					/* remember to cleanup */
 					free_inuse_heap_blocks (inuse_blocks, num_inuse_blocks);
 				}
 			}
@@ -2594,8 +2588,6 @@ void calc_heap_usage(char *exp)
 	}
 	else
 		printf_filtered("Can't understand the input expression\n");
-
-	do_cleanups (old_chain);
 }
 
 /*
@@ -2606,7 +2598,8 @@ static unsigned long pb_total = 0;
 static int screen_width;
 static int scrren_height;
 static int pb_cur_pos;
-void init_progress_bar(unsigned long total)
+void
+init_progress_bar(unsigned long total)
 {
 	pb_total = total;
 
@@ -2618,7 +2611,8 @@ void init_progress_bar(unsigned long total)
 	pb_cur_pos = 0;
 }
 
-void set_current_progress(unsigned long val)
+void
+set_current_progress(unsigned long val)
 {
 	int pos = val * screen_width / pb_total;
 	while (pos > pb_cur_pos)
@@ -2629,12 +2623,14 @@ void set_current_progress(unsigned long val)
 	fflush (stdout);
 }
 
-void end_progress_bar(void)
+void
+end_progress_bar(void)
 {
 	CA_PRINT("\n");
 }
 
-address_t ca_eval_address(const char* expr)
+address_t
+ca_eval_address(const char* expr)
 {
 	return parse_and_eval_address(expr);
 }

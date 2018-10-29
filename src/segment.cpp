@@ -183,7 +183,7 @@ add_one_segment(address_t vaddr, size_t size,
 			}
 		}
 		else
-			CA_PRINT("Error: add_one_segment("PRINT_FORMAT_POINTER", "PRINT_FORMAT_POINTER") segment is added in wrong order\n",
+			CA_PRINT("Error: add_one_segment(" PRINT_FORMAT_POINTER ", " PRINT_FORMAT_POINTER ") segment is added in wrong order\n",
 					vaddr, vaddr + size);
 	}
 
@@ -278,8 +278,8 @@ bool test_segments(bool verbose)
 			if (verbose)
 			{
 				CA_PRINT("The following segments are in wrong order:\n");
-				CA_PRINT("\t[%d] "PRINT_FORMAT_POINTER" -- "PRINT_FORMAT_POINTER"\n", i, seg1->m_vaddr, seg1->m_vaddr + seg1->m_vsize);
-				CA_PRINT("\t[%d] "PRINT_FORMAT_POINTER" -- "PRINT_FORMAT_POINTER"\n", i+1, seg2->m_vaddr, seg2->m_vaddr + seg2->m_vsize);
+				CA_PRINT("\t[%d] " PRINT_FORMAT_POINTER " -- " PRINT_FORMAT_POINTER "\n", i, seg1->m_vaddr, seg1->m_vaddr + seg1->m_vsize);
+				CA_PRINT("\t[%d] " PRINT_FORMAT_POINTER " -- " PRINT_FORMAT_POINTER "\n", i+1, seg2->m_vaddr, seg2->m_vaddr + seg2->m_vsize);
 			}
 			return false;
 		}
@@ -294,7 +294,7 @@ bool test_segments(bool verbose)
 			if (verbose)
 			{
 				CA_PRINT("An address less than the 1st segment returns a valid segment\n");
-				CA_PRINT("[0] "PRINT_FORMAT_POINTER" -- "PRINT_FORMAT_POINTER"\n", seg->m_vaddr, seg->m_vaddr + seg->m_vsize);
+				CA_PRINT("[0] " PRINT_FORMAT_POINTER " -- " PRINT_FORMAT_POINTER "\n", seg->m_vaddr, seg->m_vaddr + seg->m_vsize);
 			}
 			return false;
 		}
@@ -305,7 +305,7 @@ bool test_segments(bool verbose)
 			if (verbose)
 			{
 				CA_PRINT("An address higher than the last segment returns a valid segment\n");
-				CA_PRINT("[%d] "PRINT_FORMAT_POINTER" -- "PRINT_FORMAT_POINTER"\n", g_segment_count-1, seg->m_vaddr, seg->m_vaddr + seg->m_vsize);
+				CA_PRINT("[%d] " PRINT_FORMAT_POINTER " -- " PRINT_FORMAT_POINTER "\n", g_segment_count-1, seg->m_vaddr, seg->m_vaddr + seg->m_vsize);
 			}
 			return false;
 		}
@@ -318,7 +318,7 @@ bool test_segments(bool verbose)
 				if (verbose)
 				{
 					CA_PRINT("Segment's start address doesn't return this segment\n");
-					CA_PRINT("[%d] "PRINT_FORMAT_POINTER" -- "PRINT_FORMAT_POINTER"\n", i, seg->m_vaddr, seg->m_vaddr + seg->m_vsize);
+					CA_PRINT("[%d] " PRINT_FORMAT_POINTER " -- " PRINT_FORMAT_POINTER "\n", i, seg->m_vaddr, seg->m_vaddr + seg->m_vsize);
 				}
 				return false;
 			}
@@ -328,7 +328,7 @@ bool test_segments(bool verbose)
 				if (verbose)
 				{
 					CA_PRINT("Segment's end address returns this segment\n");
-					CA_PRINT("[%d] "PRINT_FORMAT_POINTER" -- "PRINT_FORMAT_POINTER"\n", i, seg->m_vaddr, seg->m_vaddr + seg->m_vsize);
+					CA_PRINT("[%d] " PRINT_FORMAT_POINTER " -- " PRINT_FORMAT_POINTER "\n", i, seg->m_vaddr, seg->m_vaddr + seg->m_vsize);
 				}
 				return false;
 			}
@@ -337,7 +337,7 @@ bool test_segments(bool verbose)
 				if (verbose)
 				{
 					CA_PRINT("Segment's last block doesn't return this segment\n");
-					CA_PRINT("[%d] "PRINT_FORMAT_POINTER" -- "PRINT_FORMAT_POINTER"\n", i, seg->m_vaddr, seg->m_vaddr + seg->m_vsize);
+					CA_PRINT("[%d] " PRINT_FORMAT_POINTER " -- " PRINT_FORMAT_POINTER "\n", i, seg->m_vaddr, seg->m_vaddr + seg->m_vsize);
 				}
 				return false;
 			}
@@ -347,7 +347,7 @@ bool test_segments(bool verbose)
 				if (verbose)
 				{
 					CA_PRINT("Segment's middle address doesn't return this segment\n");
-					CA_PRINT("[%d] "PRINT_FORMAT_POINTER" -- "PRINT_FORMAT_POINTER"\n", i, seg->m_vaddr, seg->m_vaddr + seg->m_vsize);
+					CA_PRINT("[%d] " PRINT_FORMAT_POINTER " -- " PRINT_FORMAT_POINTER "\n", i, seg->m_vaddr, seg->m_vaddr + seg->m_vsize);
 				}
 				return false;
 			}
@@ -360,9 +360,9 @@ bool test_segments(bool verbose)
 				{
 					if (verbose)
 					{
-						CA_PRINT("An address "PRINT_FORMAT_POINTER" len=%d between two segments should return no segment:\n", seg->m_vaddr + seg->m_vsize, len);
-						CA_PRINT("\t[%d] "PRINT_FORMAT_POINTER" -- "PRINT_FORMAT_POINTER"\n", i, seg->m_vaddr, seg->m_vaddr + seg->m_vsize);
-						CA_PRINT("\t[%d] "PRINT_FORMAT_POINTER" -- "PRINT_FORMAT_POINTER"\n", i+1, seg2->m_vaddr, seg2->m_vaddr + seg2->m_vsize);
+						CA_PRINT("An address " PRINT_FORMAT_POINTER " len=%d between two segments should return no segment:\n", seg->m_vaddr + seg->m_vsize, len);
+						CA_PRINT("\t[%d] " PRINT_FORMAT_POINTER " -- " PRINT_FORMAT_POINTER "\n", i, seg->m_vaddr, seg->m_vaddr + seg->m_vsize);
+						CA_PRINT("\t[%d] " PRINT_FORMAT_POINTER " -- " PRINT_FORMAT_POINTER "\n", i+1, seg2->m_vaddr, seg2->m_vaddr + seg2->m_vsize);
 					}
 					return false;
 				}
@@ -475,7 +475,7 @@ void print_set_values (void)
 
 	while (pval)
 	{
-		CA_PRINT(PRINT_FORMAT_POINTER": "PRINT_FORMAT_POINTER"\n", pval->addr, pval->value);
+		CA_PRINT(PRINT_FORMAT_POINTER": " PRINT_FORMAT_POINTER "\n", pval->addr, pval->value);
 		pval = pval->next;
 	}
 }
@@ -604,7 +604,7 @@ static void* sys_alloc(size_t sz)
 	if(result == (void*)-1)
 #endif
 	{
-		CA_PRINT("Fatal: failed to allocate "PRINT_FORMAT_SIZE" bytes from kernel\n", sz);
+		CA_PRINT("Fatal: failed to allocate " PRINT_FORMAT_SIZE " bytes from kernel\n", sz);
 		return NULL;
 	}
 

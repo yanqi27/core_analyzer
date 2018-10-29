@@ -757,7 +757,7 @@ bool find_object_refs(address_t obj_vaddr, size_t obj_sz, unsigned int iLevel)
 						int k;
 						for (k=0; k<indent; k++)
 							CA_PRINT("    ");
-						CA_PRINT("|--> searched target ["PRINT_FORMAT_POINTER", "PRINT_FORMAT_POINTER")\n", obj_vaddr, obj_vaddr+obj_sz);
+						CA_PRINT("|--> searched target [" PRINT_FORMAT_POINTER ", " PRINT_FORMAT_POINTER ")\n", obj_vaddr, obj_vaddr+obj_sz);
 					}
 					else
 						print_ref(refs[prev_target], indent, true, false); // arrow/no verbose
@@ -811,7 +811,7 @@ bool find_object_type(address_t obj_vaddr)
 	// sanity check
 	if (!get_segment(obj_vaddr, 1))
 	{
-		CA_PRINT("[Error] Address "PRINT_FORMAT_POINTER" is not in target's address space\n", obj_vaddr);
+		CA_PRINT("[Error] Address " PRINT_FORMAT_POINTER " is not in target's address space\n", obj_vaddr);
 		return false;
 	}
 
@@ -832,12 +832,12 @@ bool find_object_type(address_t obj_vaddr)
 	{
 		if (ref->where.heap.inuse)
 		{
-			CA_PRINT("Address "PRINT_FORMAT_POINTER" belongs to heap block ["PRINT_FORMAT_POINTER", "PRINT_FORMAT_POINTER"] size="PRINT_FORMAT_SIZE"\n",
+			CA_PRINT("Address " PRINT_FORMAT_POINTER " belongs to heap block [" PRINT_FORMAT_POINTER ", " PRINT_FORMAT_POINTER "] size=" PRINT_FORMAT_SIZE "\n",
 				ref->vaddr, ref->where.heap.addr, ref->where.heap.addr+ref->where.heap.size, ref->where.heap.size);
 		}
 		else
 		{
-			CA_PRINT("Address "PRINT_FORMAT_POINTER" belongs to a FREE memory block ["PRINT_FORMAT_POINTER", "PRINT_FORMAT_POINTER") size="PRINT_FORMAT_SIZE"\n",
+			CA_PRINT("Address " PRINT_FORMAT_POINTER " belongs to a FREE memory block [" PRINT_FORMAT_POINTER ", " PRINT_FORMAT_POINTER ") size=" PRINT_FORMAT_SIZE "\n",
 				obj_vaddr, ref->where.heap.addr, ref->where.heap.addr + ref->where.heap.size, ref->where.heap.size);
 		}
 	}
@@ -1517,24 +1517,24 @@ void print_ref
 	}
 	else if (ref->storage_type == ENUM_HEAP)
 	{
-		CA_PRINT("[heap block] "PRINT_FORMAT_POINTER"--"PRINT_FORMAT_POINTER" size="PRINT_FORMAT_SIZE,
+		CA_PRINT("[heap block] " PRINT_FORMAT_POINTER "--" PRINT_FORMAT_POINTER " size=" PRINT_FORMAT_SIZE,
 			ref->where.heap.addr, ref->where.heap.addr+ref->where.heap.size, ref->where.heap.size);
 		if (verbose)
 		{
 			print_heap_ref(ref);
 			if (ref->target_index >= 0 || ref->vaddr != ref->where.heap.addr)
 			{
-				CA_PRINT(" @+"PRINT_FORMAT_SIZE"", ref->vaddr - ref->where.heap.addr);
+				CA_PRINT(" @+" PRINT_FORMAT_SIZE, ref->vaddr - ref->where.heap.addr);
 				if (ref->value)
-					CA_PRINT(": "PRINT_FORMAT_POINTER"", ref->value);
+					CA_PRINT(": " PRINT_FORMAT_POINTER "", ref->value);
 			}
 		}
 	}
 	else
 	{
-		CA_PRINT("[unknown] "PRINT_FORMAT_POINTER"", ref->vaddr);
+		CA_PRINT("[unknown] " PRINT_FORMAT_POINTER "", ref->vaddr);
 		if (ref->value)
-			CA_PRINT(": "PRINT_FORMAT_POINTER"", ref->value);
+			CA_PRINT(": " PRINT_FORMAT_POINTER "", ref->value);
 	}
 	CA_PRINT("\n");
 }
@@ -1581,7 +1581,7 @@ void print_memory_pattern(address_t lo, address_t hi)
 	size_t ptr_sz = ptr_bit >> 3;
 	address_t next;
 
-	CA_PRINT("memory pattern ["PRINT_FORMAT_POINTER", "PRINT_FORMAT_POINTER"]:\n", lo, hi);
+	CA_PRINT("memory pattern [" PRINT_FORMAT_POINTER ", " PRINT_FORMAT_POINTER "]:\n", lo, hi);
 	for (next = ALIGN(lo,ptr_sz); next+ptr_sz <= hi; next += ptr_sz)
 	{
 		size_t value = 0;
@@ -1591,7 +1591,7 @@ void print_memory_pattern(address_t lo, address_t hi)
 
 		if (!read_memory_wrapper(NULL, next, (void*)&value, ptr_sz))
 		{
-			CA_PRINT("inaccessible memory "PRINT_FORMAT_POINTER"\n", next);
+			CA_PRINT("inaccessible memory " PRINT_FORMAT_POINTER "\n", next);
 			break;
 		}
 
@@ -1610,7 +1610,7 @@ void print_memory_pattern(address_t lo, address_t hi)
 		ref.where.target.size = 1;
 		fill_ref_location(&ref);
 
-		CA_PRINT(PRINT_FORMAT_POINTER": "PRINT_FORMAT_POINTER, next, value); // assuming 64bit or 16 hex digits
+		CA_PRINT(PRINT_FORMAT_POINTER ": " PRINT_FORMAT_POINTER, next, value); // assuming 64bit or 16 hex digits
 		if (ref.storage_type == ENUM_STACK
 			|| ref.storage_type == ENUM_MODULE_DATA
 			|| ref.storage_type == ENUM_MODULE_TEXT)
@@ -2029,7 +2029,7 @@ print_one_shared_object(struct shared_object* shrobj, struct CA_LIST* child_chai
 		{
 			if (!read_memory_wrapper(NULL, cursor, (void*)&val, ptr_sz))
 			{
-				CA_PRINT("internal error: failed to read core memory at "PRINT_FORMAT_POINTER"\n", cursor);
+				CA_PRINT("internal error: failed to read core memory at " PRINT_FORMAT_POINTER "\n", cursor);
 				break;
 			}
 			if (val >= child->start && val < child->end)

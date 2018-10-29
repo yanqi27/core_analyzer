@@ -7,8 +7,8 @@ LIBS = -lpthread
 
 TARGETS = mallocTest
 
-GDB    = ../bin/Linux/ptmalloc/gdb-7.11.1/gdb
-GDB_TC = ../bin/Linux/tcmalloc/gdb-7.11.1/gdb
+GDB    = ../bin/Linux/ptmalloc/gdb-8.1/gdb
+GDB_TC = ../bin/Linux/tcmalloc/gdb-8.1/gdb
 
 all: ${TARGETS}
 

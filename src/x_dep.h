@@ -10,8 +10,8 @@
 #include "x_type.h"
 
 #define CA_VERSION_MAJOR 2
-#define CA_VERSION_MINOR 16
-#define CA_VERSION_STRING "2.16"
+#define CA_VERSION_MINOR 20
+#define CA_VERSION_STRING "2.20"
 
 struct object_reference;
 struct reg_value;
@@ -66,9 +66,9 @@ extern char ca_help_msg[];
 
 extern address_t ca_eval_address(const char*);
 
-extern bool heap_command_impl(char* args);
-extern bool ref_command_impl(char* args);
-extern bool segment_command_impl(char* args);
-extern bool pattern_command_impl(char* args);
+extern bool heap_command_impl(const char* args);
+extern bool ref_command_impl(const char* args);
+extern bool segment_command_impl(const char* args);
+extern bool pattern_command_impl(const char* args);
 
 #endif // X_DEP_H_

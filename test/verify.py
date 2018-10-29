@@ -154,13 +154,13 @@ def run_tests():
 #
 core_name = None
 try:
-	print "[ca_test] ==== Test Agaisnt Live Process ===="
+	print "[ca_test] ==== Test Against Live Process ===="
 	gdb.execute('break last_call')
 	gdb.execute ('set confirm off')
 	gdb.execute('run')
 	run_tests()
 
-	print "[ca_test] ==== Test Agaisnt Core Dump ===="
+	print "[ca_test] ==== Test Against Core Dump ===="
 	core_name = 'core.' + str(gdb.inferiors()[0].pid)
 	gdb.execute ('gcore ' + core_name)
 	gdb.execute ('kill')

@@ -21,7 +21,7 @@ extern void set_max_indirection_level(unsigned int);
 
 extern bool find_object_refs_on_threads(address_t addr, size_t size, unsigned int depth);
 
-extern bool  search_cplusplus_objects_and_references(const char* exp, bool thread_scope);
+extern bool  search_cplusplus_objects_and_references(const char* exp, bool search_ref, bool thread_scope);
 extern struct CA_LIST* search_cplusplus_objects_with_vptr(const char* exp);
 extern bool  search_all_objects(unsigned int);
 

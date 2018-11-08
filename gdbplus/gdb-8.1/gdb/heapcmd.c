@@ -21,44 +21,55 @@ heap_command (const char *args, int from_tty)
 	if (!update_memory_segments_and_heaps())
 		return;
 
+	if (!args)
+		args = "";
 	// remember to resume the current thread/frame
 	scoped_restore_current_thread mythread;
-
-	heap_command_impl(args);
+	gdb::unique_xmalloc_ptr<char> myargs(xstrdup(args));
+	heap_command_impl(myargs.get());
 }
 
 static void
 ref_command (const char *args, int from_tty)
 {
+	if (!args)
+		error_no_arg (_("address"));
+
 	/* We depend on typed segments */
 	if (!update_memory_segments_and_heaps())
 		return;
 
 	// remember to resume the current thread/frame
 	scoped_restore_current_thread mythread;
-
-	ref_command_impl(args);
+	gdb::unique_xmalloc_ptr<char> myargs(xstrdup(args));
+	ref_command_impl(myargs.get());
 }
 
 static void
 pattern_command (const char *args, int from_tty)
 {
+	if (!args)
+		error_no_arg (_("address"));
+
 	/* We depend on typed segments */
 	if (!update_memory_segments_and_heaps())
 		return;
 
 	// remember to resume the current thread/frame
 	scoped_restore_current_thread mythread;
-
-	pattern_command_impl(args);
+	gdb::unique_xmalloc_ptr<char> myargs(xstrdup(args));
+	pattern_command_impl(myargs.get());
 }
 
 static void
-segment_command (const char *arg, int from_tty)
+segment_command (const char *args, int from_tty)
 {
 	if (!update_memory_segments_and_heaps())
 		return;
-	segment_command_impl(arg);
+	if (!args)
+		args = "";
+	gdb::unique_xmalloc_ptr<char> myargs(xstrdup(args));
+	segment_command_impl(myargs.get());
 }
 
 static void
@@ -143,21 +154,19 @@ info_local_command (const char *arg, int from_tty)
 }
 
 static void
-dt_command (const char *arg, int from_tty)
+dt_command (const char *args, int from_tty)
 {
-	char* type_or_expr;
-
-	if (!arg)
+	if (!args)
 		error_no_arg (_("type or variable name"));
-	type_or_expr = strdup(arg);
-	print_type_layout (type_or_expr);
-	free (type_or_expr);
+
+	gdb::unique_xmalloc_ptr<char> type_or_expr(xstrdup(args));
+	print_type_layout (type_or_expr.get());
 }
 
 static void
-obj_command (const char *arg, int from_tty)
+obj_command (const char *args, int from_tty)
 {
-	if (!arg)
+	if (!args)
 		error_no_arg (_("type or variable name"));
 
 	/* We depend on typed segments */
@@ -166,8 +175,23 @@ obj_command (const char *arg, int from_tty)
 
 	// remember to resume the current thread/frame
 	scoped_restore_current_thread mythread;
-
-	search_cplusplus_objects_and_references(arg, false);
+	gdb::unique_xmalloc_ptr<char> myargs(xstrdup(args));
+	char* options[MAX_NUM_OPTIONS];
+	int num_options = ca_parse_options(myargs.get(), options);
+	const char *expr = "";
+	bool search_ref = false;
+	for (int i = 0; i < num_options; i++) {
+		char* option = options[i];
+		if (strcmp(option, "/ref") == 0 || strcmp(option, "/r") == 0) {
+			search_ref = true;
+		} else if (option[0] == '/') {
+			CA_PRINT("invalid option\n");
+			return;
+		} else {
+			expr = option;
+		}
+	}
+	search_cplusplus_objects_and_references(expr, search_ref, false);
 }
 
 static void
@@ -260,7 +284,9 @@ void
 _initialize_heapcmd (void)
 {
 	add_cmd("ref", class_info, ref_command, _("Search for references to a given object.\nref <addr_exp>\nref [/thread or /t] <addr_exp> <size> [level]"), &cmdlist);
-	add_cmd("obj", class_info, obj_command, _("Search for object and reference to object of the same type as the input expression\nobj <type|variable>"), &cmdlist);
+	add_cmd("obj", class_info, obj_command, _("Search for object and reference to object of the same type as the input expression\n"
+	    "obj [/ref or /r] <type|variable>\n"),
+		&cmdlist);
 	add_cmd("shrobj", class_info, shrobj_command, _("Find objects that currently referenced from multiple threads\nshrobj [tid0] [tid1] [...]"), &cmdlist);
 
 	add_cmd("heap", class_info, heap_command, _("Heap walk, heap data validation, memory usage statistics, etc.\n"

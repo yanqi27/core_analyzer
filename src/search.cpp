@@ -1096,7 +1096,7 @@ struct CA_LIST* search_cplusplus_objects_with_vptr(const char* exp)
 /////////////////////////////////////////////////////////////////////////
 // search C++ objects and references to them by the type of the input expression
 /////////////////////////////////////////////////////////////////////////
-bool search_cplusplus_objects_and_references(const char* exp, bool thread_scope)
+bool search_cplusplus_objects_and_references(const char* exp, bool search_ref, bool thread_scope)
 {
 	bool lbFound = false;
 	struct CA_LIST* vtables = ca_list_new();
@@ -1189,7 +1189,7 @@ bool search_cplusplus_objects_and_references(const char* exp, bool thread_scope)
     		ca_set_delete(unique_refs);
     		ca_list_clear(ref_list);
 
-    		if (!ca_list_empty(ref_targets))
+    		if (search_ref && !ca_list_empty(ref_targets))
     		{
 				// Search the references to found objects
 				CA_PRINT ("\nSearching references to above objects\n");

@@ -1578,6 +1578,58 @@ get_vtable_from_exp(const char*expression,
 	return rc;
 }
 
+/* Search and print types that matches the size range */
+void
+search_types_by_size(size_t min_sz, size_t max_sz)
+{
+	std::vector<symbol_search> symbols = search_symbols ("", TYPES_DOMAIN, 0, NULL);
+	for (const symbol_search &p : symbols) {
+		QUIT;
+
+		size_t tsize;
+		const char *tname;
+		if (p.msymbol.minsym != NULL) {
+			tsize = MSYMBOL_SIZE(p.msymbol.minsym);
+			if (tsize < min_sz || tsize > max_sz)
+				continue;
+			tname = MSYMBOL_PRINT_NAME(p.msymbol.minsym);
+			if (min_sz == max_sz)
+				printf_filtered (_("  %s\n"), tname);
+			else
+				printf_filtered (_("  %s (%ld)\n"), tname, tsize);
+		} else {
+			struct type *type = SYMBOL_TYPE(p.symbol);
+			tsize = TYPE_LENGTH(type);
+			tname = SYMBOL_PRINT_NAME(p.symbol);
+			if (tsize < min_sz || tsize > max_sz)
+				continue;
+			type_print (type, "", gdb_stdout, -1);
+			if (min_sz != max_sz)
+				printf_filtered (_(" (%ld)\n"), tsize);
+			printf_filtered (_("\n"));
+		}
+	}
+}
+
+/*
+ * Identify types of all heap in-use memory blocks and display the stats.
+ */
+bool
+display_object_stats(void)
+{
+	unsigned long total_blocks = 0;
+	struct inuse_block* blocks = NULL;
+
+	// create and populate an array of all in-use blocks
+	blocks = build_inuse_heap_blocks(&total_blocks);
+	if (!blocks || total_blocks == 0) {
+		CA_PRINT("Failed: no in-use heap block is found\n");
+		return false;
+	}
+
+	return true;
+}
+
 /* print structure layout in windbg "dt" style */
 void
 print_type_layout (char* exp)

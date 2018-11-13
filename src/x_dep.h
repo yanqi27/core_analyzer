@@ -42,6 +42,8 @@ extern address_t get_var_addr_by_name(const char*, bool);
 
 extern void print_func_locals (void);
 extern void print_type_layout (char*);
+extern void search_types_by_size(size_t, size_t);
+extern bool display_object_stats(void);
 
 extern bool get_vtable_from_exp(const char*, struct CA_LIST*, char*, size_t, size_t*);
 

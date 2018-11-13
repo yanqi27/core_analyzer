@@ -99,7 +99,8 @@ char ca_help_msg[] = "Commands of core_analyzer " CA_VERSION_STRING "\n"
 /*
  * Parse user options and invoke corresponding heap-related functions
  */
-bool heap_command_impl(char* args)
+bool
+heap_command_impl(char* args)
 {
 	bool rc = true;
 
@@ -111,121 +112,81 @@ bool heap_command_impl(char* args)
 	bool cluster_blocks = false;
 	bool top_block = false;
 	bool top_user = false;
+	bool exlusive_opt = false;
 	bool all_reachable_blocks = false;	// experimental option
 	char* expr = NULL;
 
+#define check_exclusive_option()	\
+	if (exlusive_opt) {				\
+		CA_PRINT("Option [%s] conflicts with one of the previous options\n", option);	\
+		return false;				\
+	} else {						\
+		exlusive_opt = true;		\
+	}
+
 	// Parse user input options
 	// argument is either an address or /v or /leak
-	if (args)
-	{
+	if (args) {
 		char* options[MAX_NUM_OPTIONS];
 		int num_options = ca_parse_options(args, options);
 		int i;
-		for (i = 0; i < num_options; i++)
-		{
+
+		for (i = 0; i < num_options; i++) {
 			char* option = options[i];
-			if (*option == '/')
-			{
+			if (*option == '/')	{
 				if (strcmp(option, "/m") == 0) {
+					check_exclusive_option();
 					CA_PRINT("Target allocator: %s\n", heap_version());
 					return true;
-				}
-				if (strcmp(option, "/leak") == 0 || strcmp(option, "/l") == 0)
-				{
+				} else if (strcmp(option, "/leak") == 0 || strcmp(option, "/l") == 0) {
 					check_leak = true;
-					if (block_info || cluster_blocks || calc_usage || top_block || top_user || addr)
-					{
-						CA_PRINT("Option [%s] conflicts with one of the previous options\n", option);
-						return false;
-					}
-				}
-				else if (strcmp(option, "/verbose") == 0 || strcmp(option, "/v") == 0)
-				{
+					check_exclusive_option();
+				} else if (strcmp(option, "/verbose") == 0 || strcmp(option, "/v") == 0) {
 					verbose = true;
-				}
-				else if (strcmp(option, "/block") == 0 || strcmp(option, "/b") == 0)
-				{
+				} else if (strcmp(option, "/block") == 0 || strcmp(option, "/b") == 0) {
 					block_info = true;
-					if (check_leak || cluster_blocks || calc_usage || top_block || top_user)
-					{
-						CA_PRINT("Option [%s] conflicts with one of the previous options\n", option);
-						return false;
-					}
-				}
-				else if (strcmp(option, "/cluster") == 0 || strcmp(option, "/c") == 0)
-				{
+					check_exclusive_option();
+				} else if (strcmp(option, "/cluster") == 0 || strcmp(option, "/c") == 0) {
 					cluster_blocks = true;
-					if (check_leak || block_info || calc_usage || top_block || top_user)
-					{
-						CA_PRINT("Option [%s] conflicts with one of the previous options\n", option);
-						return false;
-					}
-				}
-				else if (strcmp(option, "/usage") == 0 || strcmp(option, "/u") == 0)
-				{
+					check_exclusive_option();
+				} else if (strcmp(option, "/usage") == 0 || strcmp(option, "/u") == 0) {
 					calc_usage = true;
-					if (check_leak || block_info || cluster_blocks || top_block || top_user)
-					{
-						CA_PRINT("Option [%s] conflicts with one of the previous options\n", option);
-						return false;
-					}
-				}
-				else if (strcmp(option, "/topblock") == 0 || strcmp(option, "/tb") == 0)
-				{
+					check_exclusive_option();
+				} else if (strcmp(option, "/topblock") == 0 || strcmp(option, "/tb") == 0) {
 					top_block = true;
-					if (check_leak || block_info || cluster_blocks || calc_usage || top_user)
-					{
-						CA_PRINT("Option [%s] conflicts with one of the previous options\n", option);
-						return false;
-					}
-				}
-				else if (strcmp(option, "/topuser") == 0 || strcmp(option, "/tu") == 0)
-				{
+					check_exclusive_option();
+				} else if (strcmp(option, "/topuser") == 0 || strcmp(option, "/tu") == 0) {
 					top_user = true;
-					if (check_leak || block_info || cluster_blocks || calc_usage || top_block)
-					{
-						CA_PRINT("Option [%s] conflicts with one of the previous options\n", option);
-						return false;
-					}
-				}
-				else if (strcmp(option, "/all") == 0 || strcmp(option, "/a") == 0)
+					check_exclusive_option();
+				} else if (strcmp(option, "/all") == 0 || strcmp(option, "/a") == 0) {
 					all_reachable_blocks = true;
-				else
-				{
+				} else {
 					CA_PRINT("Invalid option: [%s]\n", option);
 					return false;
 				}
-			}
-			else if (calc_usage)
-			{
+			} else if (calc_usage) {
 				expr = option;
 				break;
-			}
-			else if (addr == 0)
+			} else if (addr == 0) {
 				addr = ca_eval_address (option);
-			else
-			{
+			} else {
 				CA_PRINT("Invalid option: [%s]\n", option);
 				return false;
 			}
 		}
 	}
-	if (check_leak)
-	{
+
+	if (check_leak) {
 		if (addr)
 			CA_PRINT("Unexpected address expression\n");
 		else
 			display_heap_leak_candidates();
-	}
-	else if (block_info)
-	{
+	} else if (block_info) {
 		if (!addr)
 			CA_PRINT("Heap block address is expected\n");
-		else
-		{
+		else {
 			struct heap_block heap_block;
-			if (get_heap_block_info(addr, &heap_block))
-			{
+			if (get_heap_block_info(addr, &heap_block)) {
 				if (heap_block.inuse)
 					CA_PRINT("\t[In-use]\n");
 				else
@@ -233,30 +194,23 @@ bool heap_command_impl(char* args)
 				CA_PRINT("\t[Address] " PRINT_FORMAT_POINTER "\n", heap_block.addr);
 				CA_PRINT("\t[Size]    " PRINT_FORMAT_SIZE "\n", heap_block.size);
 				CA_PRINT("\t[Offset]  " PRINT_FORMAT_SIZE "\n", addr - heap_block.addr);
-			}
-			else
+			} else {
 				CA_PRINT("[Error] Failed to query the memory block\n");
+			}
 		}
-	}
-	else if (cluster_blocks)
-	{
-		if (addr)
-		{
+	} else if (cluster_blocks) {
+		if (addr) {
 			if (!heap_walk(addr, verbose))
 				CA_PRINT("[Error] Failed to walk heap\n");
-		}
-		else
+		} else {
 			CA_PRINT("Heap block address is expected\n");
-	}
-	else if (calc_usage)
-	{
+		}
+	} else if (calc_usage) {
 		if (expr)
 			calc_heap_usage(expr);
 		else
 			CA_PRINT("An expression of heap memory owner is expected\n");
-	}
-	else if (top_block || top_user)
-	{
+	} else if (top_block || top_user) {
 		unsigned int n = (unsigned int)addr;
 		if (n == 0)
 			CA_PRINT("A number is expected\n");
@@ -264,9 +218,7 @@ bool heap_command_impl(char* args)
 			biggest_heap_owners_generic(n, all_reachable_blocks);
 		else
 			biggest_blocks(n);
-	}
-	else
-	{
+	} else {
 		if (addr)
 			CA_PRINT("Unexpected address expression\n");
 		else if (!heap_walk(addr, verbose))
@@ -1127,7 +1079,7 @@ calc_aggregate_size(const struct object_reference *ref,
 }
 
 // A not-so-fast leak checking based on the concept what a heap block without any
-// reference directly/indirectly from a global/local variable is a lost one
+// reference directly or indirectly from a global or local variable is a lost one
 bool display_heap_leak_candidates(void)
 {
 	bool rc = true;

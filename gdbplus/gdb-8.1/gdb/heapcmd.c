@@ -128,23 +128,21 @@ assign_command (const char *args, int from_tty)
 static void
 unassign_command (const char *args, int from_tty)
 {
+	if (!args)
+		error_no_arg (_("address"));
+
 	// Parse user input options
 	// argument is a list of addresses
-	if (args)
+	gdb::unique_xmalloc_ptr<char> myargs(xstrdup(args));
+	char* options[MAX_NUM_OPTIONS];
+	int num_options = ca_parse_options(myargs.get(), options);
+	int i;
+	for (i = 0; i < num_options; i++)
 	{
-		char* options[MAX_NUM_OPTIONS];
-		gdb::unique_xmalloc_ptr<char> myargs(xstrdup(args));
-		int num_options = ca_parse_options(myargs.get(), options);
-		int i;
-		for (i = 0; i < num_options; i++)
-		{
-			char* option = options[i];
-			address_t addr = parse_and_eval_address (option);
-			unset_value (addr);
-		}
+		char* option = options[i];
+		address_t addr = parse_and_eval_address (option);
+		unset_value (addr);
 	}
-	else
-		error_no_arg (_("address"));
 }
 
 static void
@@ -159,8 +157,45 @@ dt_command (const char *args, int from_tty)
 	if (!args)
 		error_no_arg (_("type or variable name"));
 
-	gdb::unique_xmalloc_ptr<char> type_or_expr(xstrdup(args));
-	print_type_layout (type_or_expr.get());
+	bool print_type = false;
+	size_t min_sz = 0;
+	size_t max_sz = 0;
+
+	gdb::unique_xmalloc_ptr<char> myargs(xstrdup(args));
+	char* options[MAX_NUM_OPTIONS];
+	int num_options = ca_parse_options(myargs.get(), options);
+	int i;
+	for (i = 0; i < num_options; i++) {
+		char* option = options[i];
+		if (*option == '/') {
+			if (strcmp(option, "/size") == 0 || strcmp(option, "/s") == 0) {
+				if (i + 1 >= num_options) {
+					CA_PRINT("size is expected\n");
+					return;
+				}
+				min_sz = ca_eval_address(options[i + 1]);
+				if (i + 2 < num_options) {
+					max_sz = ca_eval_address(options[i + 2]);
+				} else {
+					max_sz = min_sz;
+				}
+				if (min_sz > max_sz) {
+					CA_PRINT("Invalid size arguments\n");
+					return;
+				}
+			} else {
+				CA_PRINT("Invalid option: [%s]\n", option);
+				return;
+			}
+		} else {
+			print_type = true;
+		}
+		break;
+	}
+	if (print_type)
+		print_type_layout (myargs.get());
+	else
+		search_types_by_size(min_sz, max_sz);
 }
 
 static void
@@ -190,7 +225,7 @@ obj_command (const char *args, int from_tty)
 		} else if (option[0] == '/') {
 			CA_PRINT("invalid option\n");
 			return;
-		} else if (!expr) {
+		} else if (expr) {
 			CA_PRINT("too many expressions\n");
 			return;
 		} else {
@@ -198,8 +233,7 @@ obj_command (const char *args, int from_tty)
 		}
 	}
 	if (obj_stats) {
-		CA_PRINT("Not implemented yet\n");
-		return;
+		display_object_stats();
 	} else {
 		search_cplusplus_objects_and_references(expr, search_ref, false);
 	}
@@ -308,11 +342,14 @@ _initialize_heapcmd (void)
 	    "shrobj [tid0] [tid1] [...]"),
 		&cmdlist);
 
-	add_cmd("heap", class_info, heap_command, _("Heap walk, heap data validation, memory usage statistics, etc.\n"
-		"heap [/verbose or /v] [/leak or /l]\n"
-		"heap [/block or /b] [/cluster or /c] <addr_exp>\n"
+	add_cmd("heap", class_info, heap_command, _("Heap walk, query, memory usage statistics, leak check, etc.\n"
+		"heap\n"
+		"heap [/block or /b] <addr_exp>\n"
+		"heap [/cluster or /c] <addr_exp>\n"
 		"heap [/usage or /u] <var_exp>\n"
-		"heap [/topblock or /tb] [/topuser or /tu] <num>\n"
+		"heap [/topblock or /tb] <num>\n"
+		"heap [/topuser or /tu] <num>\n"
+		"heap [/verbose or /v] [/leak or /l]\n"
 		"heap [/m]"),
 		&cmdlist);
 

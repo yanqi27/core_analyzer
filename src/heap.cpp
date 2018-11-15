@@ -22,7 +22,7 @@ struct heap_owner
 
 // Forward declaration
 static bool
-mark_blocks_referenced_by_globals_locals(struct inuse_block*, unsigned long, unsigned int*);
+mark_blocks_referenced_by_globals_locals(struct search_reachable_block*, unsigned long, unsigned int*);
 
 static void
 display_histogram(const char*, unsigned int,
@@ -34,10 +34,11 @@ get_next_queued_index(unsigned int*, unsigned long, unsigned long);
 static void add_owner(struct heap_owner*, unsigned int, struct heap_owner*);
 
 static size_t
-heap_aggregate_size(struct inuse_block*, struct inuse_block*, unsigned long, unsigned int*,	unsigned long*);
+heap_aggregate_size(struct search_reachable_block*, struct search_reachable_block*,
+    unsigned long, unsigned int*,	unsigned long*);
 
 static bool
-build_block_index_map(struct inuse_block*, struct inuse_block*, unsigned long);
+build_block_index_map(struct search_reachable_block*, struct search_reachable_block*, unsigned long);
 
 // Global Vars
 static struct MemHistogram g_mem_hist;
@@ -95,6 +96,38 @@ char ca_help_msg[] = "Commands of core_analyzer " CA_VERSION_STRING "\n"
 	"   max_indirection_level [n] - Set/Show the maximum levels of indirection\n"
 	"   set/assign <addr> <val>   - Set a pseudo value at address\n"
 	"   unset/unassign <addr>     - Undo the pseudo value at address\n";
+
+// Binary search if addr belongs to one of the blocks
+static int
+inuse_block_cmp(const void *key, const void *elmt)
+{
+	const struct inuse_block *a = (struct inuse_block *)key;
+	const struct inuse_block *b = (struct inuse_block *)elmt;
+	if (a->addr < b->addr) {
+		return -1;
+	} else if (a->addr >= b->addr + b->size) {
+		return 1;
+	} else {
+		return 0;
+	}
+}
+
+struct inuse_block *
+find_inuse_block(address_t addr, struct inuse_block *blocks, unsigned long total_blocks)
+{
+	struct inuse_block key = {addr, 1};
+	return (struct inuse_block *) bsearch(&key, blocks, total_blocks,
+	    sizeof(*blocks), inuse_block_cmp);
+}
+
+static struct search_reachable_block *
+find_reachable_block(address_t addr, struct search_reachable_block *blocks,
+    unsigned long total_blocks)
+{
+	struct search_reachable_block key = {addr, 1,  {0, 0, NULL}};
+	return (struct search_reachable_block *) bsearch(&key, blocks, total_blocks,
+	    sizeof(*blocks), inuse_block_cmp);
+}
 
 /*
  * Parse user options and invoke corresponding heap-related functions
@@ -484,7 +517,8 @@ bool pattern_command_impl(char* args)
  * Return an array of struct inuse_block, of all in-use blocks
  * 	the array is cached for repeated usage unless a live process has changed
  */
-struct inuse_block* build_inuse_heap_blocks(unsigned long* opCount)
+struct inuse_block *
+build_inuse_heap_blocks(unsigned long* opCount)
 {
 	struct inuse_block* blocks = NULL;
 	unsigned long total_inuse = 0;
@@ -500,23 +534,15 @@ struct inuse_block* build_inuse_heap_blocks(unsigned long* opCount)
 		{
 			// FIXME
 			// Even for a live process, return here if it hasn't change since last time
-			unsigned long i;
-			for (i = 0; i < g_num_inuse_blocks; i++)
-			{
-				if (g_inuse_blocks[i].reachable.index_map)
-				{
-					free(g_inuse_blocks[i].reachable.index_map);
-					g_inuse_blocks[i].reachable.index_map = (unsigned int*)0xdeadbeefdeadbeef;
-				}
-			}
 			free(g_inuse_blocks);
+			g_inuse_blocks = NULL;
 			g_num_inuse_blocks = 0;
 		}
 	}
 
 	*opCount = 0;
 	// 1st walk counts the number of in-use blocks
-	if (walk_inuse_blocks(NULL, &total_inuse) && total_inuse)
+	if (walk_inuse_blocks(NULL, &total_inuse) && total_inuse > 0)
 	{
 		// allocate memory for inuse_block array
 		blocks = (struct inuse_block*) calloc(total_inuse, sizeof(struct inuse_block));
@@ -559,9 +585,40 @@ struct inuse_block* build_inuse_heap_blocks(unsigned long* opCount)
 	return blocks;
 }
 
-void free_inuse_heap_blocks(struct inuse_block *blocks, unsigned long num)
+struct search_reachable_block *
+build_search_reachable_blocks(unsigned long *opCount)
 {
-	// No op
+	struct inuse_block *inuse_blocks;
+	struct search_reachable_block *blocks;
+	unsigned long index;
+
+	inuse_blocks = build_inuse_heap_blocks(opCount);
+	if (!inuse_blocks || *opCount == 0) {
+		CA_PRINT("Failed: no in-use heap block is found\n");
+		return NULL;
+	}
+
+	blocks = (struct search_reachable_block *)calloc(*opCount, sizeof *blocks);
+	if (!blocks) {
+		CA_PRINT("Out-of-memory\n");
+		return NULL;
+	}
+	for (index = 0; index < *opCount; index++) {
+		blocks[index].addr = inuse_blocks[index].addr;
+		blocks[index].size = inuse_blocks[index].size;
+	}
+	return blocks;
+}
+
+void
+free_search_reachable_blocks(struct search_reachable_block *blocks,
+    unsigned long num_blocks)
+{
+	for (unsigned long i = 0; i < num_blocks; i++) {
+		if (blocks[i].reachable.index_map)
+			free(blocks[i].reachable.index_map);
+	}
+	free(blocks);
 }
 
 /*
@@ -695,11 +752,11 @@ bool biggest_heap_owners_generic(unsigned int num, bool all_reachable_blocks)
 	size_t total_bytes = 0;
 	size_t processed_bytes = 0;
 
-	struct inuse_block *inuse_blocks = NULL;
-	unsigned long num_inuse_blocks;
+	struct search_reachable_block *blocks = NULL;
+	unsigned long num_blocks;
 	unsigned long inuse_index;
 
-	struct inuse_block *blk;
+	struct search_reachable_block *blk;
 	struct object_reference ref;
 	size_t aggr_size;
 	unsigned long aggr_count;
@@ -714,9 +771,8 @@ bool biggest_heap_owners_generic(unsigned int num, bool all_reachable_blocks)
 	smallest = &owners[num - 1];
 
 	// First, create and populate an array of all in-use blocks
-	inuse_blocks = build_inuse_heap_blocks(&num_inuse_blocks);
-	if (!inuse_blocks || num_inuse_blocks == 0)
-	{
+	blocks = build_search_reachable_blocks(&num_blocks);
+	if (!blocks || num_blocks == 0) {
 		CA_PRINT("Failed: no in-use heap block is found\n");
 		goto clean_out;
 	}
@@ -765,7 +821,7 @@ bool biggest_heap_owners_generic(unsigned int num, bool all_reachable_blocks)
 					{
 						if (regs_buf[k].reg_width == ptr_sz)
 						{
-							blk = find_inuse_block(regs_buf[k].value, inuse_blocks, num_inuse_blocks);
+							blk = find_reachable_block(regs_buf[k].value, blocks, num_blocks);
 							if (blk)
 							{
 								ref.storage_type = ENUM_REGISTER;
@@ -774,7 +830,7 @@ bool biggest_heap_owners_generic(unsigned int num, bool all_reachable_blocks)
 								ref.where.reg.tid = tid;
 								ref.where.reg.reg_num = k;
 								ref.where.reg.name = NULL;
-								calc_aggregate_size(&ref, ptr_sz, all_reachable_blocks, inuse_blocks, num_inuse_blocks, &aggr_size, &aggr_count);
+								calc_aggregate_size(&ref, ptr_sz, all_reachable_blocks, blocks, num_blocks, &aggr_size, &aggr_count);
 								if (aggr_size > smallest->aggr_size)
 								{
 									struct heap_owner newowner;
@@ -848,7 +904,7 @@ bool biggest_heap_owners_generic(unsigned int num, bool all_reachable_blocks)
 				// Query heap for aggregated memory size/count originated from the candidate variable
 				if (val_len >= ptr_sz)
 				{
-					calc_aggregate_size(&ref, val_len, all_reachable_blocks, inuse_blocks, num_inuse_blocks, &aggr_size, &aggr_count);
+					calc_aggregate_size(&ref, val_len, all_reachable_blocks, blocks, num_blocks, &aggr_size, &aggr_count);
 					// update the top list if applies
 					if (aggr_size >= smallest->aggr_size)
 					{
@@ -875,15 +931,15 @@ bool biggest_heap_owners_generic(unsigned int num, bool all_reachable_blocks)
 	{
 		// Big memory blocks may be referenced indirectly by local/global variables
 		// check all in-use blocks
-		for (inuse_index = 0; inuse_index < num_inuse_blocks; inuse_index++)
+		for (inuse_index = 0; inuse_index < num_blocks; inuse_index++)
 		{
-			blk = &inuse_blocks[inuse_index];
+			blk = &blocks[inuse_index];
 			ref.storage_type = ENUM_HEAP;
 			ref.vaddr = blk->addr;
 			ref.where.heap.addr = blk->addr;
 			ref.where.heap.size = blk->size;
 			ref.where.heap.inuse = 1;
-			calc_aggregate_size(&ref, ptr_sz, false, inuse_blocks, num_inuse_blocks, &aggr_size, &aggr_count);
+			calc_aggregate_size(&ref, ptr_sz, false, blocks, num_blocks, &aggr_size, &aggr_count);
 			// update the top list if applies
 			if (aggr_size >= smallest->aggr_size)
 			{
@@ -918,8 +974,8 @@ clean_out:
 		free (regs_buf);
 	if (owners)
 		free (owners);
-	if (inuse_blocks)
-		free_inuse_heap_blocks (inuse_blocks, num_inuse_blocks);
+	if (blocks)
+		free_search_reachable_blocks(blocks, num_blocks);
 
 	return rc;
 }
@@ -932,7 +988,7 @@ bool
 calc_aggregate_size(const struct object_reference *ref,
 					size_t var_len,
 					bool all_reachable_blocks,
-					struct inuse_block *inuse_blocks,
+					struct search_reachable_block *inuse_blocks,
 					unsigned long num_inuse_blocks,
 					size_t *total_size,
 					unsigned long *total_count)
@@ -941,7 +997,7 @@ calc_aggregate_size(const struct object_reference *ref,
 	size_t ptr_sz = g_ptr_bit >> 3;
 	size_t aggr_size = 0;
 	unsigned long aggr_count = 0;
-	struct inuse_block *blk;
+	struct search_reachable_block *blk;
 	size_t bitmap_sz = ((num_inuse_blocks+15)*2/32) * sizeof(unsigned int);
 
 	static unsigned int* qv_bitmap = NULL;	// Bit flags of whether a block is queued/visited
@@ -973,7 +1029,7 @@ calc_aggregate_size(const struct object_reference *ref,
 	{
 		if (var_len != ptr_sz)
 			return false;
-		blk = find_inuse_block(ref->vaddr, inuse_blocks, num_inuse_blocks);
+		blk = find_reachable_block(ref->vaddr, inuse_blocks, num_inuse_blocks);
 		if (blk)
 		{
 			// cached result is available, return now
@@ -1004,7 +1060,7 @@ calc_aggregate_size(const struct object_reference *ref,
 			// input is of pointer size, which is candidate for cache value
 			if(read_memory_wrapper(NULL, ref->vaddr, (void*)&addr, ptr_sz))
 			{
-				blk = find_inuse_block(addr, inuse_blocks, num_inuse_blocks);
+				blk = find_reachable_block(addr, inuse_blocks, num_inuse_blocks);
 				if (blk)
 				{
 					if (blk->reachable.aggr_size)
@@ -1030,7 +1086,7 @@ calc_aggregate_size(const struct object_reference *ref,
 	{
 		if(!read_memory_wrapper(NULL, cursor, (void*)&addr, ptr_sz))
 			break;
-		blk = find_inuse_block(addr, inuse_blocks, num_inuse_blocks);
+		blk = find_reachable_block(addr, inuse_blocks, num_inuse_blocks);
 		if (blk && !is_queued_or_visited(qv_bitmap, blk - inuse_blocks))
 		{
 			if (all_reachable_blocks)
@@ -1054,7 +1110,7 @@ calc_aggregate_size(const struct object_reference *ref,
 	{
 		if (ref->storage_type == ENUM_REGISTER || ref->storage_type == ENUM_HEAP)
 		{
-			blk = find_inuse_block(ref->vaddr, inuse_blocks, num_inuse_blocks);
+			blk = find_reachable_block(ref->vaddr, inuse_blocks, num_inuse_blocks);
 			blk->reachable.aggr_size = aggr_size;
 			blk->reachable.aggr_count = aggr_count;
 		}
@@ -1062,7 +1118,7 @@ calc_aggregate_size(const struct object_reference *ref,
 		{
 			if (read_memory_wrapper(NULL, ref->vaddr, (void*)&addr, ptr_sz))
 			{
-				blk = find_inuse_block(addr, inuse_blocks, num_inuse_blocks);
+				blk = find_reachable_block(addr, inuse_blocks, num_inuse_blocks);
 				if (blk)
 				{
 					blk->reachable.aggr_size = aggr_size;
@@ -1084,8 +1140,8 @@ bool display_heap_leak_candidates(void)
 {
 	bool rc = true;
 	unsigned long total_blocks = 0;
-	struct inuse_block* blocks = NULL;
-	struct inuse_block* blk;
+	struct search_reachable_block* blocks = NULL;
+	struct search_reachable_block* blk;
 	unsigned int* qv_bitmap = NULL;	// Bit flags of whether a block is queued/visited
 	unsigned long cur_index;
 	size_t total_leak_bytes;
@@ -1093,9 +1149,8 @@ bool display_heap_leak_candidates(void)
 	unsigned long leak_count;
 
 	// create and populate an array of all in-use blocks
-	blocks = build_inuse_heap_blocks(&total_blocks);
-	if (!blocks || total_blocks == 0)
-	{
+	blocks = build_search_reachable_blocks(&total_blocks);
+	if (!blocks || total_blocks == 0) {
 		CA_PRINT("Failed: no in-use heap block is found\n");
 		return false;
 	}
@@ -1184,8 +1239,6 @@ bool display_heap_leak_candidates(void)
 		CA_PRINT("All %ld heap blocks are referenced, no leak candidate\n", total_blocks);
 
 leak_check_out:
-	if (blocks)
-		free_inuse_heap_blocks(blocks, total_blocks);
 	if (qv_bitmap)
 		free (qv_bitmap);
 	return rc;
@@ -1386,32 +1439,8 @@ static void display_histogram(const char* prefix,
 	CA_PRINT("%s\n", linebuf);
 }
 
-// Binary search if addr belongs to one of the blocks
-struct inuse_block* find_inuse_block(address_t addr, struct inuse_block* blocks, unsigned long total_blocks)
-{
-	unsigned long l_index = 0;
-	unsigned long u_index = total_blocks;
-
-	// bail out for out of bound addr
-	if (addr < blocks[0].addr || addr >= blocks[total_blocks-1].addr + blocks[total_blocks-1].size)
-		return NULL;
-
-	while (l_index < u_index)
-	{
-		unsigned long m_index = (l_index + u_index) / 2;
-		struct inuse_block* blk = &blocks[m_index];
-		if (addr < blk->addr)
-			u_index = m_index;
-		else if (addr >= blk->addr + blk->size)
-			l_index = m_index + 1;
-		else
-			return blk;
-	}
-	return NULL;
-}
-
 static bool
-mark_blocks_referenced_by_globals_locals(struct inuse_block* blocks,
+mark_blocks_referenced_by_globals_locals(struct search_reachable_block* blocks,
 						unsigned long total_blocks, unsigned int* qv_bitmap)
 {
 	unsigned int seg_index;
@@ -1452,12 +1481,12 @@ mark_blocks_referenced_by_globals_locals(struct inuse_block* blocks,
 			while (next + ptr_sz <= end)
 			{
 				address_t ptr;
-				struct inuse_block* blk;
+				struct search_reachable_block* blk;
 
 				if (!read_memory_wrapper(segment, next, &ptr, ptr_sz))
 					break;
 
-				blk = find_inuse_block(ptr, blocks, total_blocks);
+				blk = find_reachable_block(ptr, blocks, total_blocks);
 				if (blk)
 				{
 					unsigned long index = blk - blocks;
@@ -1541,9 +1570,9 @@ static unsigned int* get_index_map_buffer(unsigned int len)
 /*
  * block's index map is an array of indexes of sub blocks
  */
-static bool build_block_index_map(struct inuse_block* blk,
-						struct inuse_block* inuse_blocks,
-						unsigned long num_inuse_blocks)
+static bool build_block_index_map(struct search_reachable_block* blk,
+						struct search_reachable_block* blocks,
+						unsigned long num_blocks)
 {
 	size_t ptr_sz = g_ptr_bit >> 3;
 	// Prepare this
@@ -1565,16 +1594,16 @@ static bool build_block_index_map(struct inuse_block* blk,
 		while (cursor < end)
 		{
 			address_t ptr;
-			struct inuse_block *sub_blk;
+			struct search_reachable_block *sub_blk;
 			if (read_memory_wrapper(NULL, cursor, (void*)&ptr, ptr_sz) && ptr)
 			{
-				sub_blk = find_inuse_block(ptr, inuse_blocks, num_inuse_blocks);
+				sub_blk = find_reachable_block(ptr, blocks, num_blocks);
 				if (sub_blk)
 				{
 					bool found_dup = false;
 					// avoid duplicate, which is not uncommon
 					// FIXME, consider non-linear search
-					index = sub_blk - inuse_blocks;
+					index = sub_blk - blocks;
 					for (i = 0; i < total_sub_blocks; i++)
 					{
 						if (index_buf[i] == index)
@@ -1614,11 +1643,12 @@ static bool build_block_index_map(struct inuse_block* blk,
  * Return the sum of sizes of all memory blocks (and their count) reachable by the block
  * 		i.e. referenced directly or indirectly by it (avoid duplicates)
  */
-static size_t heap_aggregate_size(struct inuse_block *blk,
-								struct inuse_block *inuse_blocks,
-								unsigned long num_inuse_blocks,
-								unsigned int* qv_bitmap,
-								unsigned long *aggr_count)
+static size_t
+heap_aggregate_size(struct search_reachable_block *blk,
+					struct search_reachable_block *inuse_blocks,
+					unsigned long num_inuse_blocks,
+					unsigned int* qv_bitmap,
+					unsigned long *aggr_count)
 {
 	size_t sum = 0;
 
@@ -1630,7 +1660,7 @@ static size_t heap_aggregate_size(struct inuse_block *blk,
 	// Big loop until all reachable have been visited
 	while (blk)
 	{
-		struct inuse_block *nextblk = NULL;
+		struct search_reachable_block *nextblk = NULL;
 		unsigned int* indexp;
 		unsigned long blk_index = blk - inuse_blocks;
 

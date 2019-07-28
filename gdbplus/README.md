@@ -24,7 +24,18 @@ $ ./configure --with-python --prefix=/usr/local
 $ make
 ```
 
-### Debug Symbols of Heap Structures
+### Useful Command Options
+
+#### data-directory
+If you use gdb python, you will need to install python scripts which are usually
+under `/usr/share/gdb` for many Linux distros. The `gdb` binary included in this
+repo has a different path `/usr/local/share/gdb`. You may use `--data-directory` option
+to specify the installed python script path on your host.
+```
+gdb --data-directory=/usr/share/gdb
+```
+
+#### Debug Symbols of Heap Structures
 Core analyzer extracts heap metadata with the help of debug symbols. Without the
 matching debug symbols, its functions are limited or don't work at all. For
 example, Linux heap data structures are defined in libc.so which debug symbols

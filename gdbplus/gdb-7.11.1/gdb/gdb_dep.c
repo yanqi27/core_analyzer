@@ -552,7 +552,7 @@ search_registers(const struct ca_segment* segment,
 						ref->where.reg.name    = gdbarch_register_name (gdbarch, i);
 						ref->vaddr        = 0;
 						ref->value        = val;
-						ca_list_push_back(refs, ref);
+						ca_list_push_front(refs, ref);
 						lbFound = true;
 						break;
 					}

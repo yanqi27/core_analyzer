@@ -688,7 +688,7 @@ bool find_object_refs(address_t obj_vaddr, size_t obj_sz, unsigned int iLevel)
 				ca_list_push_front(targets, &target);
 				// invoke full-core memory search
 				// ref_list shall be empty at this point
-				if (search_value_internal(targets, target_is_ptr, ENUM_UNKNOWN, ref_list) )
+				if (search_value_internal(targets, target_is_ptr, ENUM_ALL, ref_list) )
 				{
 					struct object_reference* aref;
 					ca_list_traverse_start(ref_list);
@@ -885,7 +885,7 @@ bool find_object_type(address_t obj_vaddr)
 				ca_list_push_front(targets, &target);
 
 				// invoke full-core memory search
-				if (search_value_internal(targets, target_is_ptr, ENUM_UNKNOWN, ref_list) )
+				if (search_value_internal(targets, target_is_ptr, ENUM_ALL, ref_list) )
 				{
 					struct object_reference* aref;
 					// first scan for success, global/stack/heap w/o _vptr
@@ -1025,7 +1025,7 @@ struct CA_LIST* search_cplusplus_objects_with_vptr(const char* exp)
 		struct CA_LIST*	ref_list;
 
 		ref_list = ca_list_new();
-    	if (search_value_internal(vtables, true, ENUM_UNKNOWN, ref_list) )
+    	if (search_value_internal(vtables, true, ENUM_ALL, ref_list) )
     	{
     		struct object_reference* ref;
     		struct CA_SET* unique_refs = ca_set_new(address_comp_func);
@@ -1126,7 +1126,7 @@ bool search_cplusplus_objects_and_references(const char* exp, bool thread_scope)
 		}
 
 		ref_list = ca_list_new();
-    	if (search_value_internal(vtables, true, ENUM_UNKNOWN, ref_list) )
+    	if (search_value_internal(vtables, true, ENUM_ALL, ref_list) )
     	{
     		struct object_reference* ref;
     		//struct CA_LIST* ref_targets = ca_list_new();
@@ -1202,7 +1202,7 @@ bool search_cplusplus_objects_and_references(const char* exp, bool thread_scope)
     		{
 				// Search the references to found objects
 				CA_PRINT ("\nSearching references to above objects\n");
-				if (search_value_internal(ref_targets, true, ENUM_UNKNOWN, ref_list))
+				if (search_value_internal(ref_targets, true, ENUM_ALL, ref_list))
 				{
 		    		ca_list_traverse_start(ref_list);
 		    		while ( (ref = (struct object_reference*) ca_list_traverse_next(ref_list)) )

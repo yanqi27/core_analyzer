@@ -34,12 +34,13 @@ struct pyref_type
 
 static struct pyref_type pyref_types[] =
 {
+	ENTRY (ENUM_UNKNOWN),
 	ENTRY (ENUM_REGISTER),
 	ENTRY (ENUM_STACK),
 	ENTRY (ENUM_MODULE_TEXT),
 	ENTRY (ENUM_MODULE_DATA),
 	ENTRY (ENUM_HEAP),
-	ENTRY (ENUM_UNKNOWN),
+	ENTRY (ENUM_ALL),
 	{ (enum storage_type)0, NULL }
 };
 

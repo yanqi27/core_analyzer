@@ -36,7 +36,6 @@ void* ca_list_traverse_next(struct CA_LIST*);
 void* ca_list_find(struct CA_LIST*, void*);
 void  ca_list_clear(struct CA_LIST*);
 void  ca_list_push_front(struct CA_LIST*, void*);
-void  ca_list_push_back(struct CA_LIST*, void*);
 void* ca_list_pop_front(struct CA_LIST*);
 struct CA_LIST* ca_list_new(void);
 void ca_list_delete(struct CA_LIST*);

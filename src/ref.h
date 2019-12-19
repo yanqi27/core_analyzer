@@ -16,12 +16,13 @@
  */
 enum storage_type
 {
+	ENUM_UNKNOWN     = 0x00,
 	ENUM_REGISTER    = 0x01,
 	ENUM_STACK       = 0x02,
 	ENUM_MODULE_TEXT = 0x04,
 	ENUM_MODULE_DATA = 0x08,
 	ENUM_HEAP        = 0x10,
-	ENUM_UNKNOWN     = 0xffffffff
+	ENUM_ALL         = 0xffffffff
 };
 
 // Heap memory block info is provided by specific memory manager

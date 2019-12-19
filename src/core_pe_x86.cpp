@@ -522,7 +522,7 @@ bool search_registers(const struct ca_segment* segment,
 					ref->where.reg.name    = reg_names[k];
 					ref->vaddr        = 0;
 					ref->value        = regs[k];
-					ca_list_push_back(refs, ref);
+					ca_list_push_front(refs, ref);
 					lbFound = true;
 					break;
 				}

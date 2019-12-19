@@ -129,11 +129,6 @@ void  ca_list_push_front(struct CA_LIST* ilist, void* val)
 	ilist->m_list->push_front(val);
 }
 
-void  ca_list_push_back(struct CA_LIST* ilist, void* val)
-{
-	ilist->m_list->push_back(val);
-}
-
 void* ca_list_pop_front(struct CA_LIST* ilist)
 {
 	if (!ilist->m_list->empty())
@@ -400,26 +395,6 @@ void  ca_list_push_front(struct CA_LIST* ilist, void* val)
 	node->value = val;
 	node->next = ilist->_head;
 	ilist->_head = node;
-	ilist->_size++;
-}
-
-void  ca_list_push_back(struct CA_LIST* ilist, void* val)
-{
-	struct CA_LIST_NODE* node = (struct CA_LIST_NODE*) malloc (sizeof(struct CA_LIST_NODE));
-	node->value = val;
-	node->next = NULL;
-	if (ilist->_head)
-	{
-		struct CA_LIST_NODE* p;
-		struct CA_LIST_NODE* tail;
-		for (p=ilist->_head; p; p=p->next)
-		{
-			tail = p;
-		}
-		tail->next = node;
-	}
-	else
-		ilist->_head = node;
 	ilist->_size++;
 }
 

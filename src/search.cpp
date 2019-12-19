@@ -321,11 +321,13 @@ search_value_internal(struct CA_LIST* targets,
 					// keep meaningful ref, and throw away undesired one
 					if (valid_ref || (!g_skip_unknown && ref->storage_type == ENUM_UNKNOWN))
 					{
-						ca_list_push_back(refs, ref);
+						ca_list_push_front(refs, ref);
 						lbFound = true;
+						#if 0
 						// avoid exceedingly too many refs for any human being to read
 						if (ca_list_size(refs) > 16 * 1024)
 							break;
+						#endif
 					}
 					else
 						free(ref);
@@ -1127,8 +1129,9 @@ bool search_cplusplus_objects_and_references(const char* exp, bool thread_scope)
     	if (search_value_internal(vtables, true, ENUM_UNKNOWN, ref_list) )
     	{
     		struct object_reference* ref;
-    		struct CA_LIST* ref_targets = ca_list_new();
+    		//struct CA_LIST* ref_targets = ca_list_new();
     		struct CA_SET* unique_refs = ca_set_new(address_comp_func);
+			size_t obj_count = 0;
     		// show found objects
     		ca_list_traverse_start(ref_list);
     		while ( (ref = (struct object_reference*) ca_list_traverse_next(ref_list)) )
@@ -1144,12 +1147,13 @@ bool search_cplusplus_objects_and_references(const char* exp, bool thread_scope)
 					obj_addr = ref->vaddr;
 				if (ca_set_find(unique_refs, (void*)obj_addr))
 					continue;
-				else
+				else {
 #ifdef CA_USE_SPLAY_TREE
 					ca_set_insert_key_and_val(unique_refs, (void*)obj_addr, (void*)obj_addr);
 #else
 					ca_set_insert(unique_refs, (void*)obj_addr);
 #endif
+				}
 
 				// ignore register object
     			if (ref->storage_type == ENUM_REGISTER)
@@ -1171,9 +1175,11 @@ bool search_cplusplus_objects_and_references(const char* exp, bool thread_scope)
     			}
     			else
     			{
+					obj_count++;
 					// print out object
     				ref->value = 0;
 					print_ref(ref, 1, false, false);
+					#if 0
 					// put object as the target for the search of its reference
 					target = (struct object_range*) malloc (sizeof(struct object_range));
 					target->low = ref->vaddr;
@@ -1182,13 +1188,16 @@ bool search_cplusplus_objects_and_references(const char* exp, bool thread_scope)
 							&& target->high > ref->where.heap.addr + ref->where.heap.size)
 						target->high = ref->where.heap.addr + ref->where.heap.size;
 					ca_list_push_front(ref_targets, target);
+					#endif
     			}
     			// release this found item and move on to the next
     			free (ref);
     		}
+			CA_PRINT("Total objects found: " PRINT_FORMAT_SIZE "\n", obj_count);
     		ca_set_delete(unique_refs);
     		ca_list_clear(ref_list);
 
+			#if 0	// This seems nice-to-have but unnecessary, it sometimes takes forever to finish
     		if (!ca_list_empty(ref_targets))
     		{
 				// Search the references to found objects
@@ -1213,6 +1222,7 @@ bool search_cplusplus_objects_and_references(const char* exp, bool thread_scope)
 				}
     		}
     		ca_list_delete(ref_targets);
+			#endif
     	}
     	else
     		CA_PRINT ("No objects are found\n");

@@ -315,44 +315,27 @@ build_segments(void)
 		error (_("Memory segments are not properly sorted"));
 		return false;
 	}
-	/*
-	 * find/set storage types of segments of shared modules
-	 */
-	for (so = master_so_list(); so; so = so->next)
-	{
-		if (so->so_name[0])
-		{
-			struct target_section *sectptr;
-			for (sectptr = so->sections; sectptr < so->sections_end; sectptr++)
-			{
+
+	/* Set segments' type by tranversing all target sections */
+	if (current_target_sections) {
+			struct target_section *p;
+			for (p =  current_target_sections->sections;
+				p < current_target_sections->sections_end;
+				p++) {
+				struct bfd_section *psect = p->the_bfd_section;
+				bfd *pbfd = psect->owner;
 				enum storage_type type = ENUM_UNKNOWN;
-				if (strcmp (sectptr->the_bfd_section->name, ".data") == 0
-					|| strcmp (sectptr->the_bfd_section->name, ".bss") == 0)
+				const char *name = bfd_section_name (pbfd, psect);
+
+				if (strcmp (name, ".data") == 0 || strcmp (name, ".bss") == 0) {
 					type = ENUM_MODULE_DATA;
-				/* .rodata and .text sections are in the same segment */
-				else if (strcmp (sectptr->the_bfd_section->name, ".text") == 0
-						|| strcmp (sectptr->the_bfd_section->name, ".rodata") == 0)
+				} else if (strcmp (name, ".text") == 0 || strcmp (name, ".rodata") == 0) {
+					/* .rodata and .text sections are in the same segment */
 					type = ENUM_MODULE_TEXT;
+				}
 				if (type != ENUM_UNKNOWN)
-					set_segment_module_type(type, sectptr->addr, sectptr->endaddr, so->so_name);
+					set_segment_module_type(type, p->addr, p->endaddr, bfd_get_filename (pbfd));
 			}
-		}
-	}
-	/* Set executable segments */
-	if (exec_bfd)
-	{
-		struct bfd_section* section = exec_bfd->sections;
-		unsigned int i;
-		for (i=0; i<exec_bfd->section_count; i++, section=section->next)
-		{
-			enum storage_type type = ENUM_UNKNOWN;
-			if (strcmp(section->name, ".text") == 0 || strcmp(section->name, ".rodata") == 0)
-				type = ENUM_MODULE_TEXT;
-			else if (strcmp(section->name, ".data") == 0 || strcmp(section->name, ".bss") == 0)
-				type = ENUM_MODULE_DATA;
-			if (type != ENUM_UNKNOWN)
-				set_segment_module_type(type, section->vma, section->vma + section->size, exec_bfd->filename);
-		}
 	}
 
 	/* thread stacks */

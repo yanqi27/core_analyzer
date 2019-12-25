@@ -1556,7 +1556,7 @@ static bool build_heaps(void)
 		&& glibc_ver_minor != 4
 		&& glibc_ver_minor != 5
 		//&& glibc_ver_minor != 11
-		&& (glibc_ver_minor < 12 || glibc_ver_minor > 27))
+		&& (glibc_ver_minor < 12 || glibc_ver_minor > 29))
 	{
 		CA_PRINT("The memory manager of glibc %d.%d is not supported in this release\n",
 				glibc_ver_major, glibc_ver_minor);

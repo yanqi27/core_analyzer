@@ -40,7 +40,8 @@ Core analyzer extracts heap metadata with the help of debug symbols. Without the
 matching debug symbols, its functions are limited or don't work at all. For
 example, Linux heap data structures are defined in libc.so which debug symbols
 are required. On Ubuntu, this is package `libc6-dbg` which is installed out of box.
-On CentOS, you can run command `sudo debuginfo-install -y glibc`.
+On CentOS, you can run command `sudo debuginfo-install -y glibc` while Redhat command is
+`yum install glibc-debuginfo`
 libc.so debug symbols are installed at /usr/lib/debug by default. If gdb doesn't find
 it, you can add the following line in you `.gdbinit` file.
 ```

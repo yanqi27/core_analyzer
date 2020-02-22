@@ -198,7 +198,7 @@ read_mapping (FILE *mapfile,
 static bool
 linux_nat_find_memory_regions(bool create)
 {
-	int pid = ptid_get_pid (inferior_ptid);
+	int pid = inferior_ptid.pid();
 	char mapsfilename[MAXPATHLEN];
 	FILE *mapsfile;
 	long long addr, endaddr, offset, inode;
@@ -1252,7 +1252,7 @@ print_stack_ref(const struct object_reference* ref)
 	if (sym)
 	{
 		/* if the ref belongs to a local symbol, display in detail */
-		printf_filtered(_(" %s"), SYMBOL_PRINT_NAME (sym));
+		printf_filtered(_(" %s"), sym->natural_name());
 		print_struct_field(ref, SYMBOL_TYPE(sym), ref->vaddr - sym_addr);
 	}
 	else
@@ -1285,7 +1285,7 @@ print_global_ref (const struct object_reference* ref)
 	printf_filtered(_(" %s"), ref->where.module.name);
 	if ( (sym = get_global_sym(ref, &sym_addr, &sym_size)) ) {
 		/* if the ref belongs to a global symbol, display in detail */
-		printf_filtered(_(" %s"), SYMBOL_PRINT_NAME (sym));
+		printf_filtered(_(" %s"), sym->natural_name());
 		print_struct_field(ref, SYMBOL_TYPE(sym), ref->vaddr - sym_addr);
 		if (ref->target_index >= 0)
 			printf_filtered (_(" @0x%lx"), ref->vaddr);
@@ -1326,7 +1326,7 @@ print_heap_ref(const struct object_reference* ref)
 				 * the heap block is pointed to by a symbol
 				 * (e.g. local/global variable)
 				 */
-				printf_filtered (" %s", SYMBOL_PRINT_NAME (addr_type->sym));
+				printf_filtered (" %s", addr_type->sym->natural_name());
 			}
 			else if (addr_type->type)
 			{
@@ -1413,7 +1413,7 @@ print_func_locals (void)
 					val = read_var_value (sym, NULL, frame);
 					val_addr = value_address(val);
 					printf_filtered(_("%s: %p\n"),
-					    SYMBOL_PRINT_NAME (sym), (void*)val_addr);
+					    sym->natural_name(), (void*)val_addr);
 				} CATCH (except, RETURN_MASK_ERROR) {
 				}
 				END_CATCH
@@ -1906,7 +1906,7 @@ get_function_parameters(struct gdbarch *gdbarch,
 				if (num_params)
 					uiout->text(", ");
 				list_chain = make_cleanup_ui_out_tuple_begin_end (uiout, NULL);
-				fprintf_symbol_filtered (&stb, SYMBOL_PRINT_NAME (sym),
+				fprintf_symbol_filtered (&stb, sym->natural_name(),
 										SYMBOL_LANGUAGE (sym),
 										DMGL_PARAMS | DMGL_ANSI);
 				uiout->field_stream("name", stb);
@@ -1945,7 +1945,7 @@ get_function_parameters(struct gdbarch *gdbarch,
 					{
 						if (param_regs[reg_index].sym_name)
 							free (param_regs[reg_index].sym_name);
-						param_regs[reg_index].sym_name = strdup(SYMBOL_PRINT_NAME (sym));
+						param_regs[reg_index].sym_name = strdup(sym->natural_name());
 						param_regs[reg_index].type = param_type;
 					}
 				}
@@ -2050,7 +2050,7 @@ decode_func(const char *arg)
 	struct frame_info *selected_frame, *fi;
 	struct gdbarch *gdbarch;
 	CORE_ADDR user_low=0, user_high=0;
-	int i, count, numregs;
+	int i, count;
 	bool multi_frame = false;
 	int frame_lo = 0;
 	int frame_hi = 0;
@@ -2453,7 +2453,7 @@ print_op_value_context(size_t op_value, int op_size,
 		type = addr_type->type;
 		if (addr_type->sym)
 		{
-			printf_filtered ("%s%s", lea?"&":"", SYMBOL_PRINT_NAME (addr_type->sym));
+			printf_filtered ("%s%s", lea?"&":"", addr_type->sym->natural_name());
 			if (offset > 0)
 			{
 				if (TYPE_CODE (type) == TYPE_CODE_PTR || TYPE_CODE (type) == TYPE_CODE_REF)
@@ -2539,7 +2539,7 @@ calc_heap_usage(char *exp)
 				ref.storage_type = ENUM_REGISTER;
 				ref.vaddr = value_as_address(val);
 				ref.value = ref.vaddr;
-				ref.where.reg.tid = ptid_to_global_thread_id (inferior_ptid);
+				ref.where.reg.tid = inferior_ptid.tid();
 				ref.where.reg.reg_num = VALUE_REGNUM(val);
 				ref.where.reg.name = NULL;
 			}

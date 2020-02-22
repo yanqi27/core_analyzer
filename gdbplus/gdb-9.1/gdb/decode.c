@@ -218,7 +218,7 @@ decode_insns(struct decode_control_block* decode_cb)
 			{
 				uiout->text(" <");
 				uiout->text("+");
-				uiout->field_int("offset", offset);
+				uiout->field_signed("offset", offset);
 				uiout->text(">:\t");
 			} else
 				uiout->text(":\t");
@@ -241,7 +241,7 @@ decode_insns(struct decode_control_block* decode_cb)
 static void
 print_one_insn(struct ca_dis_insn* insn, struct ui_out* uiout)
 {
-	int i, pos;
+	int pos;
 	struct ca_operand* dst_op;
 
 	uiout->text(insn->dis_string);
@@ -304,7 +304,7 @@ print_one_insn(struct ca_dis_insn* insn, struct ui_out* uiout)
 					sym = get_stack_sym(&aref, NULL, NULL);
 					if (sym)
 					{
-						symname = SYMBOL_PRINT_NAME (sym);
+						symname = sym->natural_name();
 						type = SYMBOL_TYPE(sym);
 					}
 				}
@@ -372,7 +372,7 @@ print_one_insn(struct ca_dis_insn* insn, struct ui_out* uiout)
 					uiout->text("type=\"");
 					if (is_vptr)
 					{
-						const char * type_name = type_name_no_tag(type);
+						const char * type_name = TYPE_SAFE_NAME(type);
 						if (type_name)
 							uiout->message("vtable for %s", type_name);
 						else
@@ -427,7 +427,6 @@ process_one_insn(struct ca_dis_insn* insn, int current)
 	size_t val;
 	int op_size = insn->op_size;
 	size_t mask = (size_t)(-1);
-	int islea = 0;
 	struct ca_operand* dst_op = NULL;
 	struct ca_operand* src_op = NULL;
 
@@ -828,7 +827,6 @@ dump_insns(struct decode_control_block* decode_cb)
 	struct gdbarch *gdbarch = decode_cb->gdbarch;
 	CORE_ADDR low = decode_cb->func_start;
 	CORE_ADDR high = decode_cb->func_end;
-	bool verbose = decode_cb->verbose;
 
 	int num_insns = 0;
 	CORE_ADDR pc;
@@ -1211,7 +1209,6 @@ set_current_reg_pointers(struct ca_dis_insn* insn)
 static void
 set_reg_table_at_pc(struct ca_reg_value* regs, CORE_ADDR pc)
 {
-	struct ca_reg_table* table = &g_reg_table;
 	unsigned int i;
 	for (i = 0; i < TOTAL_REGS; i++)
 	{

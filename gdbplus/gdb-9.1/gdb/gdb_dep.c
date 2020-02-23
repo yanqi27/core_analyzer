@@ -260,9 +260,6 @@ static int
 build_segments(void)
 {
 	unsigned int i;
-	struct so_list *so = NULL;	/* link map state variable */
-	struct thread_info *tp;
-	struct ca_segment* segment;
 
 	/*
 	 *  It has been built previously.
@@ -347,7 +344,7 @@ build_segments(void)
 				struct bfd_section *psect = p->the_bfd_section;
 				bfd *pbfd = psect->owner;
 				enum storage_type type = ENUM_UNKNOWN;
-				const char *name = bfd_section_name (pbfd, psect);
+				const char *name = bfd_section_name (psect);
 
 				if (strcmp (name, ".data") == 0 || strcmp (name, ".bss") == 0) {
 					type = ENUM_MODULE_DATA;
@@ -400,7 +397,7 @@ update_memory_segments_and_heaps(void)
 		}
 		else
 			memset(&g_debug_context, 0, sizeof(g_debug_context));
-		g_debug_context.tid = ptid_to_global_thread_id (inferior_ptid);
+		g_debug_context.tid = inferior_ptid.tid();
 	}
 	/* clear up old types */
 	clear_addr_type_map();
@@ -583,27 +580,28 @@ is_heap_object_with_vptr(const struct object_reference* ref,
 			 * to be sure, check its symbol
 			 */
 			address_t vptr = val;
-			char *name = NULL;
-			char *filename = NULL;
+			std::string name;
+			std::string filename;
 			int unmapped = 0;
 			int offset = 0;
 			int line = 0;
-			/* Throw away both name and filename.  */
-			struct cleanup *cleanup_chain = make_cleanup (free_current_contents, &name);
-			make_cleanup (free_current_contents, &filename);
-			if (build_address_symbolic (get_current_arch(), vptr, true /*do_demangle*/,
-									&name, &offset,	&filename, &line, &unmapped) == 0)
+
+			if (build_address_symbolic (get_current_arch(), vptr,
+				true /*do_demangle*/, true /* prefer sym over minsym */,
+				&name, &offset,	&filename, &line, &unmapped) == 0)
 			{
-				if (strncmp(name, "vtable for ", 11) == 0)
+				const char *prefix = "vtable for ";
+				const int prefix_len = strlen(prefix);
+				//if (strncmp(name.c_str(), prefix, prefix_len) == 0)
+				if (name.rfind(prefix, 0) == 0)
 				{
 					rs = true;
 					if (name_buf)
 					{
-						strncpy(name_buf, name+11, buf_sz);
+						strncpy(name_buf, name.c_str() + prefix_len, buf_sz);
 					}
 				}
 			}
-			do_cleanups (cleanup_chain);
 		}
 	}
 	return rs;
@@ -866,16 +864,14 @@ print_type_name(struct type *type, const char* field_name,
 		return;
 	}
 
-	if (type_name_no_tag(type))
+	//if (type_name_no_tag(type))
 	{
-		const char* type_name = NULL;
-
 		if (prefix)
 			printf_filtered(_("%s"), prefix);
 
-		if (TYPE_TAG_NAME(type))
+		if (TYPE_NAME(type))
 			printf_filtered("struct ");
-		printf_filtered(_("%s"), type_name_no_tag(type));
+		printf_filtered(_("%s"), TYPE_SAFE_NAME(type));
 
 		for (; deref_count > 0; deref_count--)
 		{
@@ -1005,33 +1001,34 @@ static struct minimal_symbol*
 get_global_minimal_sym(const struct object_reference* ref,
 		       address_t* sym_addr, size_t* sym_sz)
 {
-	struct objfile *objfile;
 	struct obj_section *osect;
 
-	ALL_OBJSECTIONS (objfile, osect) {
-		address_t sect_addr;
-		struct bound_minimal_symbol bmsymbol;
+	for (objfile *objfile : current_program_space->objfiles ()) {
+		ALL_OBJFILE_OSECTIONS (objfile, osect) {
+			address_t sect_addr;
+			struct bound_minimal_symbol bmsymbol;
 
-		/*
-		 * Only process each object file once, even if there's a
-		 * separate debug file.
-		 */
-		if (objfile->separate_debug_objfile_backlink)
-			continue;
+			/*
+			* Only process each object file once, even if there's a
+			* separate debug file.
+			*/
+			if (objfile->separate_debug_objfile_backlink)
+				continue;
 
-		sect_addr = overlay_mapped_address (ref->vaddr, osect);
+			sect_addr = overlay_mapped_address (ref->vaddr, osect);
 
-		if (obj_section_addr(osect) <= sect_addr &&
-		    sect_addr < obj_section_endaddr(osect)) {
-			bmsymbol = lookup_minimal_symbol_by_pc_section(sect_addr, osect);
-			if (bmsymbol.minsym != NULL && bmsymbol.objfile != NULL) {
-				if (sym_addr != NULL && sym_sz != NULL) {
-					*sym_addr = BMSYMBOL_VALUE_ADDRESS(bmsymbol);
-					*sym_sz   = MSYMBOL_SIZE (bmsymbol.minsym);
+			if (obj_section_addr(osect) <= sect_addr &&
+				sect_addr < obj_section_endaddr(osect)) {
+				bmsymbol = lookup_minimal_symbol_by_pc_section(sect_addr, osect);
+				if (bmsymbol.minsym != NULL && bmsymbol.objfile != NULL) {
+					if (sym_addr != NULL && sym_sz != NULL) {
+						*sym_addr = BMSYMBOL_VALUE_ADDRESS(bmsymbol);
+						*sym_sz   = MSYMBOL_SIZE (bmsymbol.minsym);
+					}
+					return bmsymbol.minsym;
 				}
-				return bmsymbol.minsym;
+				break;
 			}
-			break;
 		}
 	}
 
@@ -1042,62 +1039,53 @@ struct symbol*
 get_global_sym(const struct object_reference* ref,
 	       address_t* sym_addr, size_t* sym_sz)
 {
-	struct bound_minimal_symbol bmsymbol;
-	struct objfile *objfile;
-	struct obj_section *osect;
-	address_t sect_addr;
-	unsigned int offset;
 	struct symbol* sym = NULL;
 
 	if (ref->storage_type != ENUM_MODULE_DATA && ref->storage_type != ENUM_MODULE_TEXT)
 		return NULL;
 
-	ALL_OBJSECTIONS (objfile, osect)
-	{
-		/*
-		 * Only process each object file once, even if there's a separate
-		 * debug file.
-		 */
-		if (objfile->separate_debug_objfile_backlink)
-			continue;
+	struct obj_section *osect;
+	for (objfile *objfile : current_program_space->objfiles ()) {
+		ALL_OBJFILE_OSECTIONS (objfile, osect)
+		{
+			/*
+			* Only process each object file once, even if there's a separate
+			* debug file.
+			*/
+			if (objfile->separate_debug_objfile_backlink)
+				continue;
 
-		sect_addr = overlay_mapped_address (ref->vaddr, osect);
+			CORE_ADDR sect_addr = overlay_mapped_address (ref->vaddr, osect);
 
-		if (obj_section_addr (osect) <= sect_addr &&
-		    sect_addr < obj_section_endaddr (osect)) {
-			bmsymbol = lookup_minimal_symbol_by_pc_section (sect_addr, osect);
-			if (bmsymbol.minsym != NULL && bmsymbol.objfile != NULL) {
-				const char *msym_name;
-				char *loc_string;
-				struct cleanup *old_chain = NULL;
+			if (obj_section_addr (osect) <= sect_addr &&
+				sect_addr < obj_section_endaddr (osect)) {
+				struct bound_minimal_symbol bmsymbol = lookup_minimal_symbol_by_pc_section (sect_addr, osect);
+				if (bmsymbol.minsym != NULL && bmsymbol.objfile != NULL) {
+					const char *msym_name;
+					off_t offset;
 
-				offset = sect_addr - BMSYMBOL_VALUE_ADDRESS(bmsymbol);
-				msym_name = MSYMBOL_PRINT_NAME(bmsymbol.minsym);
+					offset = sect_addr - BMSYMBOL_VALUE_ADDRESS(bmsymbol);
+					msym_name = bmsymbol.minsym->natural_name();
 
-				loc_string = xstrprintf ("%s", msym_name);
+					std::string loc_string(msym_name);
 
-				/* Use a cleanup to free loc_string in case the user quits
-				   a pagination request inside printf_filtered.  */
-				old_chain = make_cleanup (xfree, loc_string);
+					gdb_assert (osect->objfile && osect->objfile->original_name);
 
-				gdb_assert (osect->objfile && osect->objfile->original_name);
-
-				sym = lookup_symbol(loc_string, 0, VAR_DOMAIN, 0).symbol;
-				if (sym != NULL) {
-					struct type* type = sym->type;
-					add_addr_type (ref->vaddr - offset, type, sym);
-					if (sym_addr && sym_sz) {
-						*sym_addr = ref->vaddr - offset;
-						*sym_sz   = TYPE_LENGTH(type);
+					sym = lookup_symbol(loc_string.c_str(), 0, VAR_DOMAIN, 0).symbol;
+					if (sym != NULL) {
+						struct type* type = sym->type;
+						add_addr_type (ref->vaddr - offset, type, sym);
+						if (sym_addr && sym_sz) {
+							*sym_addr = ref->vaddr - offset;
+							*sym_sz   = TYPE_LENGTH(type);
+						}
+					} else if (sym_addr != 0 && sym_sz != 0) {
+						*sym_addr = BMSYMBOL_VALUE_ADDRESS(bmsymbol);
+						*sym_sz   = MSYMBOL_SIZE(bmsymbol.minsym);
 					}
-				} else if (sym_addr != 0 && sym_sz != 0) {
-					*sym_addr = BMSYMBOL_VALUE_ADDRESS(bmsymbol);
-					*sym_sz   = MSYMBOL_SIZE(bmsymbol.minsym);
 				}
-
-				do_cleanups (old_chain);
+				break;
 			}
-			break;
 		}
 	}
 
@@ -1138,7 +1126,7 @@ get_stack_sym(const struct object_reference* ref,
 					case LOC_REGISTER:
 					case LOC_STATIC:
 					case LOC_COMPUTED:
-						TRY {
+						try {
 							struct value *val = read_var_value (sym, NULL, frame);
 							address_t val_addr = value_address(val);
 							struct type * type = value_type(val);
@@ -1152,9 +1140,8 @@ get_stack_sym(const struct object_reference* ref,
 									*sym_sz = val_size;
 								}
 							}
-						} CATCH (except, RETURN_MASK_ERROR) {
+						} catch (const gdb_exception_error &ex) {
 						}
-						END_CATCH
 						break;
 					default:
 						break;
@@ -1291,7 +1278,7 @@ print_global_ref (const struct object_reference* ref)
 			printf_filtered (_(" @0x%lx"), ref->vaddr);
 	} else if ( (msym = get_global_minimal_sym(ref, &sym_addr, &sym_size)) ) {
 		printf_filtered(_(" %s (0x%lx--0x%lx)"),
-		    MSYMBOL_PRINT_NAME(msym), sym_addr, sym_addr+sym_size);
+		    msym->natural_name(), sym_addr, sym_addr+sym_size);
 		if (ref->target_index >= 0)
 			printf_filtered (_(" @0x%lx"), ref->vaddr);
 	} else {
@@ -1307,7 +1294,6 @@ print_heap_ref(const struct object_reference* ref)
 {
 	if (ref->where.heap.inuse)
 	{
-		address_t vptr;
 		char obj_name[NAME_BUF_SZ];
 		struct type *type = NULL;
 		size_t offset = 0;
@@ -1399,9 +1385,8 @@ print_func_locals (void)
 	while (block) {
 		struct block_iterator iter;
 		struct symbol *sym;
-		volatile struct gdb_exception except;
 		struct value *val;
-		address_t val_addr;
+		CORE_ADDR val_addr;
 
 		ALL_BLOCK_SYMBOLS (block, iter, sym) {
 			switch (SYMBOL_CLASS (sym)) {
@@ -1409,14 +1394,13 @@ print_func_locals (void)
 			case LOC_REGISTER:
 			case LOC_STATIC:
 			case LOC_COMPUTED:
-				TRY {
+				try {
 					val = read_var_value (sym, NULL, frame);
 					val_addr = value_address(val);
 					printf_filtered(_("%s: %p\n"),
 					    sym->natural_name(), (void*)val_addr);
-				} CATCH (except, RETURN_MASK_ERROR) {
+				} catch (const gdb_exception_error &ex) {
 				}
-				END_CATCH
 				break;
 			default:
 				break;
@@ -1477,7 +1461,7 @@ print_type_members(struct type *type, int indent)
 		}
 		else
 			print_type_name(field_type, TYPE_FIELD_NAME(type, i), NULL, NULL);
-		printf_filtered(_("  size=%d\n"), field_type->length);
+		printf_filtered(_("  size=%lu\n"), field_type->length);
 		offset += field_type->length;
 		/* the field is a base class */
 		if (i < num_baseclasses)
@@ -1508,7 +1492,6 @@ get_real_type_from_exp(char* exp)
     	int full = 0;
     	LONGEST top = -1;
     	int using_enc = 0;
-    	int indirect = 0;
     	struct type *real_type = NULL;
     	int is_ptr = 0;
     	int is_ref = 0;
@@ -1548,8 +1531,6 @@ get_vtable_from_exp(const char*expression,
 {
 	char* exp = strdup (expression);
 	struct type *type = get_real_type_from_exp (exp);
-	size_t vtbl_sz = 0;
-	address_t vtbl_addr = 0;
 	bool rc = false;
 
 	if (type) {
@@ -1599,7 +1580,7 @@ print_type_layout (char* exp)
 		/* print type name */
 		printf_filtered (_("type="));
 		type_print (type, "", gdb_stdout, -1);
-		printf_filtered (_("  size=%d\n"), type->length);
+		printf_filtered (_("  size=%lu\n"), type->length);
 		/* if the type is pointer/reference, print the base type */
 		while (TYPE_CODE (type) == TYPE_CODE_PTR || TYPE_CODE (type) == TYPE_CODE_REF)
 		{
@@ -1878,12 +1859,12 @@ get_function_parameters(struct gdbarch *gdbarch,
 			struct block_iterator iter;
 			struct symbol *sym;
 			struct value *val;
-			struct cleanup *list_chain;
 			int int_reg_param_ordinal = 1, float_reg_param_ordinal = 1;
 			int reg_index = -1;
 			struct type* param_type = NULL;
 			int reg_size = 0;
 			string_file stb;
+			const char *linkage_name;
 
 			printf_filtered (_("\nParameters: "));
 			b = SYMBOL_BLOCK_VALUE (func);
@@ -1894,10 +1875,11 @@ get_function_parameters(struct gdbarch *gdbarch,
 				if (!SYMBOL_IS_ARGUMENT (sym))
 					continue;
 
-				if (*SYMBOL_LINKAGE_NAME(sym) != '\0') {
+				linkage_name = sym->linkage_name();
+				if (*linkage_name != '\0') {
 					struct block_symbol bsym;
 
-					bsym = lookup_symbol(SYMBOL_LINKAGE_NAME (sym),
+					bsym = lookup_symbol(linkage_name,
 					    b, VAR_DOMAIN, NULL);
 
 					if (SYMBOL_CLASS(bsym.symbol) != LOC_REGISTER)
@@ -1905,7 +1887,6 @@ get_function_parameters(struct gdbarch *gdbarch,
 				}
 				if (num_params)
 					uiout->text(", ");
-				list_chain = make_cleanup_ui_out_tuple_begin_end (uiout, NULL);
 				fprintf_symbol_filtered (&stb, sym->natural_name(),
 										SYMBOL_LANGUAGE (sym),
 										DMGL_PARAMS | DMGL_ANSI);
@@ -1977,7 +1958,6 @@ get_function_parameters(struct gdbarch *gdbarch,
 						param_regs[reg_index].has_value = 1;
 					}
 				}
-				do_cleanups (list_chain);
 				num_params++;
 			}
 			printf_filtered (_("\n"));

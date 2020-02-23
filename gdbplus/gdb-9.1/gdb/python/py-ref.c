@@ -6,16 +6,17 @@
  */
 
 #include "defs.h"
-#include "gdb_assert.h"
+#include "gdbsupport/gdb_assert.h"
 #include "python.h"
-
-#ifdef HAVE_PYTHON
 
 #include "python-internal.h"
 #include "ref.h"
 #include "search.h"
 #include "segment.h"
 #include "stl_container.h"
+
+extern PyTypeObject object_ref_type
+    CPYCHECKER_TYPE_OBJECT_FOR_TYPEDEF ("object_ref");
 
 typedef struct object_ref {
 	PyObject_HEAD
@@ -318,7 +319,7 @@ object_ref_str (PyObject *obj)
 	{
 		sym = get_stack_sym(&self->ref, &sym_addr, &sym_size);
 		if (sym)
-			sym_name = SYMBOL_PRINT_NAME (sym);
+			sym_name = sym->natural_name();
 		else
 		{
 			sym_name = "";
@@ -331,7 +332,7 @@ object_ref_str (PyObject *obj)
 	{
 		sym = get_global_sym(&self->ref, &sym_addr, &sym_size);
 		if (sym)
-			sym_name = SYMBOL_PRINT_NAME (sym);
+			sym_name = sym->natural_name();
 		else
 		{
 			sym_name = "unknown";
@@ -345,11 +346,7 @@ object_ref_str (PyObject *obj)
 		if (self->ref.where.heap.inuse)
 		{
 			struct type* type = get_heap_object_type(&self->ref);
-			const char* type_name;
-			if (type && type_name_no_tag(type))
-				type_name = type_name_no_tag(type);
-			else
-				type_name = "unknown";
+			const char* type_name = TYPE_SAFE_NAME(type);
 			format = PyString_FromString("[heap block] 0x%lx--0x%lx size=%ld (type=\"%s\")");
 			args = Py_BuildValue("(llls)", self->ref.where.heap.addr,
 							self->ref.where.heap.addr + self->ref.where.heap.size,
@@ -413,7 +410,7 @@ gdbpy_initialize_object_ref (void)
 	return 0;
 }
 
-static PyGetSetDef object_ref_getset[] = {
+static gdb_PyGetSetDef object_ref_getset[] = {
   { "storage_type", object_ref_get_storage_type, NULL, "The storage class that address belongs to", NULL },
   { "address", object_ref_get_address, NULL, "The reference address", NULL },
   { "target", object_ref_get_target, NULL, "The referenced target", NULL },
@@ -602,7 +599,6 @@ PyObject *gdbpy_shared_object (PyObject *self, PyObject *args)
 	{
 		struct object_reference* ref;
 		unsigned int n = ca_list_size(objects);
-		unsigned int i;
 
 		result = PyList_New(n);
 
@@ -731,5 +727,3 @@ PyObject *gdbpy_objref (PyObject *self, PyObject *args)
 
 	return result;
 }
-
-#endif /* HAVE_PYTHON */

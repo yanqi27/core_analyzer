@@ -6,13 +6,14 @@
  */
 
 #include "defs.h"
-#include "gdb_assert.h"
+#include "gdbsupport/gdb_assert.h"
 #include "python.h"
-
-#ifdef HAVE_PYTHON
 
 #include "python-internal.h"
 #include "heap.h"
+
+extern PyTypeObject heap_block_object_type
+    CPYCHECKER_TYPE_OBJECT_FOR_TYPEDEF ("heap_block_object");
 
 typedef struct heap_block_object {
 	PyObject_HEAD
@@ -158,7 +159,7 @@ gdbpy_initialize_heap_block (void)
 	return 0;
 }
 
-static PyGetSetDef heap_block_object_getset[] = {
+static gdb_PyGetSetDef heap_block_object_getset[] = {
   { "address", heap_block_get_address, NULL, "The starting address of the heap block.", NULL },
   { "size", heap_block_get_size, NULL, "The size of the heap block.", NULL },
   { "inuse", heap_block_get_inuse, NULL, "The inuse/free status of the heap block.", NULL },
@@ -428,5 +429,3 @@ PyObject *gdbpy_big_blocks (PyObject *self, PyObject *args)
 
 	return result;
 }
-
-#endif /* HAVE_PYTHON */

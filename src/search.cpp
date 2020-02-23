@@ -744,7 +744,7 @@ bool find_object_refs(address_t obj_vaddr, size_t obj_sz, unsigned int iLevel)
 		clear_addr_type_map();
 		while (ref_cursor>0 && cur_level>0)
 		{
-			struct object_reference* ref = refs[ref_cursor];
+			ref = refs[ref_cursor];
 			if (ref->level == cur_level)
 			{
 				int next_referenced;
@@ -806,7 +806,8 @@ bool find_object_type(address_t obj_vaddr)
 	struct CA_LIST* ref_list;
 
 	// references are placed in an array
-	unsigned int k, ref_cnt = 0;
+	unsigned int k;
+	unsigned int ref_cnt = 0;
 	unsigned int ref_buf_sz = 64;
 	struct object_reference** refs;
 
@@ -905,10 +906,10 @@ bool find_object_type(address_t obj_vaddr)
 						{
 							if (aref->where.heap.inuse)
 							{
-								int k;
-								for (k=ref_cnt-1; k>=0; k--)
+								int refidx;
+								for (refidx=ref_cnt-1; refidx>=0; refidx--)
 								{
-									const struct object_reference* cursor = refs[k];
+									const struct object_reference* cursor = refs[refidx];
 									if (cursor->storage_type == ENUM_HEAP && cursor->where.heap.addr == aref->where.heap.addr)
 									{
 										remove_heap_block = true;

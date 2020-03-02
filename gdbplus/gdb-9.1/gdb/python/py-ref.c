@@ -148,7 +148,7 @@ object_ref_get_symbol (PyObject *self, void *closure)
 	if (obj_ref->ref.storage_type == ENUM_STACK)
 		sym = get_stack_sym(&obj_ref->ref, NULL, NULL);
 	else if (obj_ref->ref.storage_type == ENUM_MODULE_TEXT || obj_ref->ref.storage_type == ENUM_MODULE_DATA)
-		sym = get_global_sym(obj_ref->ref.vaddr, NULL, NULL);
+		sym = get_global_sym(&obj_ref->ref, NULL, NULL);
 	if (sym)
 		return symbol_to_symbol_object(sym);
 	else
@@ -330,7 +330,7 @@ object_ref_str (PyObject *obj)
 	}
 	else if (self->ref.storage_type == ENUM_MODULE_TEXT || self->ref.storage_type == ENUM_MODULE_DATA)
 	{
-		sym = get_global_sym(self->ref.vaddr, &sym_addr, &sym_size);
+		sym = get_global_sym(&self->ref, &sym_addr, &sym_size);
 		if (sym)
 			sym_name = sym->natural_name();
 		else
@@ -728,34 +728,17 @@ PyObject *gdbpy_objref (PyObject *self, PyObject *args)
 	return result;
 }
 
-PyObject *gdbpy_global_var (PyObject *self, PyObject *args)
+PyObject *gdbpy_global_and_static_symbols (PyObject *self, PyObject *args)
 {
-	PyObject *result = NULL;
-	address_t addr = 0;
-
-	if (PyTuple_Size (args) == 0)
-		addr = 0;
-	else if (PyTuple_Size (args) == 1) {
-		PyObject *obj = PyTuple_GetItem (args, 0);
-		if (PyInt_Check (obj))
-			addr = (address_t) PyInt_AsLong (obj);
-		else if (PyLong_Check (obj))
-			addr = (address_t) PyLong_AsLong (obj);
-	} else {
-		PyErr_SetString (PyExc_TypeError, _("global_var takes one argument or none."));
+	gdbpy_ref<> return_list (PyList_New (0));
+	if (return_list == NULL)
 		return NULL;
-	}
 
-	struct symbol *sym = get_global_sym(addr, NULL, NULL);
-	if (sym) {
-		result = symbol_to_symbol_object (sym);
-		if (!result)
+	std::list<struct symbol *> symlist = get_global_and_static_symbols();
+	for (auto symbol : symlist) {
+		PyObject *sym_obj = symbol_to_symbol_object (symbol);
+		if (PyList_Append (return_list.get (), sym_obj) == -1)
 			return NULL;
 	}
-	if (!result) {
-		result = Py_None;
-		Py_INCREF (Py_None);
-	}
-
-	  return result;
+	return return_list.release ();
 }

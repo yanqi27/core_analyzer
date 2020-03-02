@@ -1035,73 +1035,107 @@ get_global_minimal_sym(const struct object_reference* ref,
 	return NULL;
 }
 
-struct symbol*
-get_global_sym(address_t vaddr,	address_t* sym_addr, size_t* sym_sz)
+std::list<struct symbol*>
+get_global_and_static_symbols()
 {
-	struct symbol* sym = NULL;
-	static obj_section *prev_osect = NULL;
-	struct obj_section *target_osect = NULL;
-	CORE_ADDR sect_addr = 0;
+	std::list<struct symbol*> symlist;
+	size_t ptr_sz = g_ptr_bit >> 3;
 
-	if (prev_osect) {
-		sect_addr = overlay_mapped_address (vaddr, prev_osect);
-		if (obj_section_addr (prev_osect) <= sect_addr &&
-			sect_addr < obj_section_endaddr (prev_osect)) {
-				target_osect = prev_osect;
-			}
-	}
+	for (objfile *objfile : current_program_space->objfiles ()) {
+		struct obj_section *osect;
 
-	if (!target_osect) {
-		for (objfile *objfile : current_program_space->objfiles ()) {
-			struct obj_section *osect;
-			ALL_OBJFILE_OSECTIONS (objfile, osect)
-			{
-				/*
-				* Only process each object file once, even if there's a separate
-				* debug file.
-				*/
-				if (objfile->separate_debug_objfile_backlink)
-					continue;
+		ALL_OBJFILE_OSECTIONS (objfile, osect)
+		{
+			/*
+			* Only process each object file once, even if there's a separate
+			* debug file.
+			*/
+			if (objfile->separate_debug_objfile_backlink)
+				continue;
 
-				/* TODO assume objfiles are ordered in asending address */
-				if (vaddr == 0)
-					vaddr = obj_section_addr (osect);
-				sect_addr = overlay_mapped_address (vaddr, osect);
+			struct bfd_section *bfds = osect->the_bfd_section;
+			const char *sect_name = bfd_section_name (bfds);
+			if (strcmp (sect_name, ".data") != 0 && strcmp (sect_name, ".bss") != 0)
+				continue;
 
-				if (obj_section_addr (osect) <= sect_addr &&
-					sect_addr < obj_section_endaddr (osect)) {
-						target_osect = osect;
-						break;
+			CORE_ADDR sect_addr = obj_section_addr (osect);
+			while (sect_addr < obj_section_endaddr (osect)) {
+				size_t size = 0;
+				struct bound_minimal_symbol bmsymbol = lookup_minimal_symbol_by_pc_section (sect_addr, osect);
+				if (bmsymbol.minsym != NULL && bmsymbol.objfile != NULL) {
+					off_t offset = sect_addr - BMSYMBOL_VALUE_ADDRESS(bmsymbol);
+					const char *msym_name = bmsymbol.minsym->natural_name();
+					//gdb_assert (osect->objfile && osect->objfile->original_name);
+					struct symbol* sym = lookup_symbol(msym_name, 0, VAR_DOMAIN, 0).symbol;
+					if (sym != NULL) {
+						if (SYMBOL_CLASS (sym) == LOC_STATIC)
+							symlist.push_back(sym);
+						size = TYPE_LENGTH(check_typedef(sym->type));
+					} else if (MSYMBOL_SIZE(bmsymbol.minsym) > offset) {
+						size = MSYMBOL_SIZE(bmsymbol.minsym) - offset;
+					}
 				}
+				if (size)
+					sect_addr += size;
+				else
+					sect_addr += ptr_sz;
 			}
-			if (target_osect)
-				break;
 		}
 	}
 
-	prev_osect = target_osect;
-	if (target_osect) {
-		struct bound_minimal_symbol bmsymbol = lookup_minimal_symbol_by_pc_section (sect_addr, target_osect);
-		if (bmsymbol.minsym != NULL && bmsymbol.objfile != NULL) {
-			const char *msym_name;
-			off_t offset;
+	return symlist;
+}
 
-			offset = sect_addr - BMSYMBOL_VALUE_ADDRESS(bmsymbol);
-			msym_name = bmsymbol.minsym->natural_name();
+struct symbol*
+get_global_sym(const struct object_reference* ref,
+	       address_t* sym_addr, size_t* sym_sz)
+{
+	struct symbol* sym = NULL;
 
-			gdb_assert (target_osect->objfile && target_osect->objfile->original_name);
+	if (ref->storage_type != ENUM_MODULE_DATA && ref->storage_type != ENUM_MODULE_TEXT)
+		return NULL;
 
-			sym = lookup_symbol(msym_name, 0, VAR_DOMAIN, 0).symbol;
-			if (sym != NULL) {
-				struct type* type = sym->type;
-				add_addr_type (vaddr - offset, type, sym);
-				if (sym_addr && sym_sz) {
-					*sym_addr = vaddr - offset;
-					*sym_sz   = TYPE_LENGTH(type);
+	struct obj_section *osect;
+	for (objfile *objfile : current_program_space->objfiles ()) {
+		ALL_OBJFILE_OSECTIONS (objfile, osect)
+		{
+			/*
+			* Only process each object file once, even if there's a separate
+			* debug file.
+			*/
+			if (objfile->separate_debug_objfile_backlink)
+				continue;
+
+			CORE_ADDR sect_addr = overlay_mapped_address (ref->vaddr, osect);
+
+			if (obj_section_addr (osect) <= sect_addr &&
+				sect_addr < obj_section_endaddr (osect)) {
+				struct bound_minimal_symbol bmsymbol = lookup_minimal_symbol_by_pc_section (sect_addr, osect);
+				if (bmsymbol.minsym != NULL && bmsymbol.objfile != NULL) {
+					const char *msym_name;
+					off_t offset;
+
+					offset = sect_addr - BMSYMBOL_VALUE_ADDRESS(bmsymbol);
+					msym_name = bmsymbol.minsym->natural_name();
+
+					std::string loc_string(msym_name);
+
+					gdb_assert (osect->objfile && osect->objfile->original_name);
+
+					sym = lookup_symbol(loc_string.c_str(), 0, VAR_DOMAIN, 0).symbol;
+					if (sym != NULL) {
+						struct type* type = sym->type;
+						add_addr_type (ref->vaddr - offset, type, sym);
+						if (sym_addr && sym_sz) {
+							*sym_addr = ref->vaddr - offset;
+							*sym_sz   = TYPE_LENGTH(type);
+						}
+					} else if (sym_addr != 0 && sym_sz != 0) {
+						*sym_addr = BMSYMBOL_VALUE_ADDRESS(bmsymbol);
+						*sym_sz   = MSYMBOL_SIZE(bmsymbol.minsym);
+					}
 				}
-			} else if (sym_addr != 0 && sym_sz != 0) {
-				*sym_addr = BMSYMBOL_VALUE_ADDRESS(bmsymbol);
-				*sym_sz   = MSYMBOL_SIZE(bmsymbol.minsym);
+				break;
 			}
 		}
 	}
@@ -1287,7 +1321,7 @@ print_global_ref (const struct object_reference* ref)
 	size_t    sym_size;
 
 	printf_filtered(_(" %s"), ref->where.module.name);
-	if ( (sym = get_global_sym(ref->vaddr, &sym_addr, &sym_size)) ) {
+	if ( (sym = get_global_sym(ref, &sym_addr, &sym_size)) ) {
 		/* if the ref belongs to a global symbol, display in detail */
 		printf_filtered(_(" %s"), sym->natural_name());
 		print_struct_field(ref, SYMBOL_TYPE(sym), ref->vaddr - sym_addr);

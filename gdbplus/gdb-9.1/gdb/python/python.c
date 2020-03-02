@@ -2052,6 +2052,8 @@ Set the value of the convenience variable $NAME." },
     "Return objects accessed by multiple threads." },
   {"ref", gdbpy_objref, METH_VARARGS,
     "Return references to the input object." },
+  {"global_var", gdbpy_global_var, METH_VARARGS,
+    "Return the gdb.Value that is immediately after the input address, or None." },
 
   {NULL, NULL, 0, NULL}
 };

@@ -14,6 +14,8 @@
 #include <elf.h>
 #endif
 
+#include <mutex>
+#include <thread>
 #include <sys/param.h>
 #include "dis-asm.h"
 #include "readline/readline.h"
@@ -1035,14 +1037,28 @@ get_global_minimal_sym(const struct object_reference* ref,
 	return NULL;
 }
 
-std::list<struct symbol*>
-get_global_and_static_symbols()
+struct gvs_search_context {
+	int index;
+	int thread_count;
+	std::mutex *lock;
+	std::list<struct symbol*> *symlist;
+};
+
+static void
+global_symbol_searcher(gvs_search_context *context)
 {
-	std::list<struct symbol*> symlist;
 	size_t ptr_sz = g_ptr_bit >> 3;
+	std::list<struct symbol*> *symlist = context->symlist;
+	std::mutex *lock = context->lock;
+	int thread_index = context->index;
+	int thread_count = context->thread_count;
+	int i;
 
 	for (objfile *objfile : current_program_space->objfiles ()) {
 		struct obj_section *osect;
+
+		if (i++ % thread_count != thread_index)
+			continue;
 
 		ALL_OBJFILE_OSECTIONS (objfile, osect)
 		{
@@ -1068,8 +1084,10 @@ get_global_and_static_symbols()
 					//gdb_assert (osect->objfile && osect->objfile->original_name);
 					struct symbol* sym = lookup_symbol(msym_name, 0, VAR_DOMAIN, 0).symbol;
 					if (sym != NULL) {
-						if (SYMBOL_CLASS (sym) == LOC_STATIC)
-							symlist.push_back(sym);
+						if (SYMBOL_CLASS (sym) == LOC_STATIC) {
+							std::lock_guard<std::mutex> mylock(*lock);
+							symlist->push_back(sym);
+						}
 						size = TYPE_LENGTH(check_typedef(sym->type));
 					} else if (MSYMBOL_SIZE(bmsymbol.minsym) > offset) {
 						size = MSYMBOL_SIZE(bmsymbol.minsym) - offset;
@@ -1082,6 +1100,32 @@ get_global_and_static_symbols()
 			}
 		}
 	}
+}
+
+std::list<struct symbol*>
+get_global_and_static_symbols()
+{
+	std::list<struct symbol*> symlist;
+	int n = 2;
+	std::mutex lock;
+
+	const char *thr_count = getenv("GLOBAL_SYMBOL_SEARCH_THREAD_COUNT");
+	if (thr_count) {
+		n = atoi(thr_count);
+		if (n <= 0 || n > 16)
+			n = 2;
+	}
+	std::unique_ptr<gvs_search_context []> contexts(new gvs_search_context[n]);
+	std::unique_ptr<std::thread *[]> threads(new std::thread*[n]);
+	for (int i = 0; i < n; i++) {
+		contexts[i].index = i;
+		contexts[i].thread_count = n;
+		contexts[i].symlist = &symlist;
+		contexts[i].lock = &lock;
+		threads[i] = new std::thread(global_symbol_searcher, &contexts[i]);
+	}
+	for (int i = 0; i < n; i++)
+		threads[i]->join();
 
 	return symlist;
 }

@@ -1052,7 +1052,7 @@ global_symbol_searcher(gvs_search_context *context)
 	std::mutex *lock = context->lock;
 	int thread_index = context->index;
 	int thread_count = context->thread_count;
-	int i;
+	int i = 0;
 
 	for (objfile *objfile : current_program_space->objfiles ()) {
 		struct obj_section *osect;

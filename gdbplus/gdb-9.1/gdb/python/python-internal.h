@@ -458,6 +458,7 @@ PyObject *gdbpy_big_blocks (PyObject *self, PyObject *args);
 PyObject *gdbpy_cpp_object (PyObject *self, PyObject *args);
 PyObject *gdbpy_shared_object (PyObject *self, PyObject *args);
 PyObject *gdbpy_objref (PyObject *self, PyObject *args);
+PyObject *gdbpy_global_and_static_symbols (PyObject *self, PyObject *args);
 
 PyObject *symtab_and_line_to_sal_object (struct symtab_and_line sal);
 PyObject *symtab_to_symtab_object (struct symtab *symtab);

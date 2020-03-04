@@ -7574,7 +7574,6 @@ static int print_insn(bfd_vma pc, struct decode_control_block* decode_cb)
 		(*info->fprintf_func)(info->stream, "  ## Internal error: %d operand is expected instead of %d", num_op, g_num_operand);
 	else if (dp->name)
 	{
-		int op_size;
 		struct ca_dis_insn* insn = decode_cb->insn;
 		// opcode name
 		strncpy(insn->opcode_name, dp->name, MAX_OPCODE_NAME_SZ);
@@ -10305,6 +10304,7 @@ static unsigned char get_vex_imm8(int sizeflag, int opnum) {
 					if (base != 5)
 						/* No displacement. */
 						break;
+					/* Fall through.  */
 				case 2:
 					/* 4 byte displacement.  */
 					bytes_before_imm += 4;

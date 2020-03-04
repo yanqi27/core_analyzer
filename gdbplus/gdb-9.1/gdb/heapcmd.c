@@ -100,7 +100,7 @@ assign_command (const char *args, int from_tty)
 		char* options[MAX_NUM_OPTIONS];
 		gdb::unique_xmalloc_ptr<char> myargs(xstrdup(args));
 		int num_options = ca_parse_options(myargs.get(), options);
-		int i;
+
 		if (num_options != 2)
 		{
 			CA_PRINT("Expect arguments: <address> <value>\n");

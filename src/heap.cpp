@@ -434,9 +434,8 @@ bool segment_command_impl(const char* args)
 		CA_PRINT("=====================================================\n");
 		for (i=0; i<g_segment_count; i++)
 		{
-			struct ca_segment* segment = &g_segments[i];
 			CA_PRINT("[%4d] ", i);
-			print_segment(segment);
+			print_segment(&g_segments[i]);
 		}
 		// Find out why SIZE is much bigger than RSS, it might be modules, thread stack or heap, or all
 		/*if (!g_debug_core)

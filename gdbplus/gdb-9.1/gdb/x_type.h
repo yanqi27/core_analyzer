@@ -12,7 +12,6 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <stdbool.h>
-#include <list>
 
 #include "defs.h"
 //#include "gdb_string.h"
@@ -65,7 +64,6 @@ struct object_reference;
 
 extern struct symbol* get_stack_sym(const struct object_reference*, address_t*, size_t*);
 extern struct symbol* get_global_sym(const struct object_reference*, address_t*, size_t*);
-extern std::list<struct symbol*> get_global_and_static_symbols();
 extern struct type*   get_heap_object_type(const struct object_reference*);
 extern struct type* get_struct_field_type_and_name(struct type*, size_t, int, char*, size_t, int*);
 

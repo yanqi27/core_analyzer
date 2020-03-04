@@ -734,11 +734,21 @@ PyObject *gdbpy_global_and_static_symbols (PyObject *self, PyObject *args)
 	if (return_list == NULL)
 		return NULL;
 
-	std::list<struct symbol *> symlist = get_global_and_static_symbols();
-	for (auto symbol : symlist) {
-		PyObject *sym_obj = symbol_to_symbol_object (symbol);
+	global_symbol_searcher spec (VARIABLES_DOMAIN, ".*");
+	SCOPE_EXIT {
+		for (const char *elem : spec.filenames)
+		xfree ((void *) elem);
+	};
+	std::vector<symbol_search> symbols = spec.search ();
+	for (const symbol_search &p : symbols) {
+		if (p.block != GLOBAL_BLOCK && p.block != STATIC_BLOCK)
+			continue;
+		if (p.symbol == NULL)
+			continue;
+		PyObject *sym_obj = symbol_to_symbol_object (p.symbol);
 		if (PyList_Append (return_list.get (), sym_obj) == -1)
 			return NULL;
-	}
+    }
+
 	return return_list.release ();
 }

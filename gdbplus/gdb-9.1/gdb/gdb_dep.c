@@ -1039,6 +1039,26 @@ std::list<struct symbol*>
 get_global_and_static_symbols()
 {
 	std::list<struct symbol*> symlist;
+
+	global_symbol_searcher spec (VARIABLES_DOMAIN, "*");
+	SCOPE_EXIT {
+		for (const char *elem : spec.filenames)
+		xfree ((void *) elem);
+	};
+	std::vector<symbol_search> symbols = spec.search ();
+	for (const symbol_search &p : symbols) {
+		struct symbol *symbol = p.symbol;
+		if (p.block != GLOBAL_BLOCK && p.block != STATIC_BLOCK)
+			continue;
+		if (symbol == NULL && p.msymbol.minsym != NULL && p.msymbol.objfile != NULL) {
+			const char *msym_name = p.msymbol.minsym->natural_name();
+			symbol = lookup_symbol(msym_name, 0, VAR_DOMAIN, 0).symbol;
+		}
+		if (symbol != NULL)
+			symlist.push_back(symbol);
+    }
+
+#if 0
 	size_t ptr_sz = g_ptr_bit >> 3;
 
 	for (objfile *objfile : current_program_space->objfiles ()) {
@@ -1082,7 +1102,7 @@ get_global_and_static_symbols()
 			}
 		}
 	}
-
+#endif
 	return symlist;
 }
 

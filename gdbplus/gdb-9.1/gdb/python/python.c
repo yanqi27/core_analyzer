@@ -2052,6 +2052,8 @@ Set the value of the convenience variable $NAME." },
     "Return objects accessed by multiple threads." },
   {"ref", gdbpy_objref, METH_VARARGS,
     "Return references to the input object." },
+  {"global_and_static_symbols", gdbpy_global_and_static_symbols, METH_VARARGS,
+    "Return a list of global and static symbol objects" },
 
   {NULL, NULL, 0, NULL}
 };

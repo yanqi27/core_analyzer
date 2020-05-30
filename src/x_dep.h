@@ -43,6 +43,8 @@ extern address_t get_var_addr_by_name(const char*, bool);
 extern void print_func_locals (void);
 extern void print_type_layout (char*);
 
+extern void print_build_ids(void);
+
 extern bool get_vtable_from_exp(const char*, struct CA_LIST*, char*, size_t, size_t*);
 
 extern bool user_request_break(void);

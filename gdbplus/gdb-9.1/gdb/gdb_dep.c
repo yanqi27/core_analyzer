@@ -17,6 +17,7 @@
 #include <sys/param.h>
 #include "dis-asm.h"
 #include "readline/readline.h"
+#include "build-id.h"
 
 #ifndef PN_XNUM
 #define PN_XNUM 0xffff
@@ -1370,6 +1371,29 @@ get_var_addr_by_name(const char* var_name, bool ask)
 			return BMSYMBOL_VALUE_ADDRESS (bmsymbol);
 	}
 	return 0;
+}
+
+void
+print_build_ids(void)
+{
+	std::set<std::string> foundModules;
+	if (current_target_sections) {
+		struct target_section *p;
+		for (p =  current_target_sections->sections;
+			p < current_target_sections->sections_end;
+			p++) {
+			struct bfd_section *psect = p->the_bfd_section;
+			bfd *pbfd = psect->owner;
+			if (foundModules.find(bfd_get_filename(pbfd)) != foundModules.end())
+				continue;
+			const struct bfd_build_id *found = build_id_bfd_get(pbfd);
+			if (found) {
+				std::string build_id = build_id_to_string(found);
+				printf_filtered(_("%s %s\n"), bfd_get_filename(pbfd), build_id.c_str());
+				foundModules.insert(bfd_get_filename(pbfd));
+			}
+		}
+	}
 }
 
 void

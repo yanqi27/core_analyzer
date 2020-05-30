@@ -143,6 +143,12 @@ info_local_command (const char *arg, int from_tty)
 }
 
 static void
+buildid_command(const char *arg, int from_tty)
+{
+	print_build_ids ();
+}
+
+static void
 dt_command (const char *arg, int from_tty)
 {
 	char* type_or_expr;
@@ -289,4 +295,5 @@ _initialize_heapcmd (void)
 	add_cmd("ca_help", class_info, display_help_command, _("Display core analyzer help"), &cmdlist);
 	add_cmd("dt", class_info, dt_command, _("Display type (windbg style)\ndt <type|variable>"), &cmdlist);
 	add_cmd("info_local", class_info, info_local_command, _("Display local variables"), &cmdlist);
+	add_cmd("buildid", class_info, buildid_command, _("Display build-ids of target modules"), &cmdlist);
 }

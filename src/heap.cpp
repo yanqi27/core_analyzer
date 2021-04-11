@@ -201,7 +201,7 @@ bool heap_command_impl(const char* args)
 			}
 			else if (calc_usage)
 			{
-				expr = option;
+				expr = strdup(option);
 				break;
 			}
 			else if (addr == 0)
@@ -277,6 +277,8 @@ bool heap_command_impl(const char* args)
 		else if (!heap_walk(addr, verbose))
 			CA_PRINT("[Error] Failed to walk heap\n");
 	}
+	if (expr)
+		free(expr);
 	return rc;
 }
 

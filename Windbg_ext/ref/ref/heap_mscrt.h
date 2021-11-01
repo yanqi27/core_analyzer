@@ -110,7 +110,7 @@ typedef struct _PEB {
 /************************************************************************
 ** Every block is preceded with a _HEAP_ENTRY structure
 ************************************************************************/
-typedef struct _HEAP_ENTRY_2008
+typedef struct _HEAP_ENTRY
 {
 	PVOID PreviousBlockPrivateData;		// +0x000 Ptr64
 	WORD Size;							// +0x008 Uint2B
@@ -123,7 +123,7 @@ typedef struct _HEAP_ENTRY_2008
 		UCHAR LFHFlags;
 	};
 	UCHAR UnusedBytes;					// +0x00f UChar
-} HEAP_ENTRY_2008, *PHEAP_ENTRY_2008;
+} HEAP_ENTRY, *PHEAP_ENTRY;
 
 #define HEAP_ENTRY_BUSY 0x01
 #define HEAP_ENTRY_EXTRA_PRESENT 0x02
@@ -175,17 +175,17 @@ typedef struct _RTL_HEAP_MEMORY_LIMIT_DATA {
 /************************************************************************
 **  PEB::ProcessHeaps points to an array of pointer to _HEAP structure
 ************************************************************************/
-typedef struct _HEAP_2008
+typedef struct _HEAP
 {
-     HEAP_ENTRY_2008 Entry;					// +0x000
+     HEAP_ENTRY Entry;						// +0x000
      ULONG SegmentSignature;				// +0x010 Uint4B
      ULONG SegmentFlags;					// +0x014 Uint4B
      LIST_ENTRY SegmentListEntry;			// +0x018
-     _HEAP_2008* Heap;						// +0x028 Ptr64
+     _HEAP* Heap;							// +0x028 Ptr64
      PVOID BaseAddress;						// +0x030 Ptr64
      ULONG NumberOfPages;					// +0x038 Uint4B
-     _HEAP_ENTRY_2008* FirstEntry;			// +0x040 Ptr64
-     _HEAP_ENTRY_2008* LastValidEntry;		// +0x048 Ptr64
+     _HEAP_ENTRY* FirstEntry;				// +0x040 Ptr64
+     _HEAP_ENTRY* LastValidEntry;			// +0x048 Ptr64
      ULONG NumberOfUnCommittedPages;		// +0x050 Uint4B
      ULONG NumberOfUnCommittedRanges;		// +0x054 Uint4B
      WORD SegmentAllocatorBackTraceIndex;	// +0x058 Uint2B
@@ -195,8 +195,8 @@ typedef struct _HEAP_2008
 	 ULONG ForceFlags;						// +0x074 Uint4B
 	 ULONG CompatibilityFlags;				// +0x078 Uint4B
 	 ULONG EncodeFlagMask;					// +0x07c Uint4B
-	 _HEAP_ENTRY_2008 Encoding;				// +0x080
-	 //size_t PointerKey;						// +0x090 Uint8B
+	 _HEAP_ENTRY Encoding;					// +0x080
+	 //size_t PointerKey;					// +0x090 Uint8B
 	 ULONG Interceptor;						// +0x090 Uint4B
 	 ULONG VirtualMemoryThreshold;			// +0x094 Uint4B
 	 ULONG Signature;						// +0x098 Uint4B
@@ -236,7 +236,7 @@ typedef struct _HEAP_2008
 	 UCHAR FrontEndHeapStatusBitmap[129];	// +0x1b2
      HEAP_COUNTERS Counters;				// +0x238
      HEAP_TUNING_PARAMETERS TuningParameters; // +0x2b0
-} HEAP_2008, *PHEAP_2008;
+} HEAP, *PHEAP;
 
 typedef struct _HEAP_UNCOMMMTTED_RANGE
 {
@@ -246,23 +246,23 @@ typedef struct _HEAP_UNCOMMMTTED_RANGE
 	ULONG filler;
 } HEAP_UNCOMMMTTED_RANGE, *PHEAP_UNCOMMMTTED_RANGE;
 
-typedef struct _HEAP_SEGMENT_2008
+typedef struct _HEAP_SEGMENT
 {
-     HEAP_ENTRY_2008 Entry;					// +0x000
+     HEAP_ENTRY Entry;						// +0x000
      ULONG SegmentSignature;				// +0x010 Uint4B
      ULONG SegmentFlags;					// +0x014 Uint4B
      LIST_ENTRY SegmentListEntry;			// +0x018
-     PHEAP_2008 Heap;						// +0x028 Ptr64
+     PHEAP Heap;							// +0x028 Ptr64
      PVOID BaseAddress;						// +0x030 Ptr64
      ULONG NumberOfPages;					// +0x038 Uint4B
-     PHEAP_ENTRY_2008 FirstEntry;			// +0x040 Ptr64
-     PHEAP_ENTRY_2008 LastValidEntry;		// +0x048 Ptr64
+     PHEAP_ENTRY FirstEntry;				// +0x040 Ptr64
+     PHEAP_ENTRY LastValidEntry;			// +0x048 Ptr64
      ULONG NumberOfUnCommittedPages;		// +0x050 Uint4B
      ULONG NumberOfUnCommittedRanges;		// +0x054 Uint4B
      WORD SegmentAllocatorBackTraceIndex;	// +0x058 Uint2B
      WORD Reserved;							// +0x05a Uint2B
      LIST_ENTRY UCRSegmentList;				// +0x060
-} HEAP_SEGMENT_2008, *PHEAP_SEGMENT_2008;
+} HEAP_SEGMENT, *PHEAP_SEGMENT;
 
 typedef struct _HEAP_UCR_DESCRIPTOR
 {
@@ -315,15 +315,31 @@ typedef struct _RTL_BITMAP_EX {
 	PVOID Buffer;
 } _RTL_BITMAP_EX;
 
+typedef struct _HEAP_SUBSEGMENT {
+	PVOID LocalInfo;				// +0x000  : Ptr64 _HEAP_LOCAL_SEGMENT_INFO
+	PVOID UserBlocks;				// +0x008  : Ptr64 _HEAP_USERDATA_HEADER
+	SLIST_HEADER DelayFreeList;		// +0x010  : _SLIST_HEADER
+	ULONG AggregateExchg;			// +0x020  : _INTERLOCK_SEQ
+	WORD BlockSize;					// +0x024  : Uint2B
+	WORD Flags;						// +0x026  : Uint2B
+	WORD BlockCount;				// +0x028  : Uint2B
+	UCHAR SizeIndex;				// +0x02a  : UChar
+	UCHAR AffinityIndex;			// +0x02b  : UChar
+	ULONG Alignment[2];				// +0x024  : [2] Uint4B
+	ULONG Lock;						// +0x02c  : Uint4B
+	SINGLE_LIST_ENTRY SFreeListEntry;	// +0x030  : _SINGLE_LIST_ENTRY
+} HEAP_SUBSEGMENT, *PHEAP_SUBSEGMENT;
+
 typedef struct _HEAP_USERDATA_HEADER {
-	PVOID SubSegment;			// +0x00 _HEAP_SUBSEGMENT
-	PVOID Reserved;				// +0x08
-	UCHAR SizeIndex;			// +0x10
-	UCHAR GuardPagePresent;		// +0x11
-	WORD PaddingBytes;			// +0x12
-	DWORD Signature;			// +0x14
+	PHEAP_SUBSEGMENT SubSegment;	// +0x00 _HEAP_SUBSEGMENT
+	PVOID Reserved;					// +0x08
+	UCHAR SizeIndex;				// +0x10
+	UCHAR GuardPagePresent;			// +0x11
+	WORD PaddingBytes;				// +0x12
+	DWORD Signature;				// +0x14
 	_HEAP_USERDATA_OFFSETS EncodedOffsets;	// +0x18
-	_RTL_BITMAP_EX BusyBitmap;	// +0x20
-	PVOID BitmapData[1];		// +0x30
+	_RTL_BITMAP_EX BusyBitmap;		// +0x20
+	PVOID BitmapData[1];			// +0x30
 } _HEAP_USERDATA_HEADER;
+
 #endif // HEAP_MSCRT_H

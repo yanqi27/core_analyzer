@@ -9,7 +9,7 @@
 #include <VersionHelpers.h>
 #include <string>
 #include <set>
-
+#include <vector>
 /////////////////////////////////////////////////////
 // Global Vars
 /////////////////////////////////////////////////////
@@ -26,7 +26,7 @@ static bool   g_dbgheap = false;	// flag for debug heap
 static bool
 page_walk(address_t, bool, struct heap_block*, size_t*, size_t*);
 static bool
-page_walk_internal_2008(HEAP_2008*, HEAP_SEGMENT_2008*, address_t, address_t, bool, struct heap_block*, size_t*, size_t*, unsigned long*, unsigned long*);
+page_walk_internal_2008(HEAP*, HEAP_SEGMENT*, address_t, address_t, bool, struct heap_block*, size_t*, size_t*, unsigned long*, unsigned long*);
 
 static bool
 page_walk_2008(address_t, bool,	struct heap_block*,	size_t*, size_t*);
@@ -37,7 +37,7 @@ static bool heap_walk_2008(bool ibDryRun, bool verbose);
 static bool walk_inuse_blocks_2008(struct inuse_block*, unsigned long*);
 
 static bool get_biggest_blocks_2008(struct heap_block* blks, unsigned int num);
-static bool get_biggest_blocks_in_heap_segment_2008(HEAP_2008*, HEAP_SEGMENT_2008*, address_t, struct heap_block* blks, unsigned int num);
+static bool get_biggest_blocks_in_HEAP_SEGMENT(HEAP*, HEAP_SEGMENT*, address_t, struct heap_block* blks, unsigned int num);
 
 static void add_one_big_block(struct heap_block* blks, unsigned int num, struct heap_block* blk);
 
@@ -289,19 +289,19 @@ page_walk_2008(address_t addr,			// input heap addr
 			return false;
 		if (heap_vaddr == 0)
 			break;
-		HEAP_2008 heap;
+		HEAP heap;
 		if (!read_memory_wrapper(NULL, heap_vaddr, &heap, sizeof(heap)))
 			return false;
 		// segments are on a doubly-linked list
 		// _HEAP.SegmentList is the sentinel LIST_ENTRY
-		address_t sentinel = (address_t) &((HEAP_2008*)heap_vaddr)->SegmentList;
+		address_t sentinel = (address_t) &((HEAP*)heap_vaddr)->SegmentList;
 		address_t next_list_entry_addr = (address_t) heap.SegmentList.Flink;
 		std::set<address_t> seg_set;
 		while (next_list_entry_addr != sentinel)
 		{
 			address_t seg_start, seg_end;
-			HEAP_SEGMENT_2008 heap_seg;
-			address_t seg_addr = next_list_entry_addr - (address_t) &((HEAP_2008*)0)->SegmentListEntry;
+			HEAP_SEGMENT heap_seg;
+			address_t seg_addr = next_list_entry_addr - (address_t) &((HEAP*)0)->SegmentListEntry;
 			if (!read_memory_wrapper(NULL, seg_addr, &heap_seg, sizeof(heap_seg)))
 				return false;
 
@@ -347,7 +347,7 @@ static bool heap_walk_2008(bool ibDryRun, bool verbose)
 	for (heap_cnt = 0; ; heap_cnt++)
 	{
 		address_t heap_vaddr;
-		HEAP_2008 heap;
+		HEAP heap;
 		address_t sentinel, next_list_entry_addr;
 
 		if (!read_memory_wrapper(NULL, g_heaps_vaddr + heap_cnt * sizeof(heap_vaddr), &heap_vaddr, sizeof(heap_vaddr)))
@@ -360,14 +360,14 @@ static bool heap_walk_2008(bool ibDryRun, bool verbose)
 		CA_PRINT("\theap "PRINT_FORMAT_POINTER" ...\n", heap_vaddr);
 		// segments are on a doubly-linked list
 		// _HEAP.SegmentList is the sentinel LIST_ENTRY
-		sentinel = (address_t) &((HEAP_2008*)heap_vaddr)->SegmentList;
+		sentinel = (address_t) &((HEAP*)heap_vaddr)->SegmentList;
 		next_list_entry_addr = (address_t) heap.SegmentList.Flink;
 		std::set<address_t> seg_set;
 		while (next_list_entry_addr != sentinel)
 		{
 			address_t seg_start, seg_end;
-			HEAP_SEGMENT_2008 heap_seg;
-			address_t seg_addr = next_list_entry_addr - (address_t) &((HEAP_2008*)0)->SegmentListEntry;
+			HEAP_SEGMENT heap_seg;
+			address_t seg_addr = next_list_entry_addr - (address_t) &((HEAP*)0)->SegmentListEntry;
 			if (!read_memory_wrapper(NULL, seg_addr, &heap_seg, sizeof(heap_seg)))
 				return false;
 			seg_start = (address_t)heap_seg.BaseAddress;
@@ -448,7 +448,7 @@ static bool walk_inuse_blocks_2008(struct inuse_block* opBlocks, unsigned long* 
 	for (heap_cnt = 0; ; heap_cnt++)
 	{
 		address_t heap_vaddr;
-		HEAP_2008 heap;
+		HEAP heap;
 		address_t sentinel, next_list_entry_addr;
 
 		if (!read_memory_wrapper(NULL, g_heaps_vaddr + heap_cnt * sizeof(heap_vaddr), &heap_vaddr, sizeof(heap_vaddr)))
@@ -460,15 +460,15 @@ static bool walk_inuse_blocks_2008(struct inuse_block* opBlocks, unsigned long* 
 
 		// segments are on a doubly-linked list
 		// _HEAP.SegmentList is the sentinel LIST_ENTRY
-		sentinel = (address_t) &((HEAP_2008*)heap_vaddr)->SegmentList;
+		sentinel = (address_t) &((HEAP*)heap_vaddr)->SegmentList;
 		next_list_entry_addr = (address_t) heap.SegmentList.Flink;
 		std::set<address_t> seg_set;
 		while (next_list_entry_addr != sentinel)
 		{
 			address_t entry_vaddr;
 			address_t seg_start, seg_end;
-			HEAP_SEGMENT_2008 heap_seg;
-			address_t seg_addr = next_list_entry_addr - (address_t) &((HEAP_2008*)0)->SegmentListEntry;
+			HEAP_SEGMENT heap_seg;
+			address_t seg_addr = next_list_entry_addr - (address_t) &((HEAP*)0)->SegmentListEntry;
 
 			if (!read_memory_wrapper(NULL, seg_addr, &heap_seg, sizeof(heap_seg)))
 				break;
@@ -484,18 +484,18 @@ static bool walk_inuse_blocks_2008(struct inuse_block* opBlocks, unsigned long* 
 			{
 				address_t user_addr;
 				size_t entry_sz, user_sz;
-				HEAP_ENTRY_2008 entry;
+				HEAP_ENTRY entry;
 				bool lbUncommitted = false;
 
 				// there are multiple uncommitted ranges, which might be readable or unreadable
 				// they are on a doubly-linked list and they are NOT necessarily sorted by address
-				// 		_HEAP_SEGMENT_2008::NumberOfUnCommittedRanges is also the list size + 1 (sentinel)
+				// 		_HEAP_SEGMENT::NumberOfUnCommittedRanges is also the list size + 1 (sentinel)
 				if (heap_seg.NumberOfUnCommittedRanges > 0)
 				{
 					address_t ucr_sentinel, ucr_next;
 					HEAP_UCR_DESCRIPTOR ucr_descriptor;
 
-					ucr_sentinel = seg_addr + (address_t) &((HEAP_SEGMENT_2008*)0)->UCRSegmentList;
+					ucr_sentinel = seg_addr + (address_t) &((HEAP_SEGMENT*)0)->UCRSegmentList;
 					ucr_next = (address_t)heap_seg.UCRSegmentList.Flink;
 					while (ucr_next != ucr_sentinel)
 					{
@@ -587,7 +587,7 @@ static bool get_biggest_blocks_2008(struct heap_block* blks, unsigned int num)
 	for (heap_cnt = 0; ; heap_cnt++)
 	{
 		address_t heap_vaddr;
-		HEAP_2008 heap;
+		HEAP heap;
 		address_t sentinel, next_list_entry_addr;
 
 		if (!read_memory_wrapper(NULL, g_heaps_vaddr + heap_cnt * sizeof(heap_vaddr), &heap_vaddr, sizeof(heap_vaddr)))
@@ -599,14 +599,14 @@ static bool get_biggest_blocks_2008(struct heap_block* blks, unsigned int num)
 
 		// segments are on a doubly-linked list
 		// _HEAP.SegmentList is the sentinel LIST_ENTRY
-		sentinel = (address_t) &((HEAP_2008*)heap_vaddr)->SegmentList;
+		sentinel = (address_t) &((HEAP*)heap_vaddr)->SegmentList;
 		next_list_entry_addr = (address_t) heap.SegmentList.Flink;
 		std::set<address_t> seg_set;
 		while (next_list_entry_addr != sentinel)
 		{
 			address_t seg_start, seg_end;
-			HEAP_SEGMENT_2008 heap_seg;
-			address_t seg_addr = next_list_entry_addr - (address_t) &((HEAP_2008*)0)->SegmentListEntry;
+			HEAP_SEGMENT heap_seg;
+			address_t seg_addr = next_list_entry_addr - (address_t) &((HEAP*)0)->SegmentListEntry;
 			if (!read_memory_wrapper(NULL, seg_addr, &heap_seg, sizeof(heap_seg)))
 				break;
 			seg_start = (address_t)heap_seg.BaseAddress;
@@ -615,7 +615,7 @@ static bool get_biggest_blocks_2008(struct heap_block* blks, unsigned int num)
 				break;
 			seg_set.insert(seg_start);
 			// Ignore errors
-			get_biggest_blocks_in_heap_segment_2008(&heap, &heap_seg, seg_addr, blks, num);
+			get_biggest_blocks_in_HEAP_SEGMENT(&heap, &heap_seg, seg_addr, blks, num);
 			next_list_entry_addr = (address_t) heap_seg.SegmentListEntry.Flink;
 		}
 	}
@@ -624,14 +624,16 @@ static bool get_biggest_blocks_2008(struct heap_block* blks, unsigned int num)
 }
 
 static bool
-read_block(HEAP_2008* heap, HEAP_SEGMENT_2008* heap_seg, address_t seg_end,
-	address_t entry_vaddr, HEAP_ENTRY_2008* entry, struct heap_block* opBlock, bool bVerbose)
+read_block(HEAP* heap, HEAP_SEGMENT* heap_seg, address_t seg_end,
+	address_t entry_vaddr, HEAP_ENTRY* entry, struct heap_block* opBlock, bool bVerbose)
 {
+#ifdef _DEBUG
 	if (bVerbose)
 		CA_PRINT("\t[struct HEAP_ENTRY] "PRINT_FORMAT_POINTER"\n", entry_vaddr);
+#endif // _DEBUG
 
 	// Block starts with HEAP_ENTRY
-	if (!read_memory_wrapper(NULL, entry_vaddr, entry, sizeof(HEAP_ENTRY_2008))) {
+	if (!read_memory_wrapper(NULL, entry_vaddr, entry, sizeof(HEAP_ENTRY))) {
 		CA_PRINT("[Error] Failed to read HEAP_ENTRY at "PRINT_FORMAT_POINTER"\n", entry_vaddr);
 		return false;
 	}
@@ -680,8 +682,10 @@ read_block(HEAP_2008* heap, HEAP_SEGMENT_2008* heap_seg, address_t seg_end,
 		/* gap is filled with _bNoMansLandFill or 0xfd */
 		if (*(int*)&pHead.gap == 0xfdfdfdfd)
 		{
+#ifdef _DEBUG
 			if (bVerbose)
 				CA_PRINT("\t[struct _CrtMemBlockHeader] "PRINT_FORMAT_POINTER"\n", opBlock->addr);
+#endif // _DEBUG
 			opBlock->addr += sizeof(_CrtMemBlockHeader);
 			opBlock->size = pHead.nDataSize;
 		}
@@ -690,10 +694,72 @@ read_block(HEAP_2008* heap, HEAP_SEGMENT_2008* heap_seg, address_t seg_end,
 	if (bVerbose)
 	{
 		if (opBlock->inuse)
-			CA_PRINT("\t\t"PRINT_FORMAT_POINTER" - "PRINT_FORMAT_POINTER" size="PRINT_FORMAT_SIZE" busy [USER SPACE]\n",
+			CA_PRINT("\t\t"PRINT_FORMAT_POINTER" - "PRINT_FORMAT_POINTER" size="PRINT_FORMAT_SIZE" busy\n",
 				opBlock->addr, opBlock->addr + opBlock->size, opBlock->size);
 		else
-			CA_PRINT("\t"PRINT_FORMAT_POINTER" - "PRINT_FORMAT_POINTER" size="PRINT_FORMAT_SIZE" free [USER SPACE]\n",
+			CA_PRINT("\t"PRINT_FORMAT_POINTER" - "PRINT_FORMAT_POINTER" size="PRINT_FORMAT_SIZE" free\n",
+				opBlock->addr, opBlock->addr + opBlock->size, opBlock->size);
+		if (opBlock->addr + opBlock->size < entry_vaddr + entry_sz)
+			CA_PRINT("\t"PRINT_FORMAT_POINTER" - "PRINT_FORMAT_POINTER" [Unused Bytes]\n",
+				opBlock->addr + opBlock->size, entry_vaddr + entry_sz);
+	}
+
+	return true;
+}
+
+static bool
+read_block_lfh(address_t entry_vaddr, size_t entry_sz, bool busy, struct heap_block* opBlock, bool bVerbose)
+{
+	HEAP_ENTRY entry;
+
+#ifdef _DEBUG
+	if (bVerbose)
+		CA_PRINT("\t[struct HEAP_ENTRY] "PRINT_FORMAT_POINTER"\n", entry_vaddr);
+#endif // _DEBUG
+
+	// Block starts with HEAP_ENTRY
+	if (!read_memory_wrapper(NULL, entry_vaddr, &entry, sizeof(HEAP_ENTRY))) {
+		CA_PRINT("[Error] Failed to read HEAP_ENTRY at "PRINT_FORMAT_POINTER"\n", entry_vaddr);
+		return false;
+	}
+
+	// LFH specific
+	if (entry.UnusedBytes != 0x80) {
+		//CA_PRINT("[Error] LFH HEAP_ENTRY at "PRINT_FORMAT_POINTER" doesn't have expected UnusedBytes(0x80)\n", entry_vaddr);
+		//return false;
+	}
+
+	// HEAP_ENTRY::UnusedBytes
+	opBlock->addr = entry_vaddr + sizeof(entry);
+	opBlock->size = entry_sz - sizeof(entry);
+	opBlock->inuse = busy;
+
+	// A free chunk doesn't have _CrtMemBlockHeader. If an uncommitted page
+	// follows, we can't even read enough bytes sizeof(_CrtMemBlockHeader)
+	if (g_dbgheap && opBlock->inuse && entry_sz - sizeof(entry) >= sizeof(_CrtMemBlockHeader))
+	{
+		_CrtMemBlockHeader pHead;
+		if (!read_memory_wrapper(NULL, opBlock->addr, &pHead, sizeof(pHead)))
+			return false;
+		/* gap is filled with _bNoMansLandFill or 0xfd */
+		if (*(int*)&pHead.gap == 0xfdfdfdfd)
+		{
+#ifdef _DEBUG
+			if (bVerbose)
+				CA_PRINT("\t[struct _CrtMemBlockHeader] "PRINT_FORMAT_POINTER"\n", opBlock->addr);
+#endif // _DEBUG
+			opBlock->addr += sizeof(_CrtMemBlockHeader);
+			opBlock->size = pHead.nDataSize;
+		}
+	}
+
+	if (bVerbose)
+	{
+		if (opBlock->inuse)
+			CA_PRINT("\t\t"PRINT_FORMAT_POINTER" - "PRINT_FORMAT_POINTER" size="PRINT_FORMAT_SIZE" busy\n",
+				opBlock->addr, opBlock->addr + opBlock->size, opBlock->size);
+		else
+			CA_PRINT("\t"PRINT_FORMAT_POINTER" - "PRINT_FORMAT_POINTER" size="PRINT_FORMAT_SIZE" free\n",
 				opBlock->addr, opBlock->addr + opBlock->size, opBlock->size);
 		if (opBlock->addr + opBlock->size < entry_vaddr + entry_sz)
 			CA_PRINT("\t"PRINT_FORMAT_POINTER" - "PRINT_FORMAT_POINTER" [Unused Bytes]\n",
@@ -705,10 +771,10 @@ read_block(HEAP_2008* heap, HEAP_SEGMENT_2008* heap_seg, address_t seg_end,
 
 // Return true if the input block is a LFH subsegment
 static bool
-lfh_subsegment_walk(HEAP_2008* heap,			// in => heap
-	HEAP_SEGMENT_2008* heap_seg,	// in => heap segment
+lfh_subsegment_walk(HEAP* heap,			// in => heap
+	HEAP_SEGMENT* heap_seg,	// in => heap segment
 	address_t seg_end,				// in => heap segment end address
-	HEAP_ENTRY_2008* super_entry,	// in => block that may contains LFH small blocks
+	HEAP_ENTRY* super_entry,	// in => block that may contains LFH small blocks
 	address_t super_entry_vaddr,	// in => start address of the "super" block
 	size_t super_entry_sz,			// in => size of the "super" block
 	address_t addr,					// input heap addr
@@ -720,7 +786,7 @@ lfh_subsegment_walk(HEAP_2008* heap,			// in => heap
 	unsigned long* opNumFree)		// output number of free blocks
 {
 	_HEAP_USERDATA_HEADER userDataHdr;
-	address_t obj_addr = super_entry_vaddr + sizeof(HEAP_ENTRY_2008);
+	address_t obj_addr = super_entry_vaddr + sizeof(HEAP_ENTRY);
 
 	if (!read_memory_wrapper(NULL, obj_addr, &userDataHdr, sizeof(userDataHdr)))
 	{
@@ -730,21 +796,62 @@ lfh_subsegment_walk(HEAP_2008* heap,			// in => heap
 	if (userDataHdr.Signature != 0xf0e0d0c0)
 		return false;
 
+	HEAP_SUBSEGMENT hSubSegment;
+	if (!read_memory_wrapper(NULL, (address_t)userDataHdr.SubSegment, &hSubSegment, sizeof(hSubSegment)))
+	{
+		CA_PRINT("[Error] Fail to read HEAP_SUBSEGMENT "PRINT_FORMAT_POINTER"\n", (address_t)userDataHdr.SubSegment);
+		return false;
+	}
+
+	// Numbers should match
+	if ((address_t)hSubSegment.UserBlocks != obj_addr
+		|| hSubSegment.BlockCount != userDataHdr.BusyBitmap.SizeOfBitMap)
+	{
+		CA_PRINT("[Error] LFH @"PRINT_FORMAT_POINTER" _HEAP_USERDATA_HEADER is inconsistent with its HEAP_SUBSEGMENT\n",
+			obj_addr);
+		return false;
+	}
+	size_t blockSize = hSubSegment.BlockSize * sizeof(HEAP_ENTRY);
+	if (sizeof(HEAP_ENTRY) + sizeof(_HEAP_USERDATA_HEADER) + hSubSegment.BlockCount * blockSize > super_entry_sz)
+	{
+		CA_PRINT("[Error] LFH @"PRINT_FORMAT_POINTER" Block count/size is inconsistent with enclosing heap_entry\n",
+			obj_addr);
+		return false;
+	}
+
+	// Read the busy bit map
+	size_t bufSz = (userDataHdr.BusyBitmap.SizeOfBitMap + 7) / 8;
+	std::vector<unsigned char> bitMap(bufSz);
+	if (!read_memory_wrapper(NULL, (address_t)userDataHdr.BusyBitmap.Buffer, &bitMap[0], bufSz))
+	{
+		CA_PRINT("[Error] Fail to read BusyBitmap buffer @"PRINT_FORMAT_POINTER"\n",
+			(address_t)userDataHdr.BusyBitmap.Buffer);
+		return false;
+	}
+
+	// A small loop to walk all blocks in this LFH segment
 	address_t cursor = obj_addr + sizeof(_HEAP_USERDATA_HEADER);
-	address_t align_mask = sizeof(HEAP_ENTRY_2008) - 1;
+	address_t align_mask = sizeof(HEAP_ENTRY) - 1;
 	cursor = (cursor + align_mask) & (~align_mask);
-	while (cursor + sizeof(HEAP_ENTRY_2008) < super_entry_vaddr + super_entry_sz) {
-		HEAP_ENTRY_2008 entry;
+	unsigned int index = 0;
+	while (cursor + blockSize <= super_entry_vaddr + super_entry_sz) {
+		int byteIndex = index / 8;
+		int bitPos = index & 7;
+		++index;
+		bool busy = (bitMap[byteIndex] & (1 << bitPos)) != 0;
+
 		struct heap_block block;
-		if (!read_block(heap, heap_seg, seg_end, cursor, &entry, &block, bVerbose))
+		if (!read_block_lfh(cursor, blockSize, busy, &block, bVerbose))
 			break;
 		// break if we are searching for a specific address
-		size_t entry_sz = entry.Size * sizeof(HEAP_ENTRY_2008);
 		if (addr && opBlock
-			&& addr >= cursor && addr < cursor + entry_sz) {
+			&& addr >= cursor && addr < cursor + blockSize) {
+			opBlock->addr = block.addr;
+			opBlock->inuse = block.inuse;
+			opBlock->size = block.size;
 			break;
 		}
-			// Collect stats
+		// Collect stats
 		if (opInuseBytes && opFreeBytes && opNumInuse && opNumFree)
 		{
 			if (block.inuse)
@@ -760,15 +867,15 @@ lfh_subsegment_walk(HEAP_2008* heap,			// in => heap
 		}
 		add_block_mem_histogram(block.size, block.inuse, 1);
 		// move to next block
-		cursor += entry.Size * sizeof(HEAP_ENTRY_2008);
+		cursor += blockSize;
 	}
 
 	return true;
 }
 
 static bool
-page_walk_internal_2008(HEAP_2008* heap,			// in => heap
-					HEAP_SEGMENT_2008* heap_seg,	// in => heap segment
+page_walk_internal_2008(HEAP* heap,			// in => heap
+					HEAP_SEGMENT* heap_seg,	// in => heap segment
 					address_t seg_addr,				// in => heap segment address
 					address_t addr,					// input heap addr
 					bool bVerbose,					// print detail info or not
@@ -805,14 +912,14 @@ page_walk_internal_2008(HEAP_2008* heap,			// in => heap
 		bool lbUncommitted = false;
 		// there are multiple uncommitted ranges, which might be readable or unreadable
 		// they are on a doubly-linked list and they are NOT necessarily sorted by address
-		// 		_HEAP_SEGMENT_2008::NumberOfUnCommittedRanges is also the list size + 1 (sentinel)
+		// 		_HEAP_SEGMENT::NumberOfUnCommittedRanges is also the list size + 1 (sentinel)
 		// !FIXME! It is slow to do this for every block traversed.
 		if (heap_seg->NumberOfUnCommittedRanges > 0)
 		{
 			address_t ucr_sentinel, ucr_next;
 			HEAP_UCR_DESCRIPTOR ucr_descriptor;
 
-			ucr_sentinel = seg_addr + (address_t) &((HEAP_SEGMENT_2008*)0)->UCRSegmentList;
+			ucr_sentinel = seg_addr + (address_t) &((HEAP_SEGMENT*)0)->UCRSegmentList;
 			ucr_next = (address_t)heap_seg->UCRSegmentList.Flink;
 			/*if ((address_t)heap_seg->UCRSegmentList.Flink == ucr_sentinel)
 			{
@@ -861,17 +968,17 @@ page_walk_internal_2008(HEAP_2008* heap,			// in => heap
 			continue;
 
 		heap_block block;
-		HEAP_ENTRY_2008 entry;
+		HEAP_ENTRY entry;
 		// Extract the HEAP_ENTRY
 		if (!read_block(heap, heap_seg, seg_end, entry_vaddr, &entry, &block, bVerbose))
 			return false;
-		size_t entry_sz = entry.Size * sizeof(HEAP_ENTRY_2008);
+		size_t entry_sz = entry.Size * sizeof(HEAP_ENTRY);
 
 		// LFH subsegment contains a number of small chunks
 		bool isLFH_subseg = false;
 		if (heap->FrontEndHeap && (entry.Flags & HEAP_ENTRY_VIRTUAL_ALLOC)) {
 			isLFH_subseg = lfh_subsegment_walk(heap, heap_seg, seg_end, &entry, entry_vaddr, entry_sz,
-				addr, bVerbose, opBlock, opInuseBytes, opFreeBytes, opNumInuse, opNumFree);
+				addr, bVerbose, &block, opInuseBytes, opFreeBytes, opNumInuse, opNumFree);
 		}
 
 		if (!isLFH_subseg) {
@@ -908,28 +1015,26 @@ page_walk_internal_2008(HEAP_2008* heap,			// in => heap
 					entry_vaddr + sizeof(entry), user_addr);
 			}
 #endif
-			if (!isLFH_subseg) {
-				if (addr >= block.addr && addr < block.addr + block.size)
+			if (addr >= block.addr && addr < block.addr + block.size)
+			{
+				// Input address is within user space
+				opBlock->addr = block.addr;
+				opBlock->inuse = block.inuse;
+				opBlock->size = block.size;
+			}
+			else
+			{
+				// Input address is heap data
+				opBlock->inuse = false;
+				if (addr < block.addr)
 				{
-					// Input address is within user space
-					opBlock->addr = block.addr;
-					opBlock->inuse = block.inuse;
-					opBlock->size = block.size;
+					opBlock->addr = entry_vaddr;
+					opBlock->size = block.addr - entry_vaddr;
 				}
 				else
 				{
-					// Input address is heap data
-					opBlock->inuse = false;
-					if (addr < block.addr)
-					{
-						opBlock->addr = entry_vaddr;
-						opBlock->size = block.addr - entry_vaddr;
-					}
-					else
-					{
-						opBlock->addr = block.addr + block.size;
-						opBlock->size = entry_vaddr + entry_sz - opBlock->addr;
-					}
+					opBlock->addr = block.addr + block.size;
+					opBlock->size = entry_vaddr + entry_sz - opBlock->addr;
 				}
 			}
 			break;
@@ -942,8 +1047,8 @@ page_walk_internal_2008(HEAP_2008* heap,			// in => heap
 }
 
 static bool
-get_biggest_blocks_in_heap_segment_2008(HEAP_2008* heap,
-										HEAP_SEGMENT_2008* heap_seg,
+get_biggest_blocks_in_HEAP_SEGMENT(HEAP* heap,
+										HEAP_SEGMENT* heap_seg,
 										address_t seg_addr,
 										struct heap_block* blks,
 										unsigned int num)
@@ -961,19 +1066,19 @@ get_biggest_blocks_in_heap_segment_2008(HEAP_2008* heap,
 		address_t user_addr;
 		bool busy;
 		size_t entry_sz, user_sz;
-		HEAP_ENTRY_2008 entry;
+		HEAP_ENTRY entry;
 		bool lbUncommitted = false;
 
 		// there are multiple uncommitted ranges, which might be readable or unreadable
 		// they are on a doubly-linked list and they are NOT necessarily sorted by address
-		// 		_HEAP_SEGMENT_2008::NumberOfUnCommittedRanges is also the list size + 1 (sentinel)
+		// 		_HEAP_SEGMENT::NumberOfUnCommittedRanges is also the list size + 1 (sentinel)
 		// !FIXME! It is slow to do this for every block traversed.
 		if (heap_seg->NumberOfUnCommittedRanges > 0)
 		{
 			address_t ucr_sentinel, ucr_next;
 			HEAP_UCR_DESCRIPTOR ucr_descriptor;
 
-			ucr_sentinel = seg_addr + (address_t) &((HEAP_SEGMENT_2008*)0)->UCRSegmentList;
+			ucr_sentinel = seg_addr + (address_t) &((HEAP_SEGMENT*)0)->UCRSegmentList;
 			ucr_next = (address_t)heap_seg->UCRSegmentList.Flink;
 			while (ucr_next != ucr_sentinel)
 			{

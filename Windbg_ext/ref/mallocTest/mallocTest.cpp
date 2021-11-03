@@ -12,7 +12,7 @@
 #include <Windows.h>
 #include <thread>
 
-#elif defined(linux)
+#elif defined(__linux__)
 #include <unistd.h>
 #ifdef TCMALLOC_TEST
 #include <gperftools/tcmalloc.h>
@@ -38,7 +38,7 @@
  * variables of ptmalloc tcache.
  * !TODO! multi-threaded malloc/free
  */
-//#ifdef linux
+//#ifdef __linux__
 //static pthread_mutex_t myLock = PTHREAD_MUTEX_INITIALIZER;
 //#endif
 static std::mutex myLock;
@@ -130,12 +130,36 @@ void
 last_call(void)
 {
 	std::cout << "This is the last function call\n";
+#ifdef _WIN32
+	/*
+	// output memory stats as the baseline
+	std::cout << "{" << std::endl;
+	// regions
+	std::cout << "\t\"num_regions=\":" << num_regions << "," << std::endl;
+	std::cout << "\t" << "\"regions\": [" << std::endl;
+	for (unsigned int i = 0; i < num_regions; i++) {
+		std::cout << "\t\t{";
+		std::cout << "\"address\":" << (size_t)regions[i].p << ",";
+		std::cout << "\"size\":" << regions[i].size << ",";
+		std::cout << "\"inuse\":" << regions[i].inuse;
+		std::cout << "}";
+		if (i < num_regions - 1)
+			std::cout << ",";
+		std::cout << std::endl;
+	}
+	std::cout << "\t]" << std::endl;
+	//
+	std::cout << "}" << std::endl;
+	*/
+	//std::cout << "press return ...";
+	char c = getchar();
+#endif
 }
 
 static size_t
 region_size(void *p)
 {
-#ifdef linux
+#ifdef __linux__
 
 #ifdef TCMALLOC_TEST
 	return tc_malloc_size(p);
@@ -147,13 +171,13 @@ region_size(void *p)
 	return _msize(p);
 #else
 	return 0;
-#endif // linux
+#endif // __linux__
 }
 
 static void
 mysleep(unsigned long s)
 {
-#ifdef linux
+#ifdef __linux__
 	sleep(s);
 #else
 	Sleep(s * 1000);
@@ -219,7 +243,7 @@ main(int argc, char** argv)
 {
 	int i;
 
-	{
+	/* {
 		size_t sz = 9;
 		const int count = 5;
 		char *ptrs[count];
@@ -233,12 +257,10 @@ main(int argc, char** argv)
 		}
 		char c = getchar();
 		return 0;
-	}
+	} */
 
 	// Initialize random number generator
-#ifdef linux
-	srand (time(NULL));
-#endif
+	srand ((unsigned int)time(NULL));
 	regions = (region *) calloc(num_regions, sizeof *regions);
 	if (regions == NULL)
 		fatal_error("Out of memory");
@@ -265,20 +287,13 @@ main(int argc, char** argv)
 	bool flags[NUM_THREADS];
 	for (i = 0; i < NUM_THREADS; i++)
 		flags[i] = false;
-#ifdef linux
-	pthread_t tids[NUM_THREADS];
-	for (i = 0; i < NUM_THREADS; i++) {
-		if (pthread_create(&tids[i], NULL, thread_func, &flags[i]) != 0) {
-			fatal_error("Failed to create pthread");
-		}
-	}
-#else
+
+	// Spawn threads
 	std::list<std::thread *> threads;
 	for (i = 0; i < NUM_THREADS; i++) {
 		std::thread *thrd = new std::thread(thread_func, &flags[i]);
 		threads.push_back(thrd);
 	}
-#endif // linux
 
 	// Wait for threads to finish memory allocations
 	for (i = 0; i < NUM_THREADS; i++) {

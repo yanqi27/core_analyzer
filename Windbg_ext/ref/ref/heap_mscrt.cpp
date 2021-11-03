@@ -531,24 +531,24 @@ static bool walk_inuse_blocks_2008(struct inuse_block* opBlocks, unsigned long* 
 						if (entry.SmallTagIndex != (bytes[0] ^ bytes[1] ^ bytes[2]) )
 							break;
 					}
-					entry_sz = entry.Size * sizeof(entry);
+					entry_sz = entry.Size * sizeof(HEAP_ENTRY);
 					// HEAP_ENTRY::Size tag is often the victim of memory overrun
 					if (entry_sz == 0
 						|| entry_vaddr + entry_sz > (address_t) heap_seg.LastValidEntry
 						|| entry_vaddr + entry_sz > seg_end)
 						break;
 					// HEAP_ENTRY::UnusedBytes
-					user_addr = entry_vaddr + sizeof(entry);
-					if (entry_sz > entry.UnusedBytes && entry.UnusedBytes >= sizeof(entry))
+					user_addr = entry_vaddr + sizeof(HEAP_ENTRY);
+					if (entry_sz > entry.UnusedBytes && entry.UnusedBytes >= sizeof(HEAP_ENTRY))
 						user_sz = entry_sz - entry.UnusedBytes;
 					else
-						user_sz = entry_sz - sizeof(entry);
+						user_sz = entry_sz - sizeof(HEAP_ENTRY);
 					// HEAP_ENTRY::Flags, busy block only
 					if (entry.Flags & HEAP_ENTRY_BUSY)
 					{
 						// A free chunk doesn't have _CrtMemBlockHeader. If an uncommitted page
 						// follows, we can't even read enough bytes sizeof(_CrtMemBlockHeader)
-						if (g_dbgheap && entry_sz - sizeof(entry) >= sizeof(_CrtMemBlockHeader))
+						if (g_dbgheap && entry_sz - sizeof(HEAP_ENTRY) >= sizeof(_CrtMemBlockHeader))
 						{
 							_CrtMemBlockHeader pHead;
 							if (!read_memory_wrapper(NULL, user_addr, &pHead, sizeof(pHead)))
@@ -651,7 +651,7 @@ read_block(HEAP* heap, HEAP_SEGMENT* heap_seg, address_t seg_end,
 			return false;
 		}
 	}
-	size_t entry_sz = entry->Size * sizeof(entry);
+	size_t entry_sz = entry->Size * sizeof(HEAP_ENTRY);
 	// HEAP_ENTRY::Size tag is often the victim of memory overrun
 	if (entry_sz == 0
 		|| entry_vaddr + entry_sz > (address_t)heap_seg->LastValidEntry
@@ -662,11 +662,11 @@ read_block(HEAP* heap, HEAP_SEGMENT* heap_seg, address_t seg_end,
 		return false;
 	}
 	// HEAP_ENTRY::UnusedBytes
-	opBlock->addr = entry_vaddr + sizeof(entry);
-	if (entry_sz > entry->UnusedBytes && entry->UnusedBytes >= sizeof(entry))
+	opBlock->addr = entry_vaddr + sizeof(HEAP_ENTRY);
+	if (entry_sz > entry->UnusedBytes && entry->UnusedBytes >= sizeof(HEAP_ENTRY))
 		opBlock->size = entry_sz - entry->UnusedBytes;
 	else
-		opBlock->size = entry_sz - sizeof(entry);
+		opBlock->size = entry_sz - sizeof(HEAP_ENTRY);
 	// HEAP_ENTRY::Flags
 	if (entry->Flags & HEAP_ENTRY_BUSY)
 		opBlock->inuse = true;
@@ -674,7 +674,7 @@ read_block(HEAP* heap, HEAP_SEGMENT* heap_seg, address_t seg_end,
 		opBlock->inuse = false;
 	// A free chunk doesn't have _CrtMemBlockHeader. If an uncommitted page
 	// follows, we can't even read enough bytes sizeof(_CrtMemBlockHeader)
-	if (g_dbgheap && opBlock->inuse && entry_sz - sizeof(entry) >= sizeof(_CrtMemBlockHeader))
+	if (g_dbgheap && opBlock->inuse && entry_sz - sizeof(HEAP_ENTRY) >= sizeof(_CrtMemBlockHeader))
 	{
 		_CrtMemBlockHeader pHead;
 		if (!read_memory_wrapper(NULL, opBlock->addr, &pHead, sizeof(pHead)))
@@ -730,13 +730,13 @@ read_block_lfh(address_t entry_vaddr, size_t entry_sz, bool busy, struct heap_bl
 	}
 
 	// HEAP_ENTRY::UnusedBytes
-	opBlock->addr = entry_vaddr + sizeof(entry);
-	opBlock->size = entry_sz - sizeof(entry);
+	opBlock->addr = entry_vaddr + sizeof(HEAP_ENTRY);
+	opBlock->size = entry_sz - sizeof(HEAP_ENTRY);
 	opBlock->inuse = busy;
 
 	// A free chunk doesn't have _CrtMemBlockHeader. If an uncommitted page
 	// follows, we can't even read enough bytes sizeof(_CrtMemBlockHeader)
-	if (g_dbgheap && opBlock->inuse && entry_sz - sizeof(entry) >= sizeof(_CrtMemBlockHeader))
+	if (g_dbgheap && opBlock->inuse && entry_sz - sizeof(HEAP_ENTRY) >= sizeof(_CrtMemBlockHeader))
 	{
 		_CrtMemBlockHeader pHead;
 		if (!read_memory_wrapper(NULL, opBlock->addr, &pHead, sizeof(pHead)))
@@ -834,7 +834,8 @@ lfh_subsegment_walk(HEAP* heap,			// in => heap
 	address_t align_mask = sizeof(HEAP_ENTRY) - 1;
 	cursor = (cursor + align_mask) & (~align_mask);
 	unsigned int index = 0;
-	while (cursor + blockSize <= super_entry_vaddr + super_entry_sz) {
+	while (cursor + blockSize <= super_entry_vaddr + super_entry_sz
+		&& index < userDataHdr.BusyBitmap.SizeOfBitMap) {
 		int byteIndex = index / 8;
 		int bitPos = index & 7;
 		++index;
@@ -1004,15 +1005,15 @@ page_walk_internal_2008(HEAP* heap,			// in => heap
 		{
 #if 0
 			CA_PRINT("\t[_HEAP_ENTRY] "PRINT_FORMAT_POINTER" - "PRINT_FORMAT_POINTER"\n",
-				entry_vaddr, entry_vaddr + sizeof(entry));
+				entry_vaddr, entry_vaddr + sizeof(HEAP_ENTRY));
 			CA_PRINT("\t\t Size=0x%x\n", entry.Size);
 			CA_PRINT("\t\t Flags=0x%x\n", entry.Flags);
 			CA_PRINT("\t\t PreviousSize=0x%x\n", entry.PreviousSize);
 			CA_PRINT("\t\t LFHFlags=0x%x\n", entry.LFHFlags);
 			CA_PRINT("\t\t UnusedBytes=0x%x\n", entry.UnusedBytes);
-			if (user_addr > entry_vaddr + sizeof(entry)) {
+			if (user_addr > entry_vaddr + sizeof(HEAP_ENTRY)) {
 				CA_PRINT("\t[_CrtMemBlockHeader] "PRINT_FORMAT_POINTER" - "PRINT_FORMAT_POINTER"\n",
-					entry_vaddr + sizeof(entry), user_addr);
+					entry_vaddr + sizeof(HEAP_ENTRY), user_addr);
 			}
 #endif
 			if (addr >= block.addr && addr < block.addr + block.size)
@@ -1114,18 +1115,18 @@ get_biggest_blocks_in_HEAP_SEGMENT(HEAP* heap,
 				if (entry.SmallTagIndex != (bytes[0] ^ bytes[1] ^ bytes[2]) )
 					return false;
 			}
-			entry_sz = entry.Size * sizeof(entry);
+			entry_sz = entry.Size * sizeof(HEAP_ENTRY);
 			// HEAP_ENTRY::Size tag is often the victim of memory overrun
 			if (entry_sz == 0
 				|| entry_vaddr + entry_sz > (address_t) heap_seg->LastValidEntry
 				|| entry_vaddr + entry_sz > seg_end)
 				return false;
 			// HEAP_ENTRY::UnusedBytes
-			user_addr = entry_vaddr + sizeof(entry);
-			if (entry_sz > entry.UnusedBytes && entry.UnusedBytes >= sizeof(entry))
+			user_addr = entry_vaddr + sizeof(HEAP_ENTRY);
+			if (entry_sz > entry.UnusedBytes && entry.UnusedBytes >= sizeof(HEAP_ENTRY))
 				user_sz = entry_sz - entry.UnusedBytes;
 			else
-				user_sz = entry_sz - sizeof(entry);
+				user_sz = entry_sz - sizeof(HEAP_ENTRY);
 			// HEAP_ENTRY::Flags
 			if (entry.Flags & HEAP_ENTRY_BUSY)
 				busy = true;
@@ -1133,7 +1134,7 @@ get_biggest_blocks_in_HEAP_SEGMENT(HEAP* heap,
 				busy = false;
 			// A free chunk doesn't have _CrtMemBlockHeader. If an uncommitted page
 			// follows, we can't even read enough bytes sizeof(_CrtMemBlockHeader)
-			if (g_dbgheap && busy && entry_sz - sizeof(entry) >= sizeof(_CrtMemBlockHeader))
+			if (g_dbgheap && busy && entry_sz - sizeof(HEAP_ENTRY) >= sizeof(_CrtMemBlockHeader))
 			{
 				_CrtMemBlockHeader pHead;
 				if (!read_memory_wrapper(NULL, user_addr, &pHead, sizeof(pHead)))

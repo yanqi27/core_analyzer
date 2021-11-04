@@ -921,8 +921,9 @@ thread_tcache (struct thread_info *info, void *data)
 	type = value_type(val);
 	type = check_typedef (TYPE_TARGET_TYPE (type));
 	valsz = TYPE_LENGTH(type);
-	if (sizeof(tcps) < valsz) {
+	if (sizeof(tcps) != valsz) {
 		CA_PRINT("Internal error: \"struct tcache_perthread_struct\" is incorrect\n");
+		CA_PRINT("Assumed tcache size=%ld while gdb sees size=%ld\n", sizeof(tcps), valsz);
 		return false;
 	}
 	addr = value_as_address(val);
@@ -1550,7 +1551,7 @@ static bool build_heaps(void)
 		release_all_ca_arenas();
 		release_tcache_chunks();
 	}
-
+#if 0
 	// Support a subset of all glibc versions
 	if (glibc_ver_minor != 3
 		&& glibc_ver_minor != 4
@@ -1562,7 +1563,7 @@ static bool build_heaps(void)
 				glibc_ver_major, glibc_ver_minor);
 		return false;
 	}
-
+#endif
 	main_arena_vaddr = get_var_addr_by_name("main_arena", true);
 	mparams_vaddr    = get_var_addr_by_name("mp_", true);
 	if (main_arena_vaddr == 0 || mparams_vaddr == 0)

@@ -7,13 +7,12 @@
  *  Created on: March 20, 2016
  *      Author: myan
 */
-#include <stdint.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <list>
-#include <iostream>
+#ifdef _WIN32
+#include "stdafx.h"
+#include <Windows.h>
 
+#elif defined(__linux__)
+#include <unistd.h>
 #ifdef TCMALLOC_TEST
 #include <gperftools/tcmalloc.h>
 #else
@@ -21,6 +20,15 @@
 #endif
 
 #include <pthread.h>
+#endif // _WIN32
+
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+#include <thread>
+#include <list>
+#include <iostream>
+#include <mutex>
 
 #define NUM_THREADS 2
 /*
@@ -30,20 +38,23 @@
  * variables of ptmalloc tcache.
  * !TODO! multi-threaded malloc/free
  */
-static pthread_mutex_t myLock = PTHREAD_MUTEX_INITIALIZER;
+//#ifdef __linux__
+//static pthread_mutex_t myLock = PTHREAD_MUTEX_INITIALIZER;
+//#endif
+static std::mutex myLock;
 static int region_index;
 
 static int
 get_index(void)
 {
 	int res;
-
-	pthread_mutex_lock(&myLock);
+	std::unique_lock<std::mutex> lock(myLock);
+	//pthread_mutex_lock(&myLock);
 	res = region_index++;
-	pthread_mutex_unlock(&myLock);
-
+	//pthread_mutex_unlock(&myLock);
 	return res;
 }
+
 struct region {
 	void *p;
 	size_t size;
@@ -112,23 +123,64 @@ static bool
 is_lucky(unsigned index)
 {
 	//half are lucky
-	return (index % 2) ^ (rand() % 2);
+	return ((index % 2) ^ (rand() % 2)) != 0;
 }
 
 void
 last_call(void)
 {
 	std::cout << "This is the last function call\n";
+#ifdef _WIN32
+	/*
+	// output memory stats as the baseline
+	std::cout << "{" << std::endl;
+	// regions
+	std::cout << "\t\"num_regions=\":" << num_regions << "," << std::endl;
+	std::cout << "\t" << "\"regions\": [" << std::endl;
+	for (unsigned int i = 0; i < num_regions; i++) {
+		std::cout << "\t\t{";
+		std::cout << "\"address\":" << (size_t)regions[i].p << ",";
+		std::cout << "\"size\":" << regions[i].size << ",";
+		std::cout << "\"inuse\":" << regions[i].inuse;
+		std::cout << "}";
+		if (i < num_regions - 1)
+			std::cout << ",";
+		std::cout << std::endl;
+	}
+	std::cout << "\t]" << std::endl;
+	//
+	std::cout << "}" << std::endl;
+	*/
+	//std::cout << "press return ...";
+	char c = getchar();
+#endif
 }
 
 static size_t
 region_size(void *p)
 {
+#ifdef __linux__
 
 #ifdef TCMALLOC_TEST
 	return tc_malloc_size(p);
 #else
 	return malloc_usable_size(p);
+#endif
+
+#elif _WIN32
+	return _msize(p);
+#else
+	return 0;
+#endif // __linux__
+}
+
+static void
+mysleep(unsigned long s)
+{
+#ifdef __linux__
+	sleep(s);
+#else
+	Sleep(s * 1000);
 #endif
 }
 
@@ -165,7 +217,7 @@ thread_func(void *arg)
 	// Signal memory allocation has finished, wait for memory release
 	*done = true;
 	while (*done) {
-		sleep(1);
+		mysleep(1);
 	}
 
 	// Free some small memory blocks
@@ -180,7 +232,7 @@ thread_func(void *arg)
 	// Don't exit the thread so that per-thread cache is valid
 	*done = true;
 	while (true) {
-		sleep(1);
+		mysleep(1);
 	}
 
 	return NULL;
@@ -191,9 +243,24 @@ main(int argc, char** argv)
 {
 	int i;
 
-	// Initialize random number generator
-	srand (time(NULL));
+	/* {
+		size_t sz = 9;
+		const int count = 5;
+		char *ptrs[count];
+		for (i = 0; i < count; i++) {
+			ptrs[i] = new char[sz];
+			printf("[%d] %p\n", i, ptrs[i]);
+		}
+		for (i = 0; i < count; i++) {
+			if (i % 2)
+				delete[] ptrs[i];
+		}
+		char c = getchar();
+		return 0;
+	} */
 
+	// Initialize random number generator
+	srand ((unsigned int)time(NULL));
 	regions = (region *) calloc(num_regions, sizeof *regions);
 	if (regions == NULL)
 		fatal_error("Out of memory");
@@ -207,29 +274,31 @@ main(int argc, char** argv)
 		derived_objects[i] = new Derived(i);
 	}
 	for (i = 0; i < num_derived; i++) {
-		derived_objects[num_derived + i] = new Derived2(i * 0.1);
+		derived_objects[num_derived + i] = new Derived2(i * (float)0.1);
 	}
 
 	// A list of Base Objects
 	std::list<Base *> objlist;
 	for (i = 0; i < 32; i++) {
-		objlist.push_back(new Derived2(num_derived + i));
+		objlist.push_back(new Derived2((float)(num_derived + i)));
 	}
 	hidden_object = (uintptr_t)objlist.front();
 
 	bool flags[NUM_THREADS];
-	pthread_t tids[NUM_THREADS];
 	for (i = 0; i < NUM_THREADS; i++)
 		flags[i] = false;
+
+	// Spawn threads
+	std::list<std::thread *> threads;
 	for (i = 0; i < NUM_THREADS; i++) {
-		if (pthread_create(&tids[i], NULL, thread_func, &flags[i]) != 0) {
-			fatal_error("Failed to create pthread");
-		}
+		std::thread *thrd = new std::thread(thread_func, &flags[i]);
+		threads.push_back(thrd);
 	}
+
 	// Wait for threads to finish memory allocations
 	for (i = 0; i < NUM_THREADS; i++) {
 		while (flags[i] == false)
-			sleep(1);
+			mysleep(1);
 	}
 	// Signal threads to start releasing memory
 	region_index = 0;
@@ -238,7 +307,7 @@ main(int argc, char** argv)
 	// Wait until memory release is done
 	for (i = 0; i < NUM_THREADS; i++) {
 		while (flags[i] == false)
-			sleep(1);
+			mysleep(1);
 	}
 
 	// Test driver may break at this function for inspection or create a core dump

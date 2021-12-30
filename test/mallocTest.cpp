@@ -36,11 +36,7 @@
  * In order for core_analyzer to parse all heap data, the application
  * needs to link with libpthread. This allows gdb to extract thread-local
  * variables of ptmalloc tcache.
- * !TODO! multi-threaded malloc/free
  */
-//#ifdef __linux__
-//static pthread_mutex_t myLock = PTHREAD_MUTEX_INITIALIZER;
-//#endif
 static std::mutex myLock;
 static int region_index;
 
@@ -49,9 +45,7 @@ get_index(void)
 {
 	int res;
 	std::unique_lock<std::mutex> lock(myLock);
-	//pthread_mutex_lock(&myLock);
 	res = region_index++;
-	//pthread_mutex_unlock(&myLock);
 	return res;
 }
 
@@ -243,22 +237,6 @@ main(int argc, char** argv)
 {
 	int i;
 
-	/* {
-		size_t sz = 9;
-		const int count = 5;
-		char *ptrs[count];
-		for (i = 0; i < count; i++) {
-			ptrs[i] = new char[sz];
-			printf("[%d] %p\n", i, ptrs[i]);
-		}
-		for (i = 0; i < count; i++) {
-			if (i % 2)
-				delete[] ptrs[i];
-		}
-		char c = getchar();
-		return 0;
-	} */
-
 	// Initialize random number generator
 	srand ((unsigned int)time(NULL));
 	regions = (region *) calloc(num_regions, sizeof *regions);
@@ -315,4 +293,3 @@ main(int argc, char** argv)
 
 	return 0;
 }
-

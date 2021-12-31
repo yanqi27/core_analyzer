@@ -224,7 +224,7 @@ static void
 object_ref_dealloc (PyObject *obj)
 {
 	object_ref* self = (object_ref*) obj;
-	self->ob_type->tp_free (self);
+	Py_TYPE (self)->tp_free (self);
 }
 
 /* Called when a new gdb.Object_ref object needs to be allocated.  Returns NULL on
@@ -246,8 +246,6 @@ object_ref_new (PyTypeObject *type, PyObject *args, PyObject *keywords)
 	gdb_assert (obj != NULL);
 	if (PyInt_Check (obj))
 		addr = (address_t) PyInt_AsLong (obj);
-	else if (PyLong_Check (obj))
-		addr = (address_t) PyLong_AsLong (obj);
 	else if (gdbpy_is_string (obj))
 	{
 		gdb::unique_xmalloc_ptr<char> s
@@ -371,7 +369,7 @@ object_ref_str (PyObject *obj)
 		PyObject* target_format = PyString_FromString(" 0x%lx: 0x%lx");
 		int pos = PyTuple_Size(args);
 
-		PyString_Concat(&format, target_format);
+		PyUnicode_Concat(format, target_format);
 		if (_PyTuple_Resize(&args, pos+2) == 0)
 		{
 			PyTuple_SET_ITEM(args, pos, Py_BuildValue("l", self->ref.vaddr));
@@ -383,7 +381,7 @@ object_ref_str (PyObject *obj)
 	if (format == NULL || args == NULL)
 		return NULL;
 	else
-		result = PyString_Format(format, args);
+		result = PyUnicode_Format(format, args);
 	Py_DECREF(format);
 	Py_DECREF(args);
 
@@ -427,8 +425,7 @@ static gdb_PyGetSetDef object_ref_getset[] = {
 };
 
 PyTypeObject object_ref_type = {
-	PyObject_HEAD_INIT (NULL)
-	0, /*ob_size*/
+	PyVarObject_HEAD_INIT (NULL, 0)
 	"gdb.Object_ref", /*tp_name*/
 	sizeof (object_ref), /*tp_basicsize*/
 	0, /*tp_itemsize*/

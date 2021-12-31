@@ -1,6 +1,7 @@
-Core analyzer is a power tool to debug memory issues. By parsing the memory image of a process's core dump file or its live address space, core analyzer is able to scan the target's heap data for memory corruption, search the whole address space for data object's references, or analyze memory pattern. It is thorough, labor-free, and insightful. It is proved to be invaluable to debug many tough issues.
+# Core Analyzer
+A power tool to debug memory issues. By parsing the memory image of a process's core dump file or its live address space, core analyzer is able to scan the target's heap data for memory corruption, search the whole address space for data object's references, or analyze memory pattern. It is thorough, labor-free, and insightful. It is proved to be invaluable to debug many tough issues.
 
-The main features include:
+# Features
 * Heap Memory
     - Scan heap and report memory corruption and memory usage statistics
     - Display the layout of memory blocks surrounding a given address
@@ -19,3 +20,12 @@ The main features include:
 The tool supports x86_64 architecture including Windows/RedHat/SUSE/MacOSX. It integrates with gdb and Windbg debuggers and supports gdb's python extension.
 
 For more information, please see the project's web site http://core-analyzer.sourceforge.net/
+
+# Tested Platforms
+The latest build passed the sanity tests on the following platforms
+| Heap Manager | Ubuntu | Red Hat | Windows | Darwin |
+| ----------- | ----------- | ----------- | ----------- | ----------- |
+| ptmalloc | Ubuntu 20 | | | |
+| tcmalloc | | | | |
+| Windows  | | | Windows 10 | |
+| Darwin   | | | | |

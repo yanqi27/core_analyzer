@@ -1,0 +1,17 @@
+.logopen ${$arg1}
+.block
+{
+	~0s
+	r? $t0 = num_regions
+	.printf "num_regions=%d\n", @$t0
+	.for (r? $t1=0; @$t1 < @$t0; r? $t1 = @$t1+1)
+	{
+		r? $t2 = (region*)&regions[@$t1]
+		r? $t3 = @$t2->p
+		r? $t4 = @$t2->size
+		r? $t5 = @$t2->inuse
+		.printf "[%d] address=%p size=%d inuse=%d\n", @$t1, @$t3, @$t4, @$t5
+		!heap /b @$t3
+	}
+}
+.logclose

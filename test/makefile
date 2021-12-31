@@ -8,7 +8,7 @@ LIBS = -lpthread
 TARGETS = mallocTest
 
 GDB    = ../bin/Linux/ptmalloc/gdb-9.2/gdb --data-directory=/usr/local/share/gdb
-GDB_TC = ../bin/Linux/tcmalloc/gdb-8.1/gdb --data-directory=/usr/local/share/gdb
+GDB_TC = ../bin/Linux/tcmalloc/gdb-9.2/gdb --data-directory=/usr/local/share/gdb
 
 all: ${TARGETS}
 

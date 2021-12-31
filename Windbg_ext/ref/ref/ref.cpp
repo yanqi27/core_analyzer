@@ -4,6 +4,8 @@
  *  Created on: Dec 13, 2011
  *      Author: myan
  */
+#include "stdafx.h"
+
 #include "segment.h"
 #include "search.h"
 #include "heap.h"
@@ -506,6 +508,7 @@ info_local(PDEBUG_CLIENT4 Client, PCSTR args)
 	if (!enter_command(Client))
 		return E_FAIL;
 
+	PDEBUG_SYMBOL_GROUP2 symbolGroup2 = NULL;
 	HRESULT hr;
 	DEBUG_STACK_FRAME frames[MAX_FRAMES];
 	ULONG frameFilled = 0;
@@ -517,7 +520,6 @@ info_local(PDEBUG_CLIENT4 Client, PCSTR args)
 									&frameFilled) != S_OK )
 		goto Fail;
 
-	PDEBUG_SYMBOL_GROUP2 symbolGroup2 = NULL;
 	for (ULONG frame_num = 0; frame_num < frameFilled; frame_num++)
 	{
 		// Set scope to frame n

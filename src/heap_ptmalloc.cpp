@@ -916,7 +916,12 @@ thread_tcache (struct thread_info *info, void *data)
 		CA_PRINT("Failed to lookup thread-local variable \"tcache\"\n");
 		return false;
 	}
-	val = value_of_variable(tcsym, 0);
+	try {
+		val = value_of_variable(tcsym, 0);
+	} catch (gdb_exception_error &e) {
+		CA_PRINT("Failed to evaluate thread-local variable \"tcache\": %s\n", e.what());
+		return false;
+	}
 	val = value_coerce_to_target(val);
 	type = value_type(val);
 	type = check_typedef (TYPE_TARGET_TYPE (type));
@@ -1082,7 +1087,13 @@ static struct ca_arena* build_arena(address_t arena_vaddr, enum HEAP_TYPE type)
 		// Parse arena's metadata by symbol if available
 		rc = read_malloc_state_by_symbol(arena_vaddr, &arena->mpState);
 		if (!rc) {
-			// Read in arena's meta data, i.e. struct malloc_state
+			/* 
+			 * Read in arena's meta data, i.e. struct malloc_state
+			 * 
+			 * !TODO!
+			 * The following libc version-based method doesn't apply to all Linux distros.
+			 * We should depend on the type debug symbols of the target process
+			 */
 			rc = read_memory_wrapper(NULL, arena_vaddr, &arena_state, mstate_size);
 			if (rc) {
 				if (glibc_ver_minor == 3)

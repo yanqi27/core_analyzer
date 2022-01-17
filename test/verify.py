@@ -69,20 +69,19 @@ def check_big_blocks(big_blks, big_count, user_blks):
 # Test heap walk
 def check_heap_walk(user_blks):
 	print("[ca_test] Checking heap walk ...")
-	inuse_blks = []
+	inuse_blks = {}
 	blk = gdb.heap_walk(0)
 	inuse_count = 0
 	free_count = 0
 	while blk:
 		if blk.inuse:
-			inuse_blks.append(blk)
+			inuse_blks[blk.address] = blk
 			inuse_count = inuse_count + 1
 		else:
 			free_count = free_count + 1
 		blk = gdb.heap_walk(blk)
 	for blk in user_blks:
-		matches = [b for b in inuse_blks if b.address == blk.address]
-		if len(matches) == 0:
+		if blk.address not in inuse_blks:
 			print("[ca_test] Heap walk misses in-use block: addr=0x%x size=%u" \
 				% (blk.address, blk.size))
 			raise Exception('Test Failed')

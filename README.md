@@ -25,7 +25,7 @@ For more information, please see the project's web site http://core-analyzer.sou
 The latest build passed the sanity tests on the following platforms
 | Heap Manager | Ubuntu | CentOS | Windows | Darwin |
 | ----------- | ----------- | ----------- | ----------- | ----------- |
-| ptmalloc | Ubuntu 20 / gdb 9.2 | | | |
+| ptmalloc | Ubuntu 20 / gdb 9.2 | CentOS 8.5 / gdb 9.2 | | |
 | tcmalloc | Tcmalloc 4.5.3 / gdb 9.2 | | | |
 | Windows  | | | Windows 10 / VS2019 | |
 | Darwin   | | | | |

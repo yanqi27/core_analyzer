@@ -16,19 +16,19 @@
 #define UNIT 16
 //#define PAGESIZE 4096
 
-// const uint16_t size_classes[] = {
-// 	1, 2, 3, 4, 5, 6, 7, 8,
-// 	9, 10, 12, 15,
-// 	18, 20, 25, 31,
-// 	36, 42, 50, 63,
-// 	72, 84, 102, 127,
-// 	146, 170, 204, 255,
-// 	292, 340, 409, 511,
-// 	584, 682, 818, 1023,
-// 	1169, 1364, 1637, 2047,
-// 	2340, 2730, 3276, 4095,
-// 	4680, 5460, 6552, 8191,
-// };
+const uint16_t class_to_size[] = {
+	1, 2, 3, 4, 5, 6, 7, 8,
+	9, 10, 12, 15,
+	18, 20, 25, 31,
+	36, 42, 50, 63,
+	72, 84, 102, 127,
+	146, 170, 204, 255,
+	292, 340, 409, 511,
+	584, 682, 818, 1023,
+	1169, 1364, 1637, 2047,
+	2340, 2730, 3276, 4095,
+	4680, 5460, 6552, 8191,
+};
 
 // struct group {
 // 	struct meta *meta;
@@ -75,13 +75,16 @@ struct ca_meta {
 	value* next;
 	value* prev;
 	address_t address;
-	int avail_mask;
-	int freed_mask;
-	int slot_count; //idx
+	uint avail_mask; //active never-allocated slots
+	uint freed_mask; //freed slots and inactive never-allocated slots
+	uint inuse_mask; //~(avail_mask | freed_mask)
 	int freeable;
-	int size_class;
+	uint size_class;
+	uint maplen;
+	uint last_slot_count; //last_idx
 	//group
 	unsigned long storage_start;
+	uint active_slot_count; //active_idx
 };
 
 #endif /* _MM_MALLOCNG_H */

@@ -8,7 +8,7 @@
 #include "segment.h"
 
 
-#define CA_DEBUG 1
+#define CA_DEBUG 0
 #if CA_DEBUG
 #define CA_PRINT_DBG CA_PRINT
 #else
@@ -19,7 +19,14 @@
 /*
  * Internal data structures
  */
-
+struct meta_stats {
+	int sizeclass;
+	size_t meta_count;
+	size_t inuse_count;
+	size_t free_count;
+	size_t inuse_bytes;
+	size_t free_bytes;
+};
 
 /*
  * Globals
@@ -80,7 +87,7 @@ init_heap(void)
 
 	init_done_val = get_field_value(malloc_context, "init_done");
 	if(value_as_long(init_done_val) == 0){
-		CA_PRINT("malloc_context not initalized! \n");
+		CA_PRINT("malloc_context not initialized! \n");
 		return false;
 	}
 
@@ -170,11 +177,92 @@ heap_walk(address_t heapaddr, bool verbose)
 {
 	CA_PRINT_DBG("heap_walk(" PRINT_FORMAT_POINTER ")\n", heapaddr);
 
+	struct ca_meta *meta;
+	struct meta_stats *stats;
+	struct meta_stats total;
+	size_t blk_sz;
+	unsigned int i;
+
+	unsigned int size_class_size = 48; //TODO: 48 sizeclasses is hardcoded
+
 	if (g_initialized == false) {
 		CA_PRINT("mallocng heap was not initialized successfully\n");
 		return false;
 	}
 
+	//TODO: handle heapaddr
+
+	stats = (struct meta_stats *)calloc(size_class_size, sizeof *stats); 
+	if (stats == NULL) {
+		CA_PRINT("Out of memory\n");
+		return false;
+	}
+	for (i = 0; i < size_class_size; i++) {
+		stats[i].sizeclass = i;
+	}
+
+	/*
+	 * Collect statistics of all metas by sizeclass
+	 */
+	for (i = 0; i < g_metas_count; i++) {
+		meta = &g_metas[i];
+
+		if(meta->maplen == 0)
+		{
+			CA_PRINT_DBG("Skipping nested meta at: " PRINT_FORMAT_POINTER "\n", meta->address);
+			continue;
+		}
+
+		struct meta_stats *current_stat = &stats[meta->size_class];
+
+		current_stat->meta_count++;
+
+		unsigned int index;
+		size_t slot_size = UNIT*class_to_size[meta->size_class];
+		for (index = 0; index < meta->active_slot_count; index++)
+		{
+			if (meta->inuse_mask & (1 << index)) {
+				//TODO calculate size as slot_size - reserved?
+				current_stat->inuse_count++;
+				current_stat->inuse_bytes += slot_size;
+			}
+			else{
+				current_stat->free_count++;
+				current_stat->free_bytes += slot_size;
+			}
+		}
+	}
+	memset(&total, 0, sizeof(total));
+
+	/*
+	 * Display statistics
+	 */
+	CA_PRINT("  size_class   num_metas  block_size  inuse_blks inuse_bytes   free_blks  free_bytes\n");
+	for (i = 0; i < size_class_size; i++) {
+		blk_sz = UNIT*class_to_size[i];
+		CA_PRINT("%12d%12zu%12zu", i, stats[i].meta_count, blk_sz);
+
+		if (stats[i].meta_count != 0) {
+			CA_PRINT("%12zu%12zu%12zu%12zu\n",
+			    stats[i].inuse_count, stats[i].inuse_bytes,
+			    stats[i].free_count, stats[i].free_bytes);
+		}
+		else {
+			CA_PRINT("\n");
+		}
+		total.meta_count += stats[i].meta_count;
+		total.inuse_count += stats[i].inuse_count;
+		total.inuse_bytes += stats[i].inuse_bytes;
+		total.free_count += stats[i].free_count;
+		total.free_bytes += stats[i].free_bytes;
+	}
+	CA_PRINT("------------------------------------------------------------------------------------\n");
+	CA_PRINT("       Total");
+	CA_PRINT("%12zu            %12zu%12zu%12zu%12zu\n",
+	    total.meta_count, total.inuse_count,  total.inuse_bytes,
+	    total.free_count, total.free_bytes);
+
+	free(stats);
 	return true;
 }
 
@@ -404,7 +492,7 @@ bool parse_meta(struct value *meta, address_t address, struct type *group_type)
 	memset(my_meta, 0, sizeof *my_meta);
 
 	my_meta->address = address;
-	CA_PRINT("Parsing meta at: " PRINT_FORMAT_POINTER "\n", address);
+	CA_PRINT_DBG("Parsing meta at: " PRINT_FORMAT_POINTER "\n", address);
 
 	m = get_field_value(meta, "next");
 	my_meta->next = value_copy(m);

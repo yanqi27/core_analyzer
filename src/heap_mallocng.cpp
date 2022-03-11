@@ -41,9 +41,11 @@ static unsigned long g_metas_count;
  * Forward declaration
  */
 static struct value *get_field_value(struct value *, const char *);
-bool walk_active(struct value *malloc_context);
-bool parse_meta(struct value *meta, address_t address, struct type *group_type);
-bool walk_sizeclass_meta(struct value *head_meta, address_t head_address, struct type* meta_type, struct type *group_type);
+static size_t get_stride(struct ca_meta *meta);
+// bool walk_active(struct value *malloc_context);
+// bool walk_sizeclass_meta(struct value *head_meta, address_t head_address, struct type* meta_type, struct type *group_type);
+bool walk_meta_areas(struct value *malloc_context);
+bool parse_meta(struct value *meta, struct value *group, address_t address);
 static int meta_storage_compare(const void *, const void *);
 	
 /******************************************************************************
@@ -91,9 +93,14 @@ init_heap(void)
 		return false;
 	}
 
-	if(!walk_active(malloc_context))
+	// if(!walk_active(malloc_context))
+	// {
+	// 	CA_PRINT("Failed to walk active metas! \n");
+	// 	return false;
+	// }
+	if(!walk_meta_areas(malloc_context))
 	{
-		CA_PRINT("Failed to walk active metas! \n");
+		CA_PRINT("Failed to walk meta areas! \n");
 		return false;
 	}
 
@@ -180,6 +187,7 @@ heap_walk(address_t heapaddr, bool verbose)
 	struct ca_meta *meta;
 	struct meta_stats *stats;
 	struct meta_stats total;
+	struct meta_stats large;
 	size_t blk_sz;
 	unsigned int i;
 
@@ -201,6 +209,9 @@ heap_walk(address_t heapaddr, bool verbose)
 		stats[i].sizeclass = i;
 	}
 
+	memset(&total, 0, sizeof(total));
+	memset(&large, 0, sizeof(large));
+
 	/*
 	 * Collect statistics of all metas by sizeclass
 	 */
@@ -213,12 +224,34 @@ heap_walk(address_t heapaddr, bool verbose)
 			continue;
 		}
 
-		struct meta_stats *current_stat = &stats[meta->size_class];
+		// if(meta->freeable == 0)
+		// {
+		// 	CA_PRINT_DBG("Skipping parent meta at: " PRINT_FORMAT_POINTER "\n", meta->address);
+		// 	continue;
+		// }
 
+		struct meta_stats *current_stat;
+		if(meta->size_class == 63){
+			current_stat = &large;
+			current_stat->meta_count++;
+			size_t slot_size = get_stride(meta);
+			if (meta->avail_mask == 0 && meta->freed_mask == 0){
+				current_stat->inuse_count++;
+				current_stat->inuse_bytes += slot_size;
+			}
+			else{
+				current_stat->free_count++;
+				current_stat->free_bytes += slot_size;
+			}
+			continue;
+		}
+
+		//other size classes
+		current_stat = &stats[meta->size_class];
 		current_stat->meta_count++;
 
 		unsigned int index;
-		size_t slot_size = UNIT*class_to_size[meta->size_class];
+		size_t slot_size = get_stride(meta);
 		for (index = 0; index < meta->active_slot_count; index++)
 		{
 			if (meta->inuse_mask & (1 << index)) {
@@ -232,12 +265,26 @@ heap_walk(address_t heapaddr, bool verbose)
 			}
 		}
 	}
-	memset(&total, 0, sizeof(total));
 
 	/*
 	 * Display statistics
 	 */
 	CA_PRINT("  size_class   num_metas  block_size  inuse_blks inuse_bytes   free_blks  free_bytes\n");
+	CA_PRINT("    (large)0%12zu         n/a", large.meta_count);
+	if (large.meta_count != 0) {
+		CA_PRINT("%12zu%12zu%12zu%12zu\n",
+			large.inuse_count, large.inuse_bytes,
+			large.free_count, large.free_bytes);
+	}
+	else {
+		CA_PRINT("\n");
+	}
+	total.meta_count += large.meta_count;
+	total.inuse_count += large.inuse_count;
+	total.inuse_bytes += large.inuse_bytes;
+	total.free_count += large.free_count;
+	total.free_bytes += large.free_bytes;
+
 	for (i = 0; i < size_class_size; i++) {
 		blk_sz = UNIT*class_to_size[i];
 		CA_PRINT("%12d%12zu%12zu", i, stats[i].meta_count, blk_sz);
@@ -303,13 +350,34 @@ walk_inuse_blocks(struct inuse_block* opBlocks, unsigned long* opCount)
 			continue;
 		}
 
+		// if(meta->freeable == 0)
+		// {
+		// 	CA_PRINT_DBG("Skipping parent meta at: " PRINT_FORMAT_POINTER "\n", meta->address);
+		// 	continue;
+		// }
+
 		address_t base = meta->storage_start;
 		unsigned int index;
-		size_t slot_size = UNIT*class_to_size[meta->size_class];
+		size_t slot_size = get_stride(meta);
 
-		for (index = 0; index < meta->active_slot_count; index++)
-		{
-			if (meta->inuse_mask & (1 << index)) {
+		//one huge slot
+		if(meta->size_class == 63) {
+			if (meta->avail_mask == 0 && meta->freed_mask == 0){
+				(*opCount)++;
+				if (opBlocks != NULL) {
+					address_t slot_addr = base;
+					CA_PRINT_DBG("Large Meta: 0x%lx Address: 0x%lx Size: %d\n", meta->address, slot_addr, slot_size);
+					opBlocks->addr = slot_addr;
+					opBlocks->size = slot_size;
+					opBlocks++;
+				}
+			}
+			continue;
+		}
+
+		//normal size classes
+		for (index = 0; index < meta->active_slot_count; index++) {
+			if (meta->inuse_mask & (1 << index)){
 				//TODO calculate size as slot_size - reserved?
 				(*opCount)++;
 				if (opBlocks != NULL) {
@@ -368,12 +436,10 @@ meta_storage_compare(const void *k, const void *m)
 	return (k_meta->storage_start > m_meta->storage_start) - (m_meta->storage_start > k_meta->storage_start);
 }
 
-
-bool walk_active(struct value *malloc_context)
+bool walk_meta_areas(struct value *malloc_context)
 {
-	struct type *meta_type, *group_type;
-	struct value *active;
-	LONGEST low_bound, high_bound, index;
+	struct type *meta_type, *group_type, *meta_area_type;
+	struct value *current, *head, *head_p;
 
 	meta_type = lookup_transparent_type("meta");
 	if (meta_type == NULL) {
@@ -381,9 +447,7 @@ bool walk_active(struct value *malloc_context)
 		CA_PRINT("Do you forget to load debug symbols?\n");
 		return false;
 	}
-	CA_PRINT_DBG("current meta type \"%d\"\n", TYPE_CODE (meta_type));
 	meta_type = lookup_pointer_type(meta_type);
-	CA_PRINT_DBG("current meta pointer type \"%d\"\n", TYPE_CODE (meta_type));
 
 	group_type = lookup_transparent_type("group");
 	if (group_type == NULL) {
@@ -391,89 +455,182 @@ bool walk_active(struct value *malloc_context)
 		CA_PRINT("Do you forget to load debug symbols?\n");
 		return false;
 	}
-	CA_PRINT_DBG("current group type \"%d\"\n", TYPE_CODE (group_type));
 	group_type = lookup_pointer_type(group_type);
-	CA_PRINT_DBG("current group pointer type \"%d\"\n", TYPE_CODE (group_type));
 
-	//array of head meta's per sizeclass
-	active = get_field_value(malloc_context, "active"); //malloc_context->active
-	if (TYPE_CODE (value_type(active)) != TYPE_CODE_ARRAY) {
-		CA_PRINT("Unexpected: \"active\" is not an array\n");
+	meta_area_type = lookup_transparent_type("meta_area");
+	if (meta_area_type == NULL) {
+		CA_PRINT("Failed to lookup type \"meta_area\"\n");
+		CA_PRINT("Do you forget to load debug symbols?\n");
 		return false;
 	}
+	meta_area_type = lookup_pointer_type(meta_area_type);
 
-	if (get_array_bounds (value_type(active), &low_bound, &high_bound) == 0) {
-		CA_PRINT("Could not determine \"active\" bounds\n");
-		return false;
-	}
-	CA_PRINT_DBG("malloc_context.active[%ld-%ld] array "
-	    "length %ld\n", low_bound, high_bound, high_bound - low_bound + 1);
+	//meta_area_head
+	head = get_field_value(malloc_context, "meta_area_head");
 
-	for (index = low_bound; index <= high_bound; index++) {
-		struct value *v, *meta_p, *meta;
-		address_t value_address;
+	current = head;
+	while (value_as_address(current) != NULL)
+	{
+		struct value *next, *m, *current_p, *slots;
+		int nslots, index;
 
-		v = value_subscript(active, index); //active[index]
-		CA_PRINT_DBG("current active index \"%d\"\n", index);
-		CA_PRINT_DBG("current active type \"%d\"\n", TYPE_CODE (value_type(v)));
-		CA_PRINT_DBG("current active address " PRINT_FORMAT_POINTER "\n", value_as_address(v));
-		value_address = value_as_address(v); 
-		if (value_address == 0)
-			continue;
+		CA_PRINT_DBG("current meta_area address " PRINT_FORMAT_POINTER "\n", value_as_address(current));
+		current_p = value_cast(meta_area_type, current);
+		current = value_ind(current_p); //*meta_area
 
-		meta_p = value_cast(meta_type, v);
-		meta = value_ind(meta_p); //*meta
+		//nslots is max slots not current slots
+		m = get_field_value(current, "nslots");
+		nslots = value_as_long(m);
 
-		if (!walk_sizeclass_meta(meta, value_address, meta_type, group_type))
+		CA_PRINT_DBG("current meta_area nslots %d\n", nslots);
+
+		slots = get_field_value(current, "slots");
+
+		for(index = 0; index <= nslots; index++)
 		{
-			CA_PRINT("Could not parse head meta at: " PRINT_FORMAT_POINTER "\n", value_address);
-			return false;
+			struct value *meta, *group, *group_p;
+			int size_class;
+			meta = value_subscript(slots, index); //slots[index]
+
+			group = get_field_value(meta, "mem"); //group
+			if(value_as_address(group) == NULL)
+			{
+				CA_PRINT_DBG("Reached slot meta without group, we are done with this meta_area\n");
+				break;
+			}
+
+			group_p = value_cast(group_type, group);
+			group = value_ind(group_p); //*group
+
+			if(!parse_meta(meta, group, value_address(meta)))
+			{
+				CA_PRINT("Could not parse meta\n");
+				return false;
+			}
+			
 		}
+
+		next = get_field_value(current, "next");
+		CA_PRINT_DBG("next meta_area address " PRINT_FORMAT_POINTER "\n", value_as_address(next));
+		current = next;
 	}
 	return true;
 }
 
-bool walk_sizeclass_meta(struct value *head_meta, address_t head_address, struct type *meta_type, struct type *group_type)
-{
-	struct ca_meta *current;
-	struct value *next_p, *next;
-	address_t next_address;
 
-	//head meta
-	if(!parse_meta(head_meta, head_address, group_type))
-	{
-		CA_PRINT("Could not parse head meta\n");
-		return false;
-	}
+// bool walk_active(struct value *malloc_context)
+// {
+// 	struct type *meta_type, *group_type;
+// 	struct value *active;
+// 	LONGEST low_bound, high_bound, index;
 
-	//get head meta
-	current = &g_metas[g_metas_count-1];
-	while(true) //gross
-	{
-		next_address = value_as_address(current->next);
-		if(next_address == head_address)
-		{
-			break;
-		}
-		next_p = value_cast(meta_type, current->next);
-		next = value_ind(next_p); //*meta
+// 	meta_type = lookup_transparent_type("meta");
+// 	if (meta_type == NULL) {
+// 		CA_PRINT("Failed to lookup type \"meta\"\n");
+// 		CA_PRINT("Do you forget to load debug symbols?\n");
+// 		return false;
+// 	}
+// 	CA_PRINT_DBG("current meta type \"%d\"\n", TYPE_CODE (meta_type));
+// 	meta_type = lookup_pointer_type(meta_type);
+// 	CA_PRINT_DBG("current meta pointer type \"%d\"\n", TYPE_CODE (meta_type));
 
-		if(!parse_meta(next, next_address, group_type))
-		{
-			CA_PRINT("Could not parse meta\n");
-			return false;
-		}
-		current = &g_metas[g_metas_count-1];
-	}
+// 	group_type = lookup_transparent_type("group");
+// 	if (group_type == NULL) {
+// 		CA_PRINT("Failed to lookup type \"group\"\n");
+// 		CA_PRINT("Do you forget to load debug symbols?\n");
+// 		return false;
+// 	}
+// 	CA_PRINT_DBG("current group type \"%d\"\n", TYPE_CODE (group_type));
+// 	group_type = lookup_pointer_type(group_type);
+// 	CA_PRINT_DBG("current group pointer type \"%d\"\n", TYPE_CODE (group_type));
 
-	return true;
-}
+// 	//array of head meta's per sizeclass
+// 	active = get_field_value(malloc_context, "active"); //malloc_context->active
+// 	if (TYPE_CODE (value_type(active)) != TYPE_CODE_ARRAY) {
+// 		CA_PRINT("Unexpected: \"active\" is not an array\n");
+// 		return false;
+// 	}
+
+// 	if (get_array_bounds (value_type(active), &low_bound, &high_bound) == 0) {
+// 		CA_PRINT("Could not determine \"active\" bounds\n");
+// 		return false;
+// 	}
+// 	CA_PRINT_DBG("malloc_context.active[%ld-%ld] array "
+// 	    "length %ld\n", low_bound, high_bound, high_bound - low_bound + 1);
+
+// 	for (index = low_bound; index <= high_bound; index++) {
+// 		struct value *v, *meta_p, *meta;
+// 		address_t value_address;
+
+// 		v = value_subscript(active, index); //active[index]
+// 		CA_PRINT_DBG("current active index \"%d\"\n", index);
+// 		CA_PRINT_DBG("current active type \"%d\"\n", TYPE_CODE (value_type(v)));
+// 		CA_PRINT_DBG("current active address " PRINT_FORMAT_POINTER "\n", value_as_address(v));
+// 		value_address = value_as_address(v); 
+// 		if (value_address == 0)
+// 			continue;
+
+// 		meta_p = value_cast(meta_type, v);
+// 		meta = value_ind(meta_p); //*meta
+
+// 		if (!walk_sizeclass_meta(meta, value_address, meta_type, group_type))
+// 		{
+// 			CA_PRINT("Could not parse head meta at: " PRINT_FORMAT_POINTER "\n", value_address);
+// 			return false;
+// 		}
+// 	}
+// 	return true;
+// }
+
+// bool walk_sizeclass_meta(struct value *head_meta, address_t head_address, struct type *meta_type, struct type *group_type)
+// {
+// 	struct ca_meta *current;
+// 	struct value *next_p, *next, *group, *group_p;
+// 	address_t next_address;
+
+// 	group = get_field_value(head_meta, "mem"); //group
+// 	group_p = value_cast(group_type, group);
+// 	group = value_ind(group_p); //*group
+
+// 	//head meta
+// 	if(!parse_meta(head_meta, group, head_address))
+// 	{
+// 		CA_PRINT("Could not parse head meta\n");
+// 		return false;
+// 	}
+
+// 	//get head meta
+// 	current = &g_metas[g_metas_count-1];
+// 	while(true) //gross
+// 	{
+// 		next_address = value_as_address(current->next);
+// 		if(next_address == head_address)
+// 		{
+// 			break;
+// 		}
+// 		next_p = value_cast(meta_type, current->next);
+// 		next = value_ind(next_p); //*meta
+
+// 		group = get_field_value(next, "mem"); //group
+// 		group_p = value_cast(group_type, group);
+// 		group = value_ind(group_p); //*group		
+
+// 		if(!parse_meta(next, group, next_address))
+// 		{
+// 			CA_PRINT("Could not parse meta\n");
+// 			return false;
+// 		}
+// 		current = &g_metas[g_metas_count-1];
+// 	}
+
+// 	return true;
+// }
 
 
-bool parse_meta(struct value *meta, address_t address, struct type *group_type)
+bool parse_meta(struct value *meta, struct value *group, address_t address)
 {
 	struct ca_meta *my_meta;
-	struct value *m, *m_p, *group;
+	struct value *m, *m_p;
 
 	if (g_metas_count >= g_metas_capacity) {
 		unsigned long goal;
@@ -527,10 +684,6 @@ bool parse_meta(struct value *meta, address_t address, struct type *group_type)
 	my_meta->last_slot_count = value_as_long(m);
 	CA_PRINT_DBG("meta.last_slot_count \"%d\"\n", my_meta->last_slot_count);
 
-	m = get_field_value(meta, "mem"); //group
-	m_p = value_cast(group_type, m);
-	group = value_ind(m_p);
-
 	m = get_field_value(group, "storage"); //group->storage
 	my_meta->storage_start = value_as_long(m);
 	CA_PRINT_DBG("meta.storage_start " PRINT_FORMAT_POINTER "\n", my_meta->storage_start);
@@ -542,4 +695,14 @@ bool parse_meta(struct value *meta, address_t address, struct type *group_type)
 	return true;
 
 
+}
+
+static size_t get_stride(struct ca_meta *meta)
+{
+	//if (!meta->last_slot_count && meta->maplen) {
+	if (meta->size_class == 63) {
+		return meta->maplen*4096UL - UNIT;
+	} else {
+		return UNIT*class_to_size[meta->size_class];
+	}
 }

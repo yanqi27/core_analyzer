@@ -262,9 +262,28 @@ display_help_command (const char *arg, int from_tty)
     CA_PRINT("%s", ca_help_msg);
 }
 
+static void
+switch_heap_command(const char *arg, int from_tty)
+{
+	if (!arg) return;
+	// todo: use regexp matching
+	if (strcmp(arg, "pt") == 0) {
+		gCurrentHeap = HeapManagerPtMalloc;
+		CA_PRINT("Swith to use pt malloc.");
+		return;
+	}
+	if (strcmp(arg, "tc") == 0) {
+		gCurrentHeap = HeapManagerTcMalloc;
+		CA_PRINT("Swith to use tc malloc.");
+		return;
+	}
+
+	return;
+}
 void
 _initialize_heapcmd (void)
 {
+	register_heap_managers();
 	add_cmd("ref", class_info, ref_command, _("Search for references to a given object.\nref <addr_exp>\nref [/thread or /t] <addr_exp> <size> [level]"), &cmdlist);
 	add_cmd("obj", class_info, obj_command, _("Search for object and reference to object of the same type as the input expression\nobj <type|variable>"), &cmdlist);
 	add_cmd("shrobj", class_info, shrobj_command, _("Find objects that currently referenced from multiple threads\nshrobj [tid0] [tid1] [...]"), &cmdlist);
@@ -293,7 +312,10 @@ _initialize_heapcmd (void)
 
 	// Misc
 	add_cmd("ca_help", class_info, display_help_command, _("Display core analyzer help"), &cmdlist);
+	add_cmd("switch_heap", class_info, switch_heap_command, _("switch another heap like pt, tc,"), &cmdlist);
+
 	add_cmd("dt", class_info, dt_command, _("Display type (windbg style)\ndt <type|variable>"), &cmdlist);
 	add_cmd("info_local", class_info, info_local_command, _("Display local variables"), &cmdlist);
 	add_cmd("buildid", class_info, buildid_command, _("Display build-ids of target modules"), &cmdlist);
+
 }

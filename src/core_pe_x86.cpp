@@ -688,6 +688,7 @@ extern bool g_dbgheap;
 
 bool InitCoreAnalyzer(MmapFile& irExec, MmapFile& irCore)
 {
+	register_heap_managers();
 	bool rc = BuildSegments(irCore) /*&& test_segments(true)*/;
 
 	return rc;

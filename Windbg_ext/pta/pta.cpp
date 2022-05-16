@@ -477,7 +477,7 @@ block_size(PDEBUG_CLIENT4 Client, PCSTR args)
 	address_t addr = GetExpression(args);
 
 	struct heap_block heap_block;
-	if (addr && get_heap_block_info(addr, &heap_block))
+	if (addr && CA_HEAP->get_heap_block_info(addr, &heap_block))
 		dprintf(PRINT_FORMAT_SIZE, heap_block.size);
 	else
 		dprintf("0");

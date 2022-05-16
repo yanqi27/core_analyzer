@@ -793,6 +793,7 @@ static bool InitLinkMap_32(MmapFile& irExec, MmapFile& irCore)
 //////////////////////////////////////////////////////////////
 bool InitCoreAnalyzer(MmapFile& irExec, MmapFile& irCore)
 {
+	register_heap_managers();
 	int ptr_bit = g_ptr_bit;
 	bool rc;
 	if (ptr_bit == 64)

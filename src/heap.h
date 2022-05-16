@@ -1,15 +1,18 @@
-// ==============================================================================================
-// FILENAME	:	heap_interface.h
-// AUTHOR	:	Xianting Lu
-// CREATION	:	2022-05-15
-// ==============================================================================================
+/*
+ * heap.h
+ *
+ *  Created on: Dec 13, 2011
+ *  Modifed on: May 15, 2022
+ *      Author: myan
+ */
+#ifndef _HEAP_H
+#define _HEAP_H
 
 /** Different programs might use different heap managers
  * Thi heap interface is the abstract interface for each heap manager
  * 
 **/
-#ifndef _HEAP_INTERFACE_H
-#define _HEAP_INTERFACE_H
+
 #include "ref.h"
 /*
  * Memory usage/leak

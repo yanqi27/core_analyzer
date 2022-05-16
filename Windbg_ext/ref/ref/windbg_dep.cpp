@@ -555,7 +555,7 @@ bool update_memory_segments_and_heaps()
 	//////////////////////////////////////////////////////////
 	// Done
 	//////////////////////////////////////////////////////////
-	dprintf("----Initialization Succeeded----\n", g_segment_count);
+	dprintf("----Initialization Succeeded----\n\n", g_segment_count);
 	rc = true;
 	goto NormalExit;
 
@@ -679,7 +679,7 @@ bool search_registers(const struct ca_segment* segment,
 					ref->where.reg.name    = NULL;
 					ref->vaddr        = 0;
 					ref->value        = reg_values[k].value;
-					ca_list_push_back(refs, ref);
+					ca_list_push_front(refs, ref);
 					lbFound = true;
 					break;
 				}
@@ -1383,7 +1383,7 @@ static bool mmap_core_file(const char* fname)
 	size_t mFileSize = lStatBuf.st_size;
 
 	// Open file for mapping
-	HANDLE lFileHandle = ::CreateFile(fname,
+	HANDLE lFileHandle = ::CreateFileA(fname,
 									GENERIC_READ,
 									FILE_SHARE_READ,
 									NULL,

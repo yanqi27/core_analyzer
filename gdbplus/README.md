@@ -45,7 +45,7 @@ on various Linux distros.
 |Distro|Command|Comment|
 |------|-------|-------|
 |Ubuntu|`sudo apt install libc6-dbg`|The package is installed out of box|
-|CentOS|`sudo debuginfo-install -y glibc`| |
+|CentOS|`sudo debuginfo-install -y glibc`|You may need to set `enable=1` in file `/etc/yum.repos.d/CentOS-Debuginfo.repo`|
 |RedHat|`yum install glibc-debuginfo`| |
 
 The libc.so debug symbols are installed at /usr/lib/debug by default. If gdb doesn't find

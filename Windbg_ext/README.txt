@@ -46,3 +46,33 @@ You may use the bundled binary at \Windbg_ext\pta\objchk_wnet_amd64\amd64\ref.dl
 (2) Open a WDK build window, and change folder to \Windbg_ext
 (3) Set windbg SDK path. Please refer to included batch file setenv.bat, you need to set to the path of your installation.
 (4) Use "build" command to generate the DLL.
+
+Test
+=====================================================
+There is a sanity test in the project to compare the the tool's result with the test program. To run the test:
+[1] Run mallocTest.exe, it will malloc/free many memory blocks and pause.
+[2] Attach Windbg to the process and run the following commands
+	0:000> ~0s
+	0:000> .frame a
+	0:000> .load <path-to-binary>/ref.dll
+	0:000> $$>a<$(root)\core_analyzer\Windbg_ext\ref\mallocTest\check.wds <output-file-path>
+
+Troubleshoot
+=====================================================
+The tool parses heaps based on some assumptions of Windows heap data structures. Since they are undocumented and may change from release to release, the result may be totally wrong on certain Windows versions.
+You may also use another windbg extension exts to compare the result. For example,
+0:000> !exts.heap -x 00000234c1b1a9e0 
+Entry             User              Heap              Segment               Size  PrevSize  Unused    Flags
+-------------------------------------------------------------------------------------------------------------
+00000234c1b1a9a0  00000234c1b1a9b0  00000234c1450000  00000234c1a5e870       2c0      -            f  LFH;busy 
+
+0:000> !ref.heap /b 00000234c1b1a9e0 
+	[In-use]
+	[Address] 0x234c1b1a9e0
+	[Size]    637
+	[Offset]  0
+
+
+In case of error, try
+[1] Set MSFT public symbol server SRV*http://msdl.microsoft.com/download/symbols in Windbg's .sympath
+[2] Print out the heap data structures and compare with the project's definition; correct any inconsistency and rebuild the tool.

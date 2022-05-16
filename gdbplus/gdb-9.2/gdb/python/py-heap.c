@@ -30,7 +30,7 @@ heap_block_dealloc (PyObject *obj)
 	Py_CLEAR(self->address);
 	Py_CLEAR(self->size);
 	Py_CLEAR(self->inuse);
-	self->ob_type->tp_free (self);
+	Py_TYPE (self)->tp_free (self);
 }
 
 /* Called when a new gdb.Heap_block object needs to be allocated.  Returns NULL on
@@ -54,8 +54,6 @@ heap_block_new (PyTypeObject *type, PyObject *args, PyObject *keywords)
 	gdb_assert (obj != NULL);
 	if (PyInt_Check (obj))
 		addr = (address_t) PyInt_AsLong (obj);
-	else if (PyLong_Check (obj))
-		addr = (address_t) PyLong_AsLong (obj);
 	else if (gdbpy_is_string (obj))
 	{
 		gdb::unique_xmalloc_ptr<char> s
@@ -111,7 +109,7 @@ heap_block_object_str (PyObject *obj)
 	if (args == NULL)
 		return NULL;
 
-	result = PyString_Format(format, args);
+	result = PyUnicode_Format(format, args);
 	Py_DECREF(args);
 
 	return result;
@@ -167,8 +165,7 @@ static gdb_PyGetSetDef heap_block_object_getset[] = {
 };
 
 PyTypeObject heap_block_object_type = {
-	PyObject_HEAD_INIT (NULL)
-	0, /*ob_size*/
+	PyVarObject_HEAD_INIT (NULL, 0)
 	"gdb.Heap_block", /*tp_name*/
 	sizeof (heap_block_object), /*tp_basicsize*/
 	0, /*tp_itemsize*/
@@ -222,8 +219,6 @@ PyObject *gdbpy_heap_block (PyObject *self, PyObject *args)
 		PyObject *obj = PyTuple_GetItem (args, 0);
 		if (PyInt_Check (obj))
 			addr = (address_t) PyInt_AsLong (obj);
-		else if (PyLong_Check (obj))
-			addr = (address_t) PyLong_AsLong (obj);
 		else
 		{
 			PyErr_SetString (PyExc_TypeError, _("Expect an integer as the address of a heap memory"));
@@ -285,15 +280,11 @@ PyObject *gdbpy_heap_walk (PyObject *self, PyObject *args)
 		PyObject *obj = PyTuple_GetItem (args, 0);
 		if (PyInt_Check (obj))
 			addr = (address_t) PyInt_AsLong (obj);
-		else if (PyLong_Check (obj))
-			addr = (address_t) PyLong_AsLong (obj);
 		else if (PyObject_TypeCheck(obj, &heap_block_object_type))
 		{
 			PyObject *addr_obj = ((heap_block_object*)obj)->address;
 			input_prev_block = 1;
-			if (PyLong_Check (addr_obj))
-				addr = (address_t) PyLong_AsLong (addr_obj);
-			else if (PyInt_Check (addr_obj))
+			if (PyInt_Check (addr_obj))
 				addr = (address_t) PyInt_AsLong (addr_obj);
 			else
 			{

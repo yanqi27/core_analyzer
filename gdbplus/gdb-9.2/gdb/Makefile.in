@@ -1064,6 +1064,7 @@ COMMON_SFILES = \
 	go-valprint.c \
 	heap.c \
 	heap_ptmalloc.c \
+	heap_tcmalloc.c \
 	heapcmd.c \
 	i386-decode.c \
 	inf-child.c \

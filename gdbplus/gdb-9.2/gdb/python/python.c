@@ -83,7 +83,7 @@ const struct extension_language_defn extension_language_python =
   NULL
 #endif
 };
-
+
 #ifdef HAVE_PYTHON
 
 #include "cli/cli-decode.h"

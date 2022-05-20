@@ -207,7 +207,7 @@ static bool memcpy_field_value(struct value *, const char *, char *, size_t);
 /***************************************************************************
 * Exposed functions
 ***************************************************************************/
-const char *
+static const char *
 heap_version(void)
 {
 	static char glibc_ver[64];
@@ -216,7 +216,7 @@ heap_version(void)
 	return glibc_ver;
 }
 
-bool init_heap(void)
+static bool init_heap(void)
 {
 	bool rc = build_heaps();
 
@@ -226,7 +226,7 @@ bool init_heap(void)
 /*
  * Return true and detail info if the input addr belongs to a heap memory block
  */
-bool get_heap_block_info(address_t addr, struct heap_block* blk)
+static bool get_heap_block_info(address_t addr, struct heap_block* blk)
 {
 	struct ca_heap* heap;
 
@@ -243,7 +243,7 @@ bool get_heap_block_info(address_t addr, struct heap_block* blk)
 /*
  * Return true and detail info of the heap block after the input addr
  */
-bool get_next_heap_block(address_t addr, struct heap_block* blk)
+static bool get_next_heap_block(address_t addr, struct heap_block* blk)
 {
 	struct ca_heap* heap = NULL;
 	address_t next_addr = 0;
@@ -299,7 +299,7 @@ bool get_next_heap_block(address_t addr, struct heap_block* blk)
 }
 
 /* Return true if the block belongs to a heap */
-bool is_heap_block(address_t addr)
+static bool is_heap_block(address_t addr)
 {
 	struct ca_heap* heap;
 
@@ -316,7 +316,7 @@ bool is_heap_block(address_t addr)
 /*
  * Traverse all heaps unless a non-zero address is given, in which case the specific heap is used
  */
-bool heap_walk(address_t heapaddr, bool verbose)
+static bool heap_walk(address_t heapaddr, bool verbose)
 {
 	size_t size_t_sz =  sizeof(INTERNAL_SIZE_T);
 	bool rc = true;
@@ -486,7 +486,7 @@ static void add_one_big_block(struct heap_block* blks, unsigned int num, struct 
 	}
 }
 
-bool get_biggest_blocks(struct heap_block* blks, unsigned int num)
+static bool get_biggest_blocks(struct heap_block* blks, unsigned int num)
 {
 	size_t mchunk_sz = sizeof(struct malloc_chunk);
 	size_t size_t_sz = sizeof(INTERNAL_SIZE_T);
@@ -580,7 +580,7 @@ bool get_biggest_blocks(struct heap_block* blks, unsigned int num)
 	return true;
 }
 
-bool walk_inuse_blocks(struct inuse_block* opBlocks, unsigned long* opCount)
+static bool walk_inuse_blocks(struct inuse_block* opBlocks, unsigned long* opCount)
 {
 	unsigned int heap_index;
 	struct inuse_block* pBlockinfo = opBlocks;
@@ -653,6 +653,20 @@ bool walk_inuse_blocks(struct inuse_block* opBlocks, unsigned long* opCount)
 	return true;
 }
 
+static CoreAnalyzerHeapInterface sPtMallHeapManager = {
+   heap_version,
+   init_heap,
+   heap_walk,
+   is_heap_block,
+   get_heap_block_info,
+   get_next_heap_block,
+   get_biggest_blocks,
+   walk_inuse_blocks,
+};
+
+CoreAnalyzerHeapInterface* get_pt_malloc_heap_manager() {
+	return &sPtMallHeapManager;
+}
 /***************************************************************************
 * Ptmalloc Helper Functions
 ***************************************************************************/
@@ -2089,6 +2103,25 @@ static bool get_glibc_version(void)
 {
 	const size_t bufsz = 64;
 	char buf[bufsz];
+#ifdef FIXME_LIBC_VERSION
+	struct symbol *sym;
+	struct value *val;
+	char* data;
+	/*
+	 * Global var
+	 * File malloc.c: static struct malloc_par mp_;
+	 */
+	sym = lookup_symbol("__libc_version", 0, VAR_DOMAIN, 0).symbol;
+	if (sym == NULL) {
+		CA_PRINT("Failed to lookup gv \"mp_\"\n");
+		return false;
+	}
+	val = value_of_variable(sym, 0);
+	data = (char*)value_as_address(val);
+	
+	const char* version = data;
+
+#endif // Fixme: We should read the libc_version from the debugee, but the above code never works.
 	const char* version = gnu_get_libc_version();
 	int len = strlen(version);
 	int i;

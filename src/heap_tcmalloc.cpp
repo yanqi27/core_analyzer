@@ -87,13 +87,13 @@ static void add_one_big_block(struct heap_block *, unsigned int,
 /******************************************************************************
  * Exposed functions
  *****************************************************************************/
-const char *
+static const char *
 heap_version(void)
 {
 	return "TCmalloc";
 }
 
-bool
+static bool
 init_heap(void)
 {
 	unsigned long i;
@@ -165,7 +165,7 @@ init_heap(void)
 	return true;
 }
 
-bool
+static bool
 get_heap_block_info(address_t addr, struct heap_block* blk)
 {
 	struct ca_span *span;
@@ -219,7 +219,7 @@ get_heap_block_info(address_t addr, struct heap_block* blk)
 	return true;
 }
 
-bool
+static bool
 get_next_heap_block(address_t addr, struct heap_block* blk)
 {
 	struct ca_span *span, *last_span, *next;
@@ -297,7 +297,7 @@ get_next_heap_block(address_t addr, struct heap_block* blk)
 }
 
 /* Return true if the block belongs to a heap */
-bool
+static bool
 is_heap_block(address_t addr)
 {
 
@@ -313,7 +313,7 @@ is_heap_block(address_t addr)
  * Traverse all spans unless a non-zero address is given, in which case the
  * specific span is walked
  */
-bool
+static bool
 heap_walk(address_t heapaddr, bool verbose)
 {
 	unsigned int i;
@@ -408,7 +408,7 @@ heap_walk(address_t heapaddr, bool verbose)
 	return true;
 }
 
-bool
+static bool
 get_biggest_blocks(struct heap_block* blks, unsigned int num)
 {
 	unsigned long i;
@@ -485,7 +485,7 @@ get_biggest_blocks(struct heap_block* blks, unsigned int num)
 	return true;
 }
 
-bool
+static bool
 walk_inuse_blocks(struct inuse_block* opBlocks, unsigned long* opCount)
 {
 	unsigned long i;
@@ -534,6 +534,23 @@ walk_inuse_blocks(struct inuse_block* opBlocks, unsigned long* opCount)
 	}
 
 	return true;
+}
+
+
+CoreAnalyzerHeapInterface sTcMallHeapManager = {
+   heap_version,
+   init_heap,
+   heap_walk,
+   is_heap_block,
+   get_heap_block_info,
+   get_next_heap_block,
+   get_biggest_blocks,
+   walk_inuse_blocks,
+};
+
+CoreAnalyzerHeapInterface* get_tc_malloc_heap_manager()
+{
+	return &sTcMallHeapManager;
 }
 
 /******************************************************************************

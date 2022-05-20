@@ -227,7 +227,19 @@ bool walk_inuse_blocks(struct inuse_block* opBlocks, unsigned long* opCount)
 
 	return rc;
 }
-
+CoreAnalyzerHeapInterface sMscrtMallocHeap = {
+   heap_version,
+   init_heap,
+   heap_walk,
+   is_heap_block,
+   get_heap_block_info,
+   get_next_heap_block,
+   get_biggest_blocks,
+   walk_inuse_blocks,
+};
+CoreAnalyzerHeapInterface* get_mscrt_malloc_heap_manager() {
+	return &sMscrtMallocHeap;
+}
 /////////////////////////////////////////////////////
 // Implementation of heap walk
 /////////////////////////////////////////////////////

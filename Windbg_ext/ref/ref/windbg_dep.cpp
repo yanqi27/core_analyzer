@@ -549,7 +549,7 @@ bool update_memory_segments_and_heaps()
 	dprintf("\tThere are %ld threads\n", num_threads);
 
 	// dry run to mark heap segments
-	if (!init_heap() || !test_segments(true) || !alloc_bit_vec())
+	if (!CA_HEAP->init_heap() || !test_segments(true) || !alloc_bit_vec())
 		goto Fail;
 
 	//////////////////////////////////////////////////////////

@@ -383,7 +383,7 @@ PyObject *gdbpy_big_blocks (PyObject *self, PyObject *args)
 		return NULL;
 	}
 	memset(blocks, 0, sizeof(struct heap_block) * n);
-	if (get_biggest_blocks (blocks, n))
+	if (CA_HEAP->get_biggest_blocks (blocks, n))
 	{
 		result = PyList_New(n);
 		if (result)

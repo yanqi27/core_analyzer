@@ -31,7 +31,7 @@ mallocTest_tcmalloc: mallocTest_tcmalloc.o
 	$(CXX) $(COMP_OPT) -o $@ $^ $(LIBS) -ltcmalloc
 
 check-tcmalloc: mallocTest_tcmalloc
-	$(GDB_TC) mallocTest_tcmalloc -q -x verify.py
+	$(GDB_TC) mallocTest_tcmalloc -q -ex 'switch_heap tc' -x verify.py
 
 clean:
 	rm *.o ${TARGETS}

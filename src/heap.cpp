@@ -10,14 +10,22 @@
 #include "stl_container.h"
 #include "search.h"
 
+
 CoreAnalyzerHeapInterface* gCoreAnalyzerHeaps[HeapManagerLastOne];
 
+
 void register_heap_managers() {
+	#ifndef _WIN32
+	// heap.cpp is used by ref.dll, so we need to only support switching heap in Linux
     gCoreAnalyzerHeaps[HeapManagerPtMalloc] = get_pt_malloc_heap_manager();
 	gCoreAnalyzerHeaps[HeapManagerTcMalloc] = get_tc_malloc_heap_manager();
-
+	#endif
+	#ifdef _WIN32
+	gCoreAnalyzerHeaps[HeapManagerMscrtMalloc] = get_mscrt_malloc_heap_manager();
+	#endif
 }
 EnumHeapManager gCurrentHeap = HeapManagerPtMalloc;
+
 // Used to search for variables that allocate/reach the most heap memory
 struct heap_owner
 {

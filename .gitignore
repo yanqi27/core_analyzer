@@ -79,7 +79,7 @@ $RECYCLE.BIN/
 
 # Windows shortcuts
 *.lnk
-
+build
 # Visual Studio files
 .vs
 *.vcxproj.user

@@ -425,7 +425,7 @@ update_memory_segments_and_heaps(void)
 		return false;
 	}
 	/* Probe for heap segments */
-	init_heap();
+	CA_HEAP->init_heap();
 
 	return rc;
 }

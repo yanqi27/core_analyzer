@@ -27,27 +27,15 @@ struct inuse_block
 	struct reachable reachable;
 };
 
-/*
- * Histogram of heap blocks
- */
-struct MemHistogram
-{
-	unsigned int   num_buckets;
-	size_t*        bucket_sizes;
-	unsigned long* inuse_cnt;
-	size_t*        inuse_bytes;
-	unsigned long* free_cnt;
-	size_t*        free_bytes;
-};
 
 /**
  * @brief each heap manager is assigned to an enum
  * 
  */
 enum EnumHeapManager {
-    HeapManagerReserved = 0,
-    HeapManagerPtMalloc = 1,
-    HeapManagerTcMalloc = 2,
+	HeapManagerReserved = 0,
+	HeapManagerPtMalloc = 1,
+	HeapManagerTcMalloc = 2,
 	HeapManagerMscrtMalloc = 3,
 	HeapManagerLastOne,
 };
@@ -116,6 +104,19 @@ calc_aggregate_size(const struct object_reference *ref,
 					unsigned long num_inuse_blocks,
 					size_t *aggr_size,
 					unsigned long *count);
+
+/*
+ * Histogram of heap blocks
+ */
+struct MemHistogram
+{
+	unsigned int   num_buckets;
+	size_t*        bucket_sizes;
+	unsigned long* inuse_cnt;
+	size_t*        inuse_bytes;
+	unsigned long* free_cnt;
+	size_t*        free_bytes;
+};
 extern void display_mem_histogram(const char*);
 extern void init_mem_histogram(unsigned int nbuckets);
 extern void release_mem_histogram(void);

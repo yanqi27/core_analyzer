@@ -2218,7 +2218,3 @@ memcpy_field_value(struct value *val, const char *fieldname, char *buf,
 	}
 	return true;
 }
-
-class PtMallocHeap: public CoreAnalyzerHeapInterface {
-
-};

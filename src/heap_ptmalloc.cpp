@@ -2103,6 +2103,25 @@ static bool get_glibc_version(void)
 {
 	const size_t bufsz = 64;
 	char buf[bufsz];
+#ifdef FIXME_LIBC_VERSION
+	struct symbol *sym;
+	struct value *val;
+	char* data;
+	/*
+	 * Global var
+	 * File malloc.c: static struct malloc_par mp_;
+	 */
+	sym = lookup_symbol("__libc_version", 0, VAR_DOMAIN, 0).symbol;
+	if (sym == NULL) {
+		CA_PRINT("Failed to lookup gv \"mp_\"\n");
+		return false;
+	}
+	val = value_of_variable(sym, 0);
+	data = (char*)value_as_address(val);
+	
+	const char* version = data;
+
+#endif // Fixme: We should read the libc_version from the debugee, but the above code never works.
 	const char* version = gnu_get_libc_version();
 	int len = strlen(version);
 	int i;

@@ -8,11 +8,6 @@
 #ifndef _HEAP_H
 #define _HEAP_H
 
-/** Different programs might use different heap managers
- * Thi heap interface is the abstract interface for each heap manager
- * 
-**/
-
 #include "ref.h"
 /*
  * Memory usage/leak
@@ -53,6 +48,7 @@ enum EnumHeapManager {
     HeapManagerReserved = 0,
     HeapManagerPtMalloc = 1,
     HeapManagerTcMalloc = 2,
+	HeapManagerMscrtMalloc = 3,
 	HeapManagerLastOne,
 };
 
@@ -73,6 +69,11 @@ typedef bool (*DisplayHeapLeakCandidatesFunc)(void);
 typedef bool (*BiggestBlocksFunc)(unsigned int num);
 typedef bool (*BiggestHeapOwnersGenericFunc)(unsigned int num, bool all_reachable_blocks);
 
+
+/** Different programs might use different heap managers
+ * Thi heap interface is the abstract interface for each heap manager
+ * 
+**/
 struct CoreAnalyzerHeapInterface {
     HeapVersionFunc heap_version;
     InitHeapFunc init_heap;
@@ -122,5 +123,6 @@ extern void add_block_mem_histogram(size_t, bool, unsigned int);
 
 extern CoreAnalyzerHeapInterface* get_pt_malloc_heap_manager();
 extern CoreAnalyzerHeapInterface* get_tc_malloc_heap_manager();
+extern CoreAnalyzerHeapInterface* get_mscrt_malloc_heap_manager();
 
 #endif

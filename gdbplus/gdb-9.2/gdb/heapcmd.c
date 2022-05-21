@@ -269,22 +269,17 @@ switch_heap_command(const char *arg, int from_tty)
 		CA_PRINT("Please provide the heap manager name, currently supported heap managers: tc, pt.");
 		return;
 	}
-	#ifdef _WIN32
+	#ifdef WIN32
 	if (1) {
 		CA_PRINT("We dont support switch heap manager in Windows yet.");
 		return;
 	}
 	#endif
-	// todo: use regexp matching
-	if (strcmp(arg, "pt") == 0) {
-		gCurrentHeap = HeapManagerPtMalloc;
-		CA_PRINT("Swith to use pt malloc.");
+	auto it = gCAHeapers.find(arg);
+	if (it != gCAHeapers.end()) {
+		CA_PRINT("switch to heap %s", arg);
+		update_memory_segments_and_heaps();
 	}
-	if (strcmp(arg, "tc") == 0) {
-		gCurrentHeap = HeapManagerTcMalloc;
-		CA_PRINT("Swith to use tc malloc.");
-	}
-	update_memory_segments_and_heaps();
 	return;
 }
 void

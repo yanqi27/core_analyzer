@@ -12,19 +12,23 @@
 
 
 CoreAnalyzerHeapInterface* gCoreAnalyzerHeaps[HeapManagerLastOne];
+EnumHeapManager gCurrentHeap = HeapManagerPtMalloc;
+std::map<std::string, EnumHeapManager> gCAHeapers;
 
 
 void register_heap_managers() {
-	#ifndef _WIN32
-	// heap.cpp is used by ref.dll, so we need to only support switching heap in Linux
+	#ifndef WIN32
+	// heap.cpp is used by ref.dll, and we only support switching heap in Linux currently.
 	gCoreAnalyzerHeaps[HeapManagerPtMalloc] = get_pt_malloc_heap_manager();
 	gCoreAnalyzerHeaps[HeapManagerTcMalloc] = get_tc_malloc_heap_manager();
+	gCAHeapers.emplace(std::make_pair<std::string,EnumHeapManager>("pt", HeapManagerPtMalloc));
+	gCAHeapers.emplace(std::make_pair<std::string,EnumHeapManager>("tc",HeapManagerTcMalloc));
+
 	#endif
-	#ifdef _WIN32
+	#ifdef WIN32
 	gCoreAnalyzerHeaps[HeapManagerMscrtMalloc] = get_mscrt_malloc_heap_manager();
 	#endif
 }
-EnumHeapManager gCurrentHeap = HeapManagerPtMalloc;
 
 // Used to search for variables that allocate/reach the most heap memory
 struct heap_owner

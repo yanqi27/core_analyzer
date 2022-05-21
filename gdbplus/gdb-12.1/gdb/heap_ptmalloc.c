@@ -12,6 +12,10 @@
 
 #pragma GCC diagnostic ignored "-Wint-to-pointer-cast"
 
+// Safe-Linking
+#define PROTECT_PTR(pos, ptr) \
+  ((__typeof (ptr)) ((((size_t) pos) >> 12) ^ ((size_t) ptr)))
+#define REVEAL_PTR(ptr_addr, ptr)  PROTECT_PTR (ptr_addr, ptr)
 /***************************************************************************
 * Implementation specific data structures
 ***************************************************************************/
@@ -70,7 +74,8 @@ struct heap_info {
   struct heap_info*  prev;	/* Previous heap. */
   size_t size;				/* Current size in bytes. */
   size_t mprotect_size;		/* pad in glibc 2.3 */
-  char pad[-6 * SIZE_SZ & MALLOC_ALIGN_MASK];	/* this is 0 for 64bit */
+  size_t pagesize;
+  char pad[-3 * SIZE_SZ & MALLOC_ALIGN_MASK];	/* this is 0 for 64bit */
 };
 
 #define heap_for_ptr(ptr) \
@@ -955,8 +960,10 @@ thread_tcache (struct thread_info *info, void *data)
 				CA_PRINT("Failed to walk tcache.entries[%d]\n", i);
 				return false;
 			}
-			entry = next_entry.next;
+			entry = REVEAL_PTR((address_t)entry, next_entry.next);
 		}
+		// TODO
+		// tcache.count[i] should equal the size of the list tcache.entries[i]
 	}
 
 	return 0;
@@ -1143,8 +1150,10 @@ static struct ca_arena* build_arena(address_t arena_vaddr, enum HEAP_TYPE type)
 				while (chunk_vaddr) {
 					struct malloc_chunk fast_chunk;
 
-					if (!read_memory_wrapper(NULL, chunk_vaddr, &fast_chunk, mchunk_sz))
+					if (!read_memory_wrapper(NULL, chunk_vaddr, &fast_chunk, mchunk_sz)) {
+						CA_PRINT("Failed to read fast chunk from target at 0x%lx\n", chunk_vaddr);
 						break;
+					}
 					if (chunksize(&fast_chunk) > mparams.MAX_FAST_SIZE) {
 						CA_PRINT("Invalid fast chunk 0x%lx, its size %ld is "
 						    "larger than MAX_FAST_SIZE %ld\n", chunk_vaddr, chunksize(&fast_chunk),
@@ -1152,7 +1161,8 @@ static struct ca_arena* build_arena(address_t arena_vaddr, enum HEAP_TYPE type)
 						break;
 					}
 					add_cached_chunk((mchunkptr)chunk_vaddr);
-					chunk_vaddr = (address_t)(fast_chunk.fd);
+					address_t fd_addr = chunk_vaddr + offsetof(struct malloc_chunk, fd);
+					chunk_vaddr = (address_t)REVEAL_PTR(fd_addr, fast_chunk.fd);
 				}
 			}
 		}
@@ -1836,7 +1846,8 @@ static bool check_bin_and_fastbin(struct ca_arena* arena)
 				break;
 			}
 			chunk_prev_vaddr = chunk_vaddr;
-			chunk_vaddr = (address_t)(fast_chunk.fd);
+			address_t fd_addr = chunk_vaddr + offsetof(struct malloc_chunk, fd);
+			chunk_vaddr = (address_t)REVEAL_PTR(fd_addr, fast_chunk.fd);
 		}
 	}
 
@@ -2131,7 +2142,8 @@ type_field_name2no(struct type *type, const char *field_name)
 	type = check_typedef (type);
 
 	for (n = 0; n < type->num_fields(); n++) {
-		if (strcmp (field_name, TYPE_TYPEDEF_FIELD_NAME (type, n)) == 0)
+		const char* name = type->field(n).name();
+		if (name && strcmp (field_name, name) == 0)
 			return n;
 	}
 	return -1;

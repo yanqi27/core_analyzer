@@ -721,12 +721,12 @@ get_struct_field_type_and_name(struct type *basetype,
 		 */
 		for (i = 0; i < num_fields; i++)
 		{
-			check_typedef(TYPE_TYPEDEF_FIELD_TYPE (basetype, i));
+			check_typedef(basetype->field(i).type());
 		}
 		for (i = 0; i < num_fields; i++)
 		{
 			size_t pos, field_size;
-			struct type* field_type = TYPE_TYPEDEF_FIELD_TYPE (basetype, i);
+			struct type* field_type = basetype->field(i).type();
 			/* static member */
 			if (basetype->field(i).loc_kind() != FIELD_LOC_KIND_BITPOS)
 				continue;
@@ -738,7 +738,7 @@ get_struct_field_type_and_name(struct type *basetype,
 				continue;
 			else if (field_size > 0 && offset >= pos && offset < pos + field_size)
 			{
-				const char* field_name = TYPE_TYPEDEF_FIELD_NAME(basetype, i);
+				const char* field_name = basetype->field(i).name();
 				size_t namelen = strlen(field_name);
 				strncpy(namebuf, field_name, bufsz);
 				namebuf += namelen;
@@ -928,10 +928,10 @@ print_struct_field(const struct object_reference* ref,
 		 */
 		for (i = 0; i < num_fields; i++)
 		{
-			struct type* field_type = TYPE_TYPEDEF_FIELD_TYPE (type, i);
+			struct type* field_type = type->field(i).type();
 			size_t pos, field_size;
 
-			check_typedef(TYPE_TYPEDEF_FIELD_TYPE (type, i));
+			check_typedef(field_type);
 			pos = type->field(i).loc_bitpos() / 8;
 			field_size = field_type->length;
 			/* static member */
@@ -954,7 +954,7 @@ print_struct_field(const struct object_reference* ref,
 						printf_filtered(_("::%s"), name);
 				}
 				else
-					printf_filtered(_(".%s"), TYPE_TYPEDEF_FIELD_NAME(type, i));
+					printf_filtered(_(".%s"), type->field(i).name());
 
 				print_struct_field(ref, field_type, offset - pos);
 				break;
@@ -1440,7 +1440,7 @@ print_type_members(struct type *type, int indent)
 	 */
 	for (i = 0; i < num_fields; i++)
 	{
-		struct type* field_type = TYPE_TYPEDEF_FIELD_TYPE (type, i);
+		struct type* field_type = type->field(i).type();
 		int pos, k;
 
 		check_typedef (field_type);
@@ -1473,7 +1473,7 @@ print_type_members(struct type *type, int indent)
 			print_type_name(field_type, NULL, NULL, NULL);
 		}
 		else
-			print_type_name(field_type, TYPE_TYPEDEF_FIELD_NAME(type, i), NULL, NULL);
+			print_type_name(field_type, type->field(i).name(), NULL, NULL);
 		printf_filtered(_("  size=%lu\n"), field_type->length);
 		offset += field_type->length;
 		/* the field is a base class */

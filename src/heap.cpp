@@ -11,22 +11,19 @@
 #include "search.h"
 
 
-CoreAnalyzerHeapInterface* gCoreAnalyzerHeaps[HeapManagerLastOne];
-EnumHeapManager gCurrentHeap = HeapManagerPtMalloc;
-std::map<std::string, EnumHeapManager> gCAHeapers;
+std::map<std::string, CoreAnalyzerHeapInterface*> gCoreAnalyzerHeaps;
 
-
+CoreAnalyzerHeapInterface* gCAHeap;
 void register_heap_managers() {
-	#ifndef WIN32
-	// heap.cpp is used by ref.dll, and we only support switching heap in Linux currently.
-	gCoreAnalyzerHeaps[HeapManagerPtMalloc] = get_pt_malloc_heap_manager();
-	gCoreAnalyzerHeaps[HeapManagerTcMalloc] = get_tc_malloc_heap_manager();
-	gCAHeapers.emplace(std::make_pair<std::string,EnumHeapManager>("pt", HeapManagerPtMalloc));
-	gCAHeapers.emplace(std::make_pair<std::string,EnumHeapManager>("tc",HeapManagerTcMalloc));
-
-	#endif
 	#ifdef WIN32
 	gCoreAnalyzerHeaps[HeapManagerMscrtMalloc] = get_mscrt_malloc_heap_manager();
+	gCAHeap = get_mscrt_malloc_heap_manager();
+	#else
+	// heap.cpp is used by ref.dll, and we only support switching heap in Linux currently.
+	gCoreAnalyzerHeaps.emplace(std::make_pair<std::string, CoreAnalyzerHeapInterface*>("pt", get_pt_malloc_heap_manager()));
+	gCoreAnalyzerHeaps.emplace(std::make_pair<std::string, CoreAnalyzerHeapInterface*>("tc",get_tc_malloc_heap_manager()));
+	// default is pt malloc heap, in the future we will auto detect the heap.
+	gCAHeap = get_pt_malloc_heap_manager();
 	#endif
 }
 

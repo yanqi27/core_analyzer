@@ -2103,7 +2103,6 @@ static bool get_glibc_version(void)
 {
 	const size_t bufsz = 64;
 	char buf[bufsz];
-#define FIXME_LIBC_VERSION
 #ifdef FIXME_LIBC_VERSION
 	struct symbol *sym;
 	struct value *val;

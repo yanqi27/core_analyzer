@@ -7,7 +7,8 @@
  */
 #ifndef _HEAP_H
 #define _HEAP_H
-
+#include <string>
+#include <map>
 #include "ref.h"
 /*
  * Memory usage/leak
@@ -40,9 +41,11 @@ enum EnumHeapManager {
 	HeapManagerLastOne,
 };
 
+extern std::map<std::string, EnumHeapManager> gCAHeapers;
+
 typedef const char * (*HeapVersionFunc)(void);
 typedef bool (*InitHeapFunc)(void);
-typedef  bool (*HeapWalkFunc)(address_t addr, bool verbose);
+typedef bool (*HeapWalkFunc)(address_t addr, bool verbose);
 typedef bool (*IsHeapBlockFunc)(address_t addr);
 typedef bool (*GetHeapBlockInfoFunc)(address_t addr, struct heap_block* blk);
 typedef bool (*GetNextHeapBlockFunc)(address_t addr, struct heap_block* blk);
@@ -50,16 +53,8 @@ typedef bool (*GetBiggestBlocksFunc)(struct heap_block* blks, unsigned int num);
 typedef void (*PrintSizeFunc)(size_t sz);
 typedef bool (*WalkInuseBlocksFunc)(struct inuse_block* opBlocks, unsigned long* opCount);
 
-typedef struct inuse_block* (*FindInuseBlockFunc)(address_t, struct inuse_block*, unsigned long);
-
-typedef bool (*DisplayHeapLeakCandidatesFunc)(void);
-
-typedef bool (*BiggestBlocksFunc)(unsigned int num);
-typedef bool (*BiggestHeapOwnersGenericFunc)(unsigned int num, bool all_reachable_blocks);
-
-
 /** Different programs might use different heap managers
- * Thi heap interface is the abstract interface for each heap manager
+ * This heap interface is the abstract interface for each heap manager
  * 
 **/
 struct CoreAnalyzerHeapInterface {
@@ -79,11 +74,15 @@ struct CoreAnalyzerHeapInterface {
 
 };
 
-// global heaps analyzers
 extern CoreAnalyzerHeapInterface* gCoreAnalyzerHeaps[HeapManagerLastOne];
 extern EnumHeapManager gCurrentHeap;
 #define CA_HEAP gCoreAnalyzerHeaps[gCurrentHeap]
 extern void register_heap_managers();
+
+extern CoreAnalyzerHeapInterface* get_pt_malloc_heap_manager();
+extern CoreAnalyzerHeapInterface* get_tc_malloc_heap_manager();
+extern CoreAnalyzerHeapInterface* get_mscrt_malloc_heap_manager();
+
 
 extern struct inuse_block* build_inuse_heap_blocks(unsigned long*);
 extern void free_inuse_heap_blocks(struct inuse_block*, unsigned long);
@@ -121,9 +120,5 @@ extern void display_mem_histogram(const char*);
 extern void init_mem_histogram(unsigned int nbuckets);
 extern void release_mem_histogram(void);
 extern void add_block_mem_histogram(size_t, bool, unsigned int);
-
-extern CoreAnalyzerHeapInterface* get_pt_malloc_heap_manager();
-extern CoreAnalyzerHeapInterface* get_tc_malloc_heap_manager();
-extern CoreAnalyzerHeapInterface* get_mscrt_malloc_heap_manager();
 
 #endif

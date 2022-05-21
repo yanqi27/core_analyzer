@@ -266,21 +266,21 @@ static void
 switch_heap_command(const char *arg, int from_tty)
 {
 	if (!arg) {
-		CA_PRINT("Please provide the heap manager name, currently supported heap managers: tc, pt.");
+		CA_PRINT("Please provide the heap manager name, currently supported heap managers: tc, pt.\n");
 		return;
 	}
 	#ifdef WIN32
 	if (1) {
-		CA_PRINT("We dont support switch heap manager in Windows yet.");
+		CA_PRINT("We dont support switch heap manager in Windows yet.\n");
 		return;
 	}
 	#endif
 	auto it = gCoreAnalyzerHeaps.find(arg);
 	if (it != gCoreAnalyzerHeaps.end()) {
-		CA_PRINT("switch to heap %s", arg);
+		CA_PRINT("switch to heap %s\n", arg);
 		CA_HEAP = it->second;
 	} else {
-		CA_PRINT("The heap name is not support yet. Current support are: tc, pt.");
+		CA_PRINT("The heap name is not support yet. Current support are: tc, pt.\n");
 	}
 	return;
 }

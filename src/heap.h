@@ -74,9 +74,10 @@ struct CoreAnalyzerHeapInterface {
 
 };
 
-extern CoreAnalyzerHeapInterface* gCoreAnalyzerHeaps[HeapManagerLastOne];
-extern EnumHeapManager gCurrentHeap;
-#define CA_HEAP gCoreAnalyzerHeaps[gCurrentHeap]
+extern std::map<std::string, CoreAnalyzerHeapInterface*> gCoreAnalyzerHeaps;
+
+extern CoreAnalyzerHeapInterface* gCAHeap;
+#define CA_HEAP gCAHeap
 extern void register_heap_managers();
 
 extern CoreAnalyzerHeapInterface* get_pt_malloc_heap_manager();

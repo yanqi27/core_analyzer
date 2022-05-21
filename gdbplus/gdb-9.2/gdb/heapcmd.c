@@ -275,10 +275,12 @@ switch_heap_command(const char *arg, int from_tty)
 		return;
 	}
 	#endif
-	auto it = gCAHeapers.find(arg);
-	if (it != gCAHeapers.end()) {
+	auto it = gCoreAnalyzerHeaps.find(arg);
+	if (it != gCoreAnalyzerHeaps.end()) {
 		CA_PRINT("switch to heap %s", arg);
-		update_memory_segments_and_heaps();
+		CA_HEAP = it->second;
+	} else {
+		CA_PRINT("The heap name is not support yet. Current support are: tc, pt.");
 	}
 	return;
 }

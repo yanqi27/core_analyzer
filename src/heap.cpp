@@ -10,6 +10,32 @@
 #include "stl_container.h"
 #include "search.h"
 
+
+std::map<std::string, CoreAnalyzerHeapInterface*> gCoreAnalyzerHeaps;
+
+CoreAnalyzerHeapInterface* gCAHeap;
+void register_heap_managers() {
+	#ifdef WIN32
+	gCoreAnalyzerHeaps[HeapManagerMscrtMalloc] = get_mscrt_malloc_heap_manager();
+	gCAHeap = get_mscrt_malloc_heap_manager();
+	#else
+	// heap.cpp is used by ref.dll, and we only support switching heap in Linux currently.
+	gCoreAnalyzerHeaps.emplace(std::make_pair<std::string, CoreAnalyzerHeapInterface*>("pt", get_pt_malloc_heap_manager()));
+	gCoreAnalyzerHeaps.emplace(std::make_pair<std::string, CoreAnalyzerHeapInterface*>("tc",get_tc_malloc_heap_manager()));
+	// default is pt malloc heap, in the future we will auto detect the heap.
+	gCAHeap = get_pt_malloc_heap_manager();
+	#endif
+}
+
+std::string get_supported_heaps() {
+	std::string lSupportedHeaps;
+	for (const auto&[k, v] : gCoreAnalyzerHeaps) {
+		lSupportedHeaps += "\t";
+		lSupportedHeaps +=k;
+	}
+	return lSupportedHeaps;
+}
+
 // Used to search for variables that allocate/reach the most heap memory
 struct heap_owner
 {
@@ -122,7 +148,7 @@ bool heap_command_impl(const char* args)
 			if (*option == '/')
 			{
 				if (strcmp(option, "/m") == 0) {
-					CA_PRINT("Target allocator: %s\n", heap_version());
+					CA_PRINT("Target allocator: %s\n", CA_HEAP->heap_version());
 					free(myargs);
 					return true;
 				}
@@ -229,7 +255,7 @@ bool heap_command_impl(const char* args)
 		else
 		{
 			struct heap_block heap_block;
-			if (get_heap_block_info(addr, &heap_block))
+			if (CA_HEAP->get_heap_block_info(addr, &heap_block))
 			{
 				if (heap_block.inuse)
 					CA_PRINT("\t[In-use]\n");
@@ -247,7 +273,7 @@ bool heap_command_impl(const char* args)
 	{
 		if (addr)
 		{
-			if (!heap_walk(addr, verbose))
+			if (!CA_HEAP->heap_walk(addr, verbose))
 				CA_PRINT("[Error] Failed to walk heap\n");
 		}
 		else
@@ -274,7 +300,7 @@ bool heap_command_impl(const char* args)
 	{
 		if (addr)
 			CA_PRINT("Unexpected address expression\n");
-		else if (!heap_walk(addr, verbose))
+		else if (!CA_HEAP->heap_walk(addr, verbose))
 			CA_PRINT("[Error] Failed to walk heap\n");
 	}
 	if (expr)
@@ -580,7 +606,7 @@ struct inuse_block* build_inuse_heap_blocks(unsigned long* opCount)
 
 	*opCount = 0;
 	// 1st walk counts the number of in-use blocks
-	if (walk_inuse_blocks(NULL, &total_inuse) && total_inuse)
+	if (CA_HEAP->walk_inuse_blocks(NULL, &total_inuse) && total_inuse)
 	{
 		// allocate memory for inuse_block array
 		blocks = (struct inuse_block*) calloc(total_inuse, sizeof(struct inuse_block));
@@ -590,7 +616,7 @@ struct inuse_block* build_inuse_heap_blocks(unsigned long* opCount)
 			return NULL;
 		}
 		// 2nd walk populate the array for in-use block info
-		if (!walk_inuse_blocks(blocks, opCount) || *opCount != total_inuse)
+		if (!CA_HEAP->walk_inuse_blocks(blocks, opCount) || *opCount != total_inuse)
 		{
 			CA_PRINT("Unexpected error while walking in-use blocks\n");
 			*opCount = 0;
@@ -720,7 +746,7 @@ bool biggest_blocks(unsigned int num)
 	if (!blocks)
 		return false;
 
-	if (get_biggest_blocks (blocks, num))
+	if (CA_HEAP->get_biggest_blocks (blocks, num))
 	{
 		unsigned int i;
 		// display big blocks

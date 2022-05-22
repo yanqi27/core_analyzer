@@ -1,14 +1,13 @@
 
 CXX = g++
 
-COMP_OPT = -g -m64 -fpermissive
+COMP_OPT = -g -m64
 
 LIBS = -lpthread 
 
 TARGETS = mallocTest
 
-GDB    = ../bin/Linux/ptmalloc/gdb-9.2/gdb --data-directory=/usr/local/share/gdb
-GDB_TC = ../bin/Linux/tcmalloc/gdb-9.2/gdb --data-directory=/usr/local/share/gdb
+GDB    = /workspaces/core_analyzer/build/gdb-9.2/build/gdb/gdb --data-directory=/usr/share/gdb
 
 all: ${TARGETS}
 
@@ -31,7 +30,7 @@ mallocTest_tcmalloc: mallocTest_tcmalloc.o
 	$(CXX) $(COMP_OPT) -o $@ $^ $(LIBS) -ltcmalloc
 
 check-tcmalloc: mallocTest_tcmalloc
-	$(GDB_TC) mallocTest_tcmalloc -q -x verify.py
+	$(GDB) mallocTest_tcmalloc -q -ex 'switch_heap tc' -x verify.py
 
 clean:
 	rm *.o ${TARGETS}

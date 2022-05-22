@@ -301,11 +301,11 @@ search_value_internal(struct CA_LIST* targets,
 					}
 					else if (segment->m_type == ENUM_HEAP)
 					{
-						if (is_heap_block(vaddr))
+						if (CA_HEAP->is_heap_block(vaddr))
 						{
 							// otherwise, it is on heap
 							struct heap_block blk;
-							get_heap_block_info(vaddr, &blk);
+							CA_HEAP->get_heap_block_info(vaddr, &blk);
 							// we generally don't care about free heap memory
 							if (blk.inuse || !g_skip_free)
 							{
@@ -380,8 +380,8 @@ fill_ref_location(struct object_reference* ref)
 		ref->where.module.size = segment->m_vsize;
 		ref->where.module.name = segment->m_module_name;
 	}
-	else if (is_heap_block(addr)
-			&& get_heap_block_info(addr, &blockinfo) )
+	else if (CA_HEAP->is_heap_block(addr)
+			&& CA_HEAP->get_heap_block_info(addr, &blockinfo) )
 	{
 		// heap address
 		ref->vaddr = addr;
@@ -426,10 +426,10 @@ static bool search_object_tree (struct CA_LIST* refs, address_t obj_vaddr, size_
 		cursor = sym_addr;
 		end    = sym_addr + sym_sz;
 	}
-	else if (segment->m_type == ENUM_HEAP && is_heap_block(ref->value))
+	else if (segment->m_type == ENUM_HEAP && CA_HEAP->is_heap_block(ref->value))
 	{
 		struct heap_block blk;
-		get_heap_block_info(ref->value, &blk);
+		CA_HEAP->get_heap_block_info(ref->value, &blk);
 		// we generally don't care about free heap memory
 		if (blk.inuse || !g_skip_free)
 		{
@@ -2139,8 +2139,8 @@ add_one_shared_object(address_t addr, bool ignore_new_shrobj, unsigned int level
 	if (segment->m_type == ENUM_HEAP)
 	{
 		struct heap_block blockinfo;
-		if (is_heap_block(addr)
-			&& get_heap_block_info(addr, &blockinfo)
+		if (CA_HEAP->is_heap_block(addr)
+			&& CA_HEAP->get_heap_block_info(addr, &blockinfo)
 			&& blockinfo.inuse == true)
 		{
 			obj_addr = blockinfo.addr;

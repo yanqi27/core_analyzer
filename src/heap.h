@@ -29,20 +29,6 @@ struct inuse_block
 };
 
 
-/**
- * @brief each heap manager is assigned to an enum
- * 
- */
-enum EnumHeapManager {
-	HeapManagerReserved = 0,
-	HeapManagerPtMalloc = 1,
-	HeapManagerTcMalloc = 2,
-	HeapManagerMscrtMalloc = 3,
-	HeapManagerLastOne,
-};
-
-extern std::map<std::string, EnumHeapManager> gCAHeapers;
-
 typedef const char * (*HeapVersionFunc)(void);
 typedef bool (*InitHeapFunc)(void);
 typedef bool (*HeapWalkFunc)(address_t addr, bool verbose);

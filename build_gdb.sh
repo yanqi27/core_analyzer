@@ -22,9 +22,9 @@ if [ ! -f $tar_gdb ]
 then
     wget http://ftp.gnu.org/gnu/gdb/$tar_gdb
 fi
-if [ ! -d $tar_gdb ]
+if [ ! -d $gdb_to_install ]
 then
-    tar -xf $tar_gdb
+    tar -xvf $tar_gdb
 fi
 cd $gdb_to_install
 cp -rLv $PROJECT_FOLDER/gdbplus/gdb-9.2/gdb $build_folder/gdb-9.2/
@@ -32,8 +32,10 @@ cp -rLv $PROJECT_FOLDER/gdbplus/gdb-9.2/gdb $build_folder/gdb-9.2/
 mkdir -p build
 cd build
 
+echo "building..."
 PWD=$(pwd)
 # if you prefer the gdb with debug symbol use commented line to build
-# $PWD/../configure -disable-binutils --with-python --disable-ld --disable-gold --disable-gas --disable-sim --disable-gprof CXXFLAGS='-g' CFLAGS='-g' --prefix=/usr
-$PWD/../configure
+$PWD/../configure -disable-binutils --with-python --disable-ld --disable-gold --disable-gas --disable-sim --disable-gprof CXXFLAGS='-g  -std=gnu++17' CFLAGS='-g' --prefix=/usr
+
+#$PWD/../configure
 make && make install && rm -rf $build_folder

@@ -83,7 +83,7 @@ extern void register_heap_managers();
 extern CoreAnalyzerHeapInterface* get_pt_malloc_heap_manager();
 extern CoreAnalyzerHeapInterface* get_tc_malloc_heap_manager();
 extern CoreAnalyzerHeapInterface* get_mscrt_malloc_heap_manager();
-
+extern std::string get_supported_heaps();
 
 extern struct inuse_block* build_inuse_heap_blocks(unsigned long*);
 extern void free_inuse_heap_blocks(struct inuse_block*, unsigned long);

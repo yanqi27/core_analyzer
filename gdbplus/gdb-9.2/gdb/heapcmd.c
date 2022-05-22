@@ -266,7 +266,8 @@ static void
 switch_heap_command(const char *arg, int from_tty)
 {
 	if (!arg) {
-		CA_PRINT("Please provide the heap manager name, currently supported heap managers: tc, pt.\n");
+		auto supported_heaps = get_supported_heaps();
+		CA_PRINT("Please provide the heap manager name, currently supported heap managers: %s.\n", supported_heaps.c_str());
 		return;
 	}
 	#ifdef WIN32
@@ -280,7 +281,8 @@ switch_heap_command(const char *arg, int from_tty)
 		CA_PRINT("switch to heap %s\n", arg);
 		CA_HEAP = it->second;
 	} else {
-		CA_PRINT("The heap name is not support yet. Current support are: tc, pt.\n");
+		auto supported_heaps = get_supported_heaps();
+		CA_PRINT("Please provide the heap manager name, currently supported heap managers: %s.\n", supported_heaps.c_str());	
 	}
 	return;
 }

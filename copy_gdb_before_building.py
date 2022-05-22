@@ -44,10 +44,11 @@ def copy_core_analyzer_files(root, src, dest):
                 if file_to_copy.endswith('.cpp'):
                     c_file = file_to_copy[:-4] + '.c'
                     new_file = dest + '/' + c_file
-                    if file_to_copy.startswith('python/') and file_to_copy != 'python/python.cpp':
-                        g_python_c_files.append(c_file)
-                    else:
-                        g_c_files.append(c_file)
+                    if file_to_copy != 'python/python.cpp':
+                        if file_to_copy.startswith('python/'):
+                            g_python_c_files.append(c_file)
+                        else:
+                            g_c_files.append(c_file)
                 elif file_to_copy.endswith('.h'):
                     if file_to_copy.startswith('python/'):
                         pass #g_python_h_files.append(file_to_copy)

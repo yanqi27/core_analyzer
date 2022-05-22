@@ -68,7 +68,7 @@ heap_block_new (PyTypeObject *type, PyObject *args, PyObject *keywords)
 		return NULL;
 	}
 
-	if (addr && get_heap_block_info(addr, &blk) )
+	if (addr && CA_HEAP->get_heap_block_info(addr, &blk) )
 	{
 		self = (heap_block_object *)type->tp_alloc(type, 1);
 		if (self == NULL)
@@ -237,7 +237,7 @@ PyObject *gdbpy_heap_block (PyObject *self, PyObject *args)
 		return NULL;
 	}
 
-	if (get_heap_block_info(addr, &blk))
+	if (CA_HEAP->get_heap_block_info(addr, &blk))
 	{
 		heap_block_object* blk_object;
 		blk_object = PyObject_New (heap_block_object, &heap_block_object_type);
@@ -305,7 +305,7 @@ PyObject *gdbpy_heap_walk (PyObject *self, PyObject *args)
 		return NULL;
 	}
 
-	if (get_next_heap_block (addr, &blk))
+	if (CA_HEAP->get_next_heap_block (addr, &blk))
 	{
 		heap_block_object* blk_object;
 		blk_object = PyObject_New (heap_block_object, &heap_block_object_type);
@@ -383,7 +383,7 @@ PyObject *gdbpy_big_blocks (PyObject *self, PyObject *args)
 		return NULL;
 	}
 	memset(blocks, 0, sizeof(struct heap_block) * n);
-	if (get_biggest_blocks (blocks, n))
+	if (CA_HEAP->get_biggest_blocks (blocks, n))
 	{
 		result = PyList_New(n);
 		if (result)

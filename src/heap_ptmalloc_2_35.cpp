@@ -212,7 +212,7 @@ static bool memcpy_field_value(struct value *, const char *, char *, size_t);
 /***************************************************************************
 * Exposed functions
 ***************************************************************************/
-const char *
+static const char *
 heap_version(void)
 {
 	static char glibc_ver[64];
@@ -221,7 +221,7 @@ heap_version(void)
 	return glibc_ver;
 }
 
-bool init_heap(void)
+static bool init_heap(void)
 {
 	bool rc = build_heaps();
 
@@ -231,7 +231,7 @@ bool init_heap(void)
 /*
  * Return true and detail info if the input addr belongs to a heap memory block
  */
-bool get_heap_block_info(address_t addr, struct heap_block* blk)
+static bool get_heap_block_info(address_t addr, struct heap_block* blk)
 {
 	struct ca_heap* heap;
 
@@ -248,7 +248,7 @@ bool get_heap_block_info(address_t addr, struct heap_block* blk)
 /*
  * Return true and detail info of the heap block after the input addr
  */
-bool get_next_heap_block(address_t addr, struct heap_block* blk)
+static bool get_next_heap_block(address_t addr, struct heap_block* blk)
 {
 	struct ca_heap* heap = NULL;
 	address_t next_addr = 0;
@@ -304,7 +304,7 @@ bool get_next_heap_block(address_t addr, struct heap_block* blk)
 }
 
 /* Return true if the block belongs to a heap */
-bool is_heap_block(address_t addr)
+static bool is_heap_block(address_t addr)
 {
 	struct ca_heap* heap;
 
@@ -321,7 +321,7 @@ bool is_heap_block(address_t addr)
 /*
  * Traverse all heaps unless a non-zero address is given, in which case the specific heap is used
  */
-bool heap_walk(address_t heapaddr, bool verbose)
+static bool heap_walk(address_t heapaddr, bool verbose)
 {
 	size_t size_t_sz =  sizeof(INTERNAL_SIZE_T);
 	bool rc = true;
@@ -491,7 +491,7 @@ static void add_one_big_block(struct heap_block* blks, unsigned int num, struct 
 	}
 }
 
-bool get_biggest_blocks(struct heap_block* blks, unsigned int num)
+static bool get_biggest_blocks(struct heap_block* blks, unsigned int num)
 {
 	size_t mchunk_sz = sizeof(struct malloc_chunk);
 	size_t size_t_sz = sizeof(INTERNAL_SIZE_T);
@@ -585,7 +585,7 @@ bool get_biggest_blocks(struct heap_block* blks, unsigned int num)
 	return true;
 }
 
-bool walk_inuse_blocks(struct inuse_block* opBlocks, unsigned long* opCount)
+static bool walk_inuse_blocks(struct inuse_block* opBlocks, unsigned long* opCount)
 {
 	unsigned int heap_index;
 	struct inuse_block* pBlockinfo = opBlocks;
@@ -658,6 +658,21 @@ bool walk_inuse_blocks(struct inuse_block* opBlocks, unsigned long* opCount)
 	return true;
 }
 
+
+static CoreAnalyzerHeapInterface sPtMallHeapManager = {
+   heap_version,
+   init_heap,
+   heap_walk,
+   is_heap_block,
+   get_heap_block_info,
+   get_next_heap_block,
+   get_biggest_blocks,
+   walk_inuse_blocks,
+};
+
+CoreAnalyzerHeapInterface* get_pt_malloc_2_35_heap_manager() {
+	return &sPtMallHeapManager;
+}
 /***************************************************************************
 * Ptmalloc Helper Functions
 ***************************************************************************/
@@ -2092,22 +2107,34 @@ static bool traverse_heap_blocks(struct ca_heap* heap,
 }
 
 /*
- * Get the glibc version of the host machine.
- * Assume it is the same or compatible with the target machine.
+ * Get the glibc version of the debugee
  */
 static bool get_glibc_version(void)
 {
 	const size_t bufsz = 64;
 	char buf[bufsz];
-	const char* version = gnu_get_libc_version();
-	int len = strlen(version);
-	int i;
+	struct symbol *sym;
 
-	if (len >= bufsz)
-		return false;
+	sym = lookup_static_symbol("__libc_version", VAR_DOMAIN).symbol;
+	if (sym == NULL) {
+		CA_PRINT("Cannot get the \"__libc_version\" from the debugee, read it from the host machine. This might not be accurate.\n");
+		const char* version = gnu_get_libc_version();
+		int len = strlen(version);
+		if (len >= bufsz)
+			return false;
 
-	strncpy(buf, version, len+1);
-	for (i=0; i<len; i++)
+		strncpy(buf, version, len+1);
+
+	} else {
+		struct value *val = value_of_variable(sym, 0);
+		if (!read_memory_wrapper(NULL,  value_address(val), buf, TYPE_LENGTH(value_type(val)))) {
+			CA_PRINT("Failed to read \"__libc_version\" from the debugee.\n");
+			return false;
+		}
+	}
+
+	int len = strlen(buf);
+	for (int i=0; i<len; i++)
 	{
 		if (buf[i] == '.')
 		{

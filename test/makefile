@@ -7,7 +7,7 @@ LIBS = -lpthread
 
 TARGETS = mallocTest
 
-GDB    = /usr/local/bin/gdb --data-directory=/usr/share/gdb
+GDB    = /workspaces/core_analyzer/build/gdb-9.2/build/gdb/gdb --data-directory=/usr/share/gdb
 
 all: ${TARGETS}
 

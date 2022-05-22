@@ -11,12 +11,13 @@
 # ==============================================================================================
 
 PROJECT_FOLDER=$(pwd)
+gdb_version='9.2'
 echo "Current project folder is $PROJECT_FOLDER"
-echo "installing gdb 9.2..."
+echo "installing gdb $gdb_version..."
 build_folder=$PROJECT_FOLDER/build
 mkdir -p $build_folder
 cd $build_folder
-gdb_to_install='gdb-9.2'
+gdb_to_install="gdb-$gdb_version"
 tar_gdb="${gdb_to_install}.tar.gz"
 if [ ! -f $tar_gdb ]
 then
@@ -26,16 +27,16 @@ if [ ! -d $gdb_to_install ]
 then
     tar -xvf $tar_gdb
 fi
-cd $gdb_to_install
-cp -rLv $PROJECT_FOLDER/gdbplus/gdb-9.2/gdb $build_folder/gdb-9.2/
+cp -rLv $PROJECT_FOLDER/gdbplus/gdb-$gdb_version/gdb $build_folder/gdb-$gdb_version/
 
+cd $gdb_to_install
 mkdir -p build
 cd build
 
 echo "building..."
 PWD=$(pwd)
 # if you prefer the gdb with debug symbol use commented line to build
-$PWD/../configure -disable-binutils --with-python --disable-ld --disable-gold --disable-gas --disable-sim --disable-gprof CXXFLAGS='-g  -std=gnu++17' CFLAGS='-g' --prefix=/usr
+#$PWD/../configure -disable-binutils --with-python --disable-ld --disable-gold --disable-gas --disable-sim --disable-gprof CXXFLAGS='-g' CFLAGS='-g' --prefix=/usr
 
-#$PWD/../configure
-make && make install && rm -rf $build_folder
+$PWD/../configure
+make -j 8 && make install && rm -rf $build_folder

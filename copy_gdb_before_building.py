@@ -39,18 +39,18 @@ def copy_core_analyzer_files(root, src, dest):
             idx = len(root)
             file_to_copy = old_file[idx+1:]
             if file_to_copy not in file_not_to_copy:
-                new_file = dest + '/' + f
+                new_file = dest + '/' + file_to_copy
                 print('copying file {}'.format(file_to_copy))
                 if file_to_copy.endswith('.cpp'):
                     c_file = file_to_copy[:-4] + '.c'
                     new_file = dest + '/' + c_file
-                    if file_to_copy.startswith('python/'):
+                    if file_to_copy.startswith('python/') and file_to_copy != 'python/python.cpp':
                         g_python_c_files.append(c_file)
                     else:
                         g_c_files.append(c_file)
                 elif file_to_copy.endswith('.h'):
                     if file_to_copy.startswith('python/'):
-                        g_python_h_files.append(file_to_copy)
+                        pass #g_python_h_files.append(file_to_copy)
                     else:
                         g_c_h_files.append(file_to_copy)
                 else:
@@ -89,6 +89,7 @@ def modify_gdb_makefile(dest):
     
     os.remove(makefile)
     shutil.copy2(makefile_tmp, makefile)
+    os.remove(makefile_tmp)
 if __name__ == '__main__':
     # python <script.py> arg1 arg2
     if len(sys.argv) != 3:

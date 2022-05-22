@@ -28,30 +28,35 @@ g_c_h_files = []
 g_python_c_files = []
 g_python_h_files = []
 
-def copy_core_analyzer_files(src, dest):
+def copy_core_analyzer_files(root, src, dest):
     for f in os.listdir(src):
         old_file = src + '/' + f
+        print('checking file {}'.format(old_file))
+
         if os.path.isdir(old_file):
-            copy_core_analyzer_files(old_file, dest +'/' + f)
-
-        elif f not in file_not_to_copy:
-            new_file = dest + '/' + f
-            if f.endswith('.cpp'):
-                c_file = f[:-4] + '.c'
-                new_file = dest + '/' + c_file
-                if f.startswith('python/'):
-                    g_python_c_files.append(c_file)
+            copy_core_analyzer_files(root, old_file, dest)
+        else:
+            idx = len(root)
+            file_to_copy = old_file[idx+1:]
+            if file_to_copy not in file_not_to_copy:
+                new_file = dest + '/' + f
+                print('copying file {}'.format(file_to_copy))
+                if file_to_copy.endswith('.cpp'):
+                    c_file = file_to_copy[:-4] + '.c'
+                    new_file = dest + '/' + c_file
+                    if file_to_copy.startswith('python/'):
+                        g_python_c_files.append(c_file)
+                    else:
+                        g_c_files.append(c_file)
+                elif file_to_copy.endswith('.h'):
+                    if file_to_copy.startswith('python/'):
+                        g_python_h_files.append(file_to_copy)
+                    else:
+                        g_c_h_files.append(file_to_copy)
                 else:
-                    g_c_files.append(c_file)
-            elif f.endswith('.h'):
-                if f.startswith('python/'):
-                    g_python_h_files.append(f)
-                else:
-                    g_c_h_files.append(f)
-            else:
-                print('{} will be copied'.format(f))
+                    print('{} will be copied'.format(file_to_copy))
 
-            copy_file(old_file, new_file)
+                copy_file(old_file, new_file)
 
 
 def modify_gdb_makefile(dest):
@@ -64,16 +69,22 @@ def modify_gdb_makefile(dest):
                 # find the anchor line to inject our c files
                 if line == "	value.c \\\n":
                     for c_file in g_c_files:
-                        w.write('\t' + c_file + '\\\n')
+                        line_to_add = '\t' + c_file + '\\\n'
+                        print(line_to_add)
+                        w.write(line_to_add)
                         
                 # find the anchor line to inject our python c files
                 if line == "	python/py-value.c \\\n":
                     for c_python_file in g_python_c_files:
-                        w.write('\t' + c_python_file + '\\\n')
+                        line_to_add = '\t' + c_python_file + '\\\n'
+                        print(line_to_add)
+                        w.write(line_to_add)
                 # find the anchor line to inject our python h files
                 if line == "	python/python.h \\\n":
                     for python_h_file in g_python_h_files:
-                        w.write('\t' + python_h_file + '\\\n')
+                        line_to_add = '\t' + python_h_file + '\\\n'
+                        print(line_to_add)
+                        w.write(line_to_add)
 
     
     os.remove(makefile)
@@ -91,7 +102,7 @@ if __name__ == '__main__':
     if not check_dir(dest):
         sys.exit(1)
     
-    copy_core_analyzer_files(src, dest)
+    copy_core_analyzer_files(src, src, dest)
     modify_gdb_makefile(dest)
 
 

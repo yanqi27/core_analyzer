@@ -27,6 +27,15 @@ void register_heap_managers() {
 	#endif
 }
 
+std::string get_supported_heaps() {
+	std::string lSupportedHeaps;
+	for (const auto&[k, v] : gCoreAnalyzerHeaps) {
+		lSupportedHeaps += "\t";
+		lSupportedHeaps +=k;
+	}
+	return lSupportedHeaps;
+}
+
 // Used to search for variables that allocate/reach the most heap memory
 struct heap_owner
 {

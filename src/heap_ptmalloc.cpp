@@ -2117,7 +2117,7 @@ static bool get_glibc_version(void)
 	} else {
 		struct value *val = value_of_variable(sym, 0);
 		if (!read_memory_wrapper(NULL,  value_address(val), buf, TYPE_LENGTH(value_type(val)))) {
-			CA_PRINT("Failed to read thread-local variable \"tcache\"\n");
+			CA_PRINT("Failed to read \"__libc_version\" from the debugee.\n");
 			return false;
 		}
 	}

@@ -2096,41 +2096,34 @@ static bool traverse_heap_blocks(struct ca_heap* heap,
 }
 
 /*
- * Get the glibc version of the host machine.
- * Assume it is the same or compatible with the target machine.
+ * Get the glibc version of the debugee
  */
 static bool get_glibc_version(void)
 {
 	const size_t bufsz = 64;
 	char buf[bufsz];
-#ifdef FIXME_LIBC_VERSION
 	struct symbol *sym;
-	struct value *val;
-	char* data;
-	/*
-	 * Global var
-	 * File malloc.c: static struct malloc_par mp_;
-	 */
-	sym = lookup_symbol("__libc_version", 0, VAR_DOMAIN, 0).symbol;
+
+	sym = lookup_static_symbol("__libc_version", VAR_DOMAIN).symbol;
 	if (sym == NULL) {
-		CA_PRINT("Failed to lookup gv \"mp_\"\n");
-		return false;
+		CA_PRINT("Cannot get the \"__libc_version\" from the debugee, read it from the host machine. This might not be accurate.\n");
+		const char* version = gnu_get_libc_version();
+		int len = strlen(version);
+		if (len >= bufsz)
+			return false;
+
+		strncpy(buf, version, len+1);
+
+	} else {
+		struct value *val = value_of_variable(sym, 0);
+		if (!read_memory_wrapper(NULL,  value_address(val), buf, TYPE_LENGTH(value_type(val)))) {
+			CA_PRINT("Failed to read \"__libc_version\" from the debugee.\n");
+			return false;
+		}
 	}
-	val = value_of_variable(sym, 0);
-	data = (char*)value_as_address(val);
-	
-	const char* version = data;
 
-#endif // Fixme: We should read the libc_version from the debugee, but the above code never works.
-	const char* version = gnu_get_libc_version();
-	int len = strlen(version);
-	int i;
-
-	if (len >= bufsz)
-		return false;
-
-	strncpy(buf, version, len+1);
-	for (i=0; i<len; i++)
+	int len = strlen(buf);
+	for (int i=0; i<len; i++)
 	{
 		if (buf[i] == '.')
 		{

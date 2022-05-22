@@ -36,7 +36,7 @@ cd build
 echo "building..."
 PWD=$(pwd)
 # if you prefer the gdb with debug symbol use commented line to build
-#$PWD/../configure -disable-binutils --with-python --disable-ld --disable-gold --disable-gas --disable-sim --disable-gprof CXXFLAGS='-g' CFLAGS='-g' --prefix=/usr
+# $PWD/../configure -disable-binutils --with-python --disable-ld --disable-gold --disable-gas --disable-sim --disable-gprof CXXFLAGS='-g' CFLAGS='-g' --prefix=/usr
 
-$PWD/../configure
+$PWD/../configure --with-python 
 make -j 8 && make install && rm -rf $build_folder

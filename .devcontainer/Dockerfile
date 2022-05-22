@@ -12,3 +12,5 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     && apt install -y python-dev \
     && apt install -y python3-dev \
     && apt install -y libgoogle-perftools-dev \
+    && apt install -y libgmp-dev \
+    

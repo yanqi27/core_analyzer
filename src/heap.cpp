@@ -5,6 +5,7 @@
  *  Created on: Dec 13, 2011
  *      Author: myan
  */
+#include "defs.h"
 #include "heap.h"
 #include "segment.h"
 #include "stl_container.h"
@@ -20,18 +21,24 @@ void register_heap_managers() {
 	gCAHeap = get_mscrt_malloc_heap_manager();
 	#else
 	// heap.cpp is used by ref.dll, and we only support switching heap in Linux currently.
-	gCoreAnalyzerHeaps.emplace(std::make_pair<std::string, CoreAnalyzerHeapInterface*>("pt", get_pt_malloc_heap_manager()));
-	gCoreAnalyzerHeaps.emplace(std::make_pair<std::string, CoreAnalyzerHeapInterface*>("tc",get_tc_malloc_heap_manager()));
+	//gCoreAnalyzerHeaps.emplace(std::make_pair<std::string, CoreAnalyzerHeapInterface*>("pt", get_pt_malloc_heap_manager()));
+	//gCoreAnalyzerHeaps.emplace(std::make_pair<std::string, CoreAnalyzerHeapInterface*>("tc",get_tc_malloc_heap_manager()));
+	gCoreAnalyzerHeaps.emplace(std::make_pair<std::string, CoreAnalyzerHeapInterface*>("pt 2.35", get_pt_malloc_2_35_heap_manager()));
 	// default is pt malloc heap, in the future we will auto detect the heap.
-	gCAHeap = get_pt_malloc_heap_manager();
+	gCAHeap = get_pt_malloc_2_35_heap_manager();
 	#endif
 }
 
 std::string get_supported_heaps() {
 	std::string lSupportedHeaps;
+	bool first_entry = true;
 	for (const auto&[k, v] : gCoreAnalyzerHeaps) {
-		lSupportedHeaps += "\t";
+		if (!first_entry)
+		{
+			lSupportedHeaps += ", ";
+		}
 		lSupportedHeaps +=k;
+		first_entry = false;
 	}
 	return lSupportedHeaps;
 }

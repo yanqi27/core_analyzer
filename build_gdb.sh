@@ -11,7 +11,7 @@
 # ==============================================================================================
 
 PROJECT_FOLDER=$(pwd)
-gdb_version='9.2'
+gdb_version='12.1'
 echo "Current project folder is $PROJECT_FOLDER"
 echo "installing gdb $gdb_version..."
 build_folder=$PROJECT_FOLDER/build
@@ -38,5 +38,5 @@ PWD=$(pwd)
 # if you prefer the gdb with debug symbol use commented line to build
 # $PWD/../configure -disable-binutils --with-python --disable-ld --disable-gold --disable-gas --disable-sim --disable-gprof CXXFLAGS='-g' CFLAGS='-g' --prefix=/usr
 
-$PWD/../configure --with-python 
+$PWD/../configure --with-python --prefix=/usr
 make -j 8 && make install && rm -rf $build_folder

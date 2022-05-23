@@ -31,9 +31,14 @@ void register_heap_managers() {
 
 std::string get_supported_heaps() {
 	std::string lSupportedHeaps;
+	bool first_entry = true;
 	for (const auto&[k, v] : gCoreAnalyzerHeaps) {
-		lSupportedHeaps += "\t";
+		if (!first_entry)
+		{
+			lSupportedHeaps += ", ";
+		}
 		lSupportedHeaps +=k;
+		first_entry = false;
 	}
 	return lSupportedHeaps;
 }

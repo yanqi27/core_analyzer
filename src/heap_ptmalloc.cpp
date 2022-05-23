@@ -204,6 +204,7 @@ static bool get_field_value(struct value *, const char *, size_t *, bool);
 
 static bool memcpy_field_value(struct value *, const char *, char *, size_t);
 
+static std::string read_libc_version();
 /***************************************************************************
 * Exposed functions
 ***************************************************************************/
@@ -212,7 +213,7 @@ heap_version(void)
 {
 	static char glibc_ver[64];
 	if (glibc_ver[0] == '\0')
-		snprintf(glibc_ver, 64, "glibc %s", gnu_get_libc_version());
+		snprintf(glibc_ver, 64, "glibc %s", read_libc_version().c_str());
 	return glibc_ver;
 }
 
@@ -2095,52 +2096,45 @@ static bool traverse_heap_blocks(struct ca_heap* heap,
 	return true;
 }
 
+static std::string read_libc_version()
+{
+	std::string version;
+	struct symbol *sym = lookup_static_symbol("__libc_version", VAR_DOMAIN).symbol;
+	if (sym == NULL) {
+		CA_PRINT("Cannot get the \"__libc_version\" from the debugee, read it from the host machine. This might not be accurate.\n");
+		version = gnu_get_libc_version();
+	} else {
+		struct value *val = value_of_variable(sym, 0);
+		constexpr int bufsz = 64;
+		char buf[bufsz];
+		if (!read_memory_wrapper(NULL,  value_address(val), buf, TYPE_LENGTH(value_type(val)))) {
+			CA_PRINT("Failed to read \"__libc_version\" from the debugee.\n");
+			return version;
+		}
+		version = buf;
+	}
+	return version;
+}
+
 /*
  * Get the glibc version of the debugee
  */
 static bool get_glibc_version(void)
 {
-	const size_t bufsz = 64;
-	char buf[bufsz];
-	struct symbol *sym;
-
-	sym = lookup_static_symbol("__libc_version", VAR_DOMAIN).symbol;
-	if (sym == NULL) {
-		CA_PRINT("Cannot get the \"__libc_version\" from the debugee, read it from the host machine. This might not be accurate.\n");
-		const char* version = gnu_get_libc_version();
-		int len = strlen(version);
-		if (len >= bufsz)
-			return false;
-
-		strncpy(buf, version, len+1);
-
-	} else {
-		struct value *val = value_of_variable(sym, 0);
-		if (!read_memory_wrapper(NULL,  value_address(val), buf, TYPE_LENGTH(value_type(val)))) {
-			CA_PRINT("Failed to read \"__libc_version\" from the debugee.\n");
-			return false;
-		}
-	}
-
-	int len = strlen(buf);
-	for (int i=0; i<len; i++)
+	std::string version = read_libc_version();
+	if (version.empty())
+		return false;
+	auto dot_idx = version.find_first_of('.');
+	glibc_ver_major = atoi(version.substr(0, dot_idx).c_str());
+	glibc_ver_minor = atoi(version.substr(dot_idx+1).c_str());
+	if (glibc_ver_major != 2)
 	{
-		if (buf[i] == '.')
-		{
-			buf[i] = '\0';
-			glibc_ver_major = atoi(&buf[0]);
-			glibc_ver_minor = atoi(&buf[i+1]);
-			if (glibc_ver_major != 2)
-			{
-				CA_PRINT("This version of glibc %d.%d is not tested, please contact the owner\n",
-						glibc_ver_major, glibc_ver_minor);
-				return false;
-			}
-			return true;
-		}
+		CA_PRINT("This version of glibc %d.%d is not tested, please contact the owner\n",
+				glibc_ver_major, glibc_ver_minor);
+		return false;
 	}
 
-	return false;
+	return true;
 }
 
 /*

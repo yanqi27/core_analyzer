@@ -27,7 +27,7 @@ if [ ! -d $gdb_to_install ]
 then
     tar -xvf $tar_gdb
 fi
-cp -rLv $PROJECT_FOLDER/gdbplus/gdb-$gdb_version/gdb $build_folder/gdb-$gdb_version/
+cp -rLvp $PROJECT_FOLDER/gdbplus/gdb-$gdb_version/gdb $build_folder/gdb-$gdb_version/
 
 cd $gdb_to_install
 mkdir -p build

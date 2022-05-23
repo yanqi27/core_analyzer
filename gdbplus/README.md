@@ -13,6 +13,7 @@ these functions may be found in the project's website:
 http://core-analyzer.sourceforge.net/
 
 ### How to Build
+
 The source bundle includes an executable "gdb" under `bin` directory. This is for
 evaluation and testing purpose. It is recommended to build your own executable
 in your environment. You will need to download the corresponding verion of gdb
@@ -23,6 +24,9 @@ source. Then build as usual.
 $ ./configure --with-python --prefix=/usr/local
 $ make
 ```
+
+There is a `build_gdb.sh` in the root folder, you can directly build the custom gdb by running the script.
+(The version gdb-1824 is not supported as it has a different layout than others.)
 
 ### Useful Command Options
 

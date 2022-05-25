@@ -7,6 +7,7 @@ FROM mcr.microsoft.com/vscode/devcontainers/cpp:0-${VARIANT}
 # [Optional] Uncomment this section to install additional packages.
 RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     && apt install -y texinfo \
+    && apt install -y libgmp-dev \
     && apt install -y build-essential \
     && apt install -y wget \
     && apt install -y python-dev \

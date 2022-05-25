@@ -289,7 +289,6 @@ switch_heap_command(const char *arg, int from_tty)
 void
 _initialize_heapcmd (void)
 {
-	register_heap_managers(); // todo: find a better place to register heaps. maybe update_memory_segments_and_heaps is better than here.
 	add_cmd("ref", class_info, ref_command, _("Search for references to a given object.\nref <addr_exp>\nref [/thread or /t] <addr_exp> <size> [level]"), &cmdlist);
 	add_cmd("obj", class_info, obj_command, _("Search for object and reference to object of the same type as the input expression\nobj <type|variable>"), &cmdlist);
 	add_cmd("shrobj", class_info, shrobj_command, _("Find objects that currently referenced from multiple threads\nshrobj [tid0] [tid1] [...]"), &cmdlist);

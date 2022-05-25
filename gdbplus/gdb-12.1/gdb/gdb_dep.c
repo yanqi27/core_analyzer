@@ -379,8 +379,6 @@ build_segments(void)
 bool
 update_memory_segments_and_heaps(void)
 {
-	bool rc = true;
-
 	/* reset internal quit flag */
 	g_quit = false;
 
@@ -422,9 +420,7 @@ update_memory_segments_and_heaps(void)
 		return false;
 	}
 	/* Probe for heap segments */
-	CA_HEAP->init_heap();
-
-	return rc;
+    return init_heap_managers();
 }
 
 int

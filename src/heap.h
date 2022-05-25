@@ -64,12 +64,29 @@ extern std::map<std::string, CoreAnalyzerHeapInterface*> gCoreAnalyzerHeaps;
 
 extern CoreAnalyzerHeapInterface* gCAHeap;
 #define CA_HEAP gCAHeap
-extern void register_heap_managers();
 
-extern CoreAnalyzerHeapInterface* get_pt_malloc_heap_manager();
-extern CoreAnalyzerHeapInterface* get_pt_malloc_2_35_heap_manager();
-extern CoreAnalyzerHeapInterface* get_tc_malloc_heap_manager();
-extern CoreAnalyzerHeapInterface* get_mscrt_malloc_heap_manager();
+/*
+* This function is called at bootstrap or when target is changed
+* and after target memory layout is scanned.
+*/
+extern bool init_heap_managers();
+
+/*
+* Individual heap manager calls this function in its init function
+* to declare its name, heap interface, and whether it detects its heap data in the target.
+*/
+extern void register_heap_manager(std::string, CoreAnalyzerHeapInterface*, bool);
+
+/*
+* Each heap manager implements an init function
+* Maybe we don't need to explicitly expose them. We may scape these functions at compile time
+* the same way gdb commands initializers are collected.
+*/
+extern void _init_pt_malloc();
+extern void _init_pt_malloc_2_35();
+extern void _init_tc_malloc();
+extern void _init_mscrt_malloc();
+
 extern std::string get_supported_heaps();
 
 extern struct inuse_block* build_inuse_heap_blocks(unsigned long*);

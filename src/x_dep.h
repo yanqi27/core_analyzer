@@ -29,6 +29,10 @@ struct ca_debug_context
 extern bool update_memory_segments_and_heaps(void);
 
 extern bool inferior_memory_read (address_t addr, void* buffer, size_t sz);
+extern void ca_switch_to_thread(struct thread_info *info);
+extern int ca_num_fields(struct type *type);
+extern const char *ca_field_name(struct type *type, int i);
+extern bool ca_glibc_version(int *major, int *minor);
 
 extern void print_register_ref(const struct object_reference* ref);
 extern void print_stack_ref(const struct object_reference* ref);

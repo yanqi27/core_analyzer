@@ -20,7 +20,7 @@ static std::vector<void(*)()> gHeapInitFuncs = {
 	#ifdef WIN32
     _init_mscrt_malloc,
 	#else
-    _init_pt_malloc,
+    _init_pt_malloc_2_31,
     _init_pt_malloc_2_35,
     //_init_tc_malloc,
     #endif
@@ -37,6 +37,7 @@ bool init_heap_managers() {
         CA_HEAP->init_heap();
         return true;
     }
+	CA_PRINT("failed to parse heap data\n");
     return false;
 }
 
@@ -147,6 +148,11 @@ char ca_help_msg[] = "Commands of core_analyzer " CA_VERSION_STRING "\n"
  */
 bool heap_command_impl(const char* args)
 {
+	if (!CA_HEAP) {
+		CA_PRINT("CA is not initialized.\n");
+		return false;
+	}
+
 	bool rc = true;
 
 	address_t addr = 0;
@@ -339,6 +345,11 @@ bool heap_command_impl(const char* args)
  */
 bool ref_command_impl(const char* args)
 {
+	if (!CA_HEAP) {
+		CA_PRINT("CA is not initialized.\n");
+		return false;
+	}
+
 	int rc;
 	bool threadref = false;
 	address_t addr = 0;
@@ -561,6 +572,11 @@ bool segment_command_impl(const char* args)
  */
 bool pattern_command_impl(const char* args)
 {
+	if (!CA_HEAP) {
+		CA_PRINT("CA is not initialized.\n");
+		return false;
+	}
+
 	address_t lo = 0, hi = 0;
 	// Parse user input options
 	// argument is in the form of <start> <end>
@@ -1312,7 +1328,6 @@ leak_check_out:
  */
 void display_mem_histogram(const char* prefix)
 {
-
 	if (!g_mem_hist.num_buckets || !g_mem_hist.bucket_sizes
 		|| !g_mem_hist.inuse_cnt || !g_mem_hist.inuse_bytes
 		|| !g_mem_hist.free_cnt || !g_mem_hist.free_bytes)

@@ -6,15 +6,12 @@
  */
 #include <assert.h>
 
+#include "x_dep.h"
 #include "segment.h"
 #include "heap_ptmalloc.h"
 
 #pragma GCC diagnostic ignored "-Wint-to-pointer-cast"
 
-// Safe-Linking
-#define PROTECT_PTR(pos, ptr) \
-  ((__typeof (ptr)) ((((size_t) pos) >> 12) ^ ((size_t) ptr)))
-#define REVEAL_PTR(ptr_addr, ptr)  PROTECT_PTR (ptr_addr, ptr)
 /***************************************************************************
 * Implementation specific data structures
 ***************************************************************************/
@@ -73,8 +70,7 @@ struct heap_info {
   struct heap_info*  prev;	/* Previous heap. */
   size_t size;				/* Current size in bytes. */
   size_t mprotect_size;		/* pad in glibc 2.3 */
-  size_t pagesize;
-  char pad[-3 * SIZE_SZ & MALLOC_ALIGN_MASK];	/* this is 0 for 64bit */
+  char pad[-6 * SIZE_SZ & MALLOC_ALIGN_MASK];	/* this is 0 for 64bit */
 };
 
 #define heap_for_ptr(ptr) \
@@ -656,7 +652,6 @@ static bool walk_inuse_blocks(struct inuse_block* opBlocks, unsigned long* opCou
 	return true;
 }
 
-
 static CoreAnalyzerHeapInterface sPtMallHeapManager = {
    heap_version,
    init_heap,
@@ -668,13 +663,13 @@ static CoreAnalyzerHeapInterface sPtMallHeapManager = {
    walk_inuse_blocks,
 };
 
-void _init_pt_malloc_2_35() {
+void _init_pt_malloc_2_31() {
     bool my_heap = false;
     if (ca_glibc_version(&glibc_ver_major, &glibc_ver_minor)) {
-        if (glibc_ver_major == 2 && glibc_ver_minor >= 35)
+        if (glibc_ver_major == 2 && glibc_ver_minor <= 31)
             my_heap = true;
     }
-    return register_heap_manager("pt 2.35", &sPtMallHeapManager, my_heap);
+    return register_heap_manager("pt", &sPtMallHeapManager, my_heap);
 }
 /***************************************************************************
 * Ptmalloc Helper Functions
@@ -932,7 +927,7 @@ thread_tcache (struct thread_info *info, void *data)
 	address_t addr;
 	unsigned int i;
 
-	switch_to_thread (info);
+	ca_switch_to_thread (info);
 
 	tcsym = lookup_symbol("tcache", 0, VAR_DOMAIN, 0).symbol;
 	if (tcsym == NULL) {
@@ -978,10 +973,8 @@ thread_tcache (struct thread_info *info, void *data)
 				CA_PRINT("Failed to walk tcache.entries[%d]\n", i);
 				return false;
 			}
-			entry = REVEAL_PTR((address_t)entry, next_entry.next);
+			entry = next_entry.next;
 		}
-		// TODO
-		// tcache.count[i] should equal the size of the list tcache.entries[i]
 	}
 
 	return 0;
@@ -990,16 +983,15 @@ thread_tcache (struct thread_info *info, void *data)
 static bool
 build_tcache(void)
 {
-	struct thread_info* old;
 	/* Traverse all threads for thread-local variables `tcache` */
 	/* ptmalloc: static __thread tcache_perthread_struct *tcache */
 
 	/* remember current thread */
-	old = inferior_thread();
+	struct thread_info *old = inferior_thread();
 	/* switch to all threads */
 	iterate_over_threads(thread_tcache, NULL);
 	/* resume the old thread */
-	switch_to_thread (old);
+	ca_switch_to_thread (old);
 
 	return true;
 }
@@ -1168,10 +1160,8 @@ static struct ca_arena* build_arena(address_t arena_vaddr, enum HEAP_TYPE type)
 				while (chunk_vaddr) {
 					struct malloc_chunk fast_chunk;
 
-					if (!read_memory_wrapper(NULL, chunk_vaddr, &fast_chunk, mchunk_sz)) {
-						CA_PRINT("Failed to read fast chunk from target at 0x%lx\n", chunk_vaddr);
+					if (!read_memory_wrapper(NULL, chunk_vaddr, &fast_chunk, mchunk_sz))
 						break;
-					}
 					if (chunksize(&fast_chunk) > mparams.MAX_FAST_SIZE) {
 						CA_PRINT("Invalid fast chunk 0x%lx, its size %ld is "
 						    "larger than MAX_FAST_SIZE %ld\n", chunk_vaddr, chunksize(&fast_chunk),
@@ -1179,8 +1169,7 @@ static struct ca_arena* build_arena(address_t arena_vaddr, enum HEAP_TYPE type)
 						break;
 					}
 					add_cached_chunk((mchunkptr)chunk_vaddr);
-					address_t fd_addr = chunk_vaddr + offsetof(struct malloc_chunk, fd);
-					chunk_vaddr = (address_t)REVEAL_PTR(fd_addr, fast_chunk.fd);
+					chunk_vaddr = (address_t)(fast_chunk.fd);
 				}
 			}
 		}
@@ -1864,8 +1853,7 @@ static bool check_bin_and_fastbin(struct ca_arena* arena)
 				break;
 			}
 			chunk_prev_vaddr = chunk_vaddr;
-			address_t fd_addr = chunk_vaddr + offsetof(struct malloc_chunk, fd);
-			chunk_vaddr = (address_t)REVEAL_PTR(fd_addr, fast_chunk.fd);
+			chunk_vaddr = (address_t)(fast_chunk.fd);
 		}
 	}
 
@@ -2123,9 +2111,8 @@ type_field_name2no(struct type *type, const char *field_name)
 
 	type = check_typedef (type);
 
-	for (n = 0; n < type->num_fields(); n++) {
-		const char* name = type->field(n).name();
-		if (name && strcmp (field_name, name) == 0)
+	for (n = 0; n < ca_num_fields(type); n++) {
+		if (strcmp (field_name, ca_field_name(type, n)) == 0)
 			return n;
 	}
 	return -1;

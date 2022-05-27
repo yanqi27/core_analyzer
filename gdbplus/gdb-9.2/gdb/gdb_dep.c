@@ -4,6 +4,7 @@
  *  Created on: Dec 13, 2011
  *      Author: myan
  */
+#include <gnu/libc-version.h>
 #include "segment.h"
 #include "heap.h"
 #include "search.h"
@@ -46,6 +47,71 @@ inferior_memory_read (address_t addr, void* buffer, size_t sz)
 		return true;
 	else
 		return false;
+}
+
+void ca_switch_to_thread(struct thread_info *info)
+{
+    switch_to_thread (info->ptid);
+}
+
+int ca_num_fields(struct type *type)
+{
+    return TYPE_NFIELDS (type);
+}
+
+const char *ca_field_name(struct type *type, int i)
+{
+    return TYPE_FIELD_NAME (type, i);
+}
+
+/*
+ * Get the glibc version of the debugee
+ */
+bool ca_glibc_version(int *major, int *minor)
+{
+	if (!major || !minor)
+		return false;
+
+	const size_t bufsz = 64;
+	char buf[bufsz];
+	struct symbol *sym;
+
+	memset(buf, 0, bufsz);
+	sym = lookup_static_symbol("__libc_version", VAR_DOMAIN).symbol;
+	if (sym == NULL) {
+		CA_PRINT("Cannot get the \"__libc_version\" from the debugee, read it from the host machine. This might not be accurate.\n");
+		const char* version = gnu_get_libc_version();
+		int len = strlen(version);
+		if (len >= bufsz)
+			return false;
+
+		strncpy(buf, version, len+1);
+
+	} else {
+		struct value *val = value_of_variable(sym, 0);
+		const gdb_byte *content = value_contents(val);
+		memcpy(buf, content, TYPE_LENGTH(value_type(val)));
+	}
+
+	int len = strlen(buf);
+	for (int i=0; i<len; i++)
+	{
+		if (buf[i] == '.')
+		{
+			buf[i] = '\0';
+			*major = atoi(&buf[0]);
+			*minor = atoi(&buf[i+1]);
+			if (*major != 2)
+			{
+				CA_PRINT("This version of glibc %d.%d is not tested, please contact the owner\n",
+						*major, *minor);
+				return false;
+			}
+			return true;
+		}
+	}
+
+	return false;
 }
 
 static int

@@ -2123,8 +2123,8 @@ type_field_name2no(struct type *type, const char *field_name)
 
 	type = check_typedef (type);
 
-	for (n = 0; n < type->num_fields(); n++) {
-		const char* name = type->field(n).name();
+	for (n = 0; n < ca_num_fields(type); n++) {
+		const char* name = ca_field_name(type, n);
 		if (name && strcmp (field_name, name) == 0)
 			return n;
 	}

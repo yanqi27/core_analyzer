@@ -82,6 +82,7 @@ extern void register_heap_manager(std::string, CoreAnalyzerHeapInterface*, bool)
 * Maybe we don't need to explicitly expose them. We may scape these functions at compile time
 * the same way gdb commands initializers are collected.
 */
+extern void _init_pt_malloc_2_27();
 extern void _init_pt_malloc_2_31();
 extern void _init_pt_malloc_2_35();
 extern void _init_tc_malloc();

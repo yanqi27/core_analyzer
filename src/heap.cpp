@@ -20,6 +20,7 @@ static std::vector<void(*)()> gHeapInitFuncs = {
 	#ifdef WIN32
     _init_mscrt_malloc,
 	#else
+    _init_pt_malloc_2_27,
     _init_pt_malloc_2_31,
     _init_pt_malloc_2_35,
     //_init_tc_malloc,
@@ -57,6 +58,8 @@ std::string get_supported_heaps() {
 		{
 			lSupportedHeaps += ", ";
 		}
+		if (itr.second == gCAHeap)
+			lSupportedHeaps += "(current)";
 		lSupportedHeaps += itr.first;
 		first_entry = false;
 	}

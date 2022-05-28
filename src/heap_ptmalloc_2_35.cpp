@@ -20,6 +20,22 @@
 ***************************************************************************/
 
 /*
+*   Per-thread cache is added since GNU C Library version 2.26
+*/
+# define TCACHE_MAX_BINS		64
+
+typedef struct tcache_entry
+{
+  struct tcache_entry *next;
+} tcache_entry;
+
+typedef struct tcache_perthread_struct
+{
+  uint16_t counts[TCACHE_MAX_BINS];
+  tcache_entry *entries[TCACHE_MAX_BINS];
+} tcache_perthread_struct;
+
+/*
  * Uniformed data structure to hide the differences across ptmalloc versions;
  * Only useful members are included
  */
@@ -671,10 +687,10 @@ static CoreAnalyzerHeapInterface sPtMallHeapManager = {
 void _init_pt_malloc_2_35() {
     bool my_heap = false;
     if (ca_glibc_version(&glibc_ver_major, &glibc_ver_minor)) {
-        if (glibc_ver_major == 2 && glibc_ver_minor >= 35)
+        if (glibc_ver_major == 2 && glibc_ver_minor >= 32 && glibc_ver_minor <= 35)
             my_heap = true;
     }
-    return register_heap_manager("pt 2.35", &sPtMallHeapManager, my_heap);
+    return register_heap_manager("pt 2.32-2.35", &sPtMallHeapManager, my_heap);
 }
 /***************************************************************************
 * Ptmalloc Helper Functions

@@ -19,6 +19,10 @@ A power tool to debug memory issues. By parsing the memory image of a process's 
 
 The tool supports x86_64 architecture including Windows/RedHat/SUSE/MacOSX. It integrates with gdb and Windbg debuggers and supports gdb's python extension.
 
+# How to use it
+To use the core analyzer, you need to build it. Just run the `./build_gdb.sh`, it will build the gdb with core analyzer support. You can modified the `build_gdb.sh` to configure how the gdb is built and which version you would like to build.
+
+
 For more information, please see the project's web site http://core-analyzer.sourceforge.net/
 
 # Tested Platforms

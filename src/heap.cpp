@@ -16,7 +16,7 @@ CoreAnalyzerHeapInterface* gCAHeap;
 
 std::map<std::string, CoreAnalyzerHeapInterface*> gCoreAnalyzerHeaps;
 
-static std::vector<void(*)()> gHeapInitFuncs = {
+static std::vector<void(*)()> gHeapRegistrationFuncs = {
 	#ifdef WIN32
     register_mscrt_malloc,
 	#else
@@ -31,7 +31,7 @@ bool init_heap_managers() {
     gCoreAnalyzerHeaps.clear();
     gCAHeap = nullptr;
 
-    for (auto f: gHeapInitFuncs)
+    for (auto f: gHeapRegistrationFuncs)
         f();
 
     if (gCAHeap) {

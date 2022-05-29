@@ -237,8 +237,8 @@ CoreAnalyzerHeapInterface sMscrtMallocHeap = {
    get_biggest_blocks,
    walk_inuse_blocks,
 };
-CoreAnalyzerHeapInterface* get_mscrt_malloc_heap_manager() {
-	return &sMscrtMallocHeap;
+void register_mscrt_malloc() {
+    register_heap_manager(HeapManagerMscrtMalloc, &sMscrtMallocHeap, true);
 }
 /////////////////////////////////////////////////////
 // Implementation of heap walk

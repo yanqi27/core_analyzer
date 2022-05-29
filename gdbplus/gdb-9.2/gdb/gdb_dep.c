@@ -48,6 +48,37 @@ inferior_memory_read (address_t addr, void* buffer, size_t sz)
 		return false;
 }
 
+void ca_switch_to_thread(struct thread_info *info)
+{
+    switch_to_thread (info->ptid);
+}
+
+int ca_num_fields(struct type *type)
+{
+    return TYPE_NFIELDS (type);
+}
+
+const char *ca_field_name(struct type *type, int i)
+{
+    return TYPE_FIELD_NAME (type, i);
+}
+
+bool get_gv_value(const char *varname, char *buf, size_t bufsz)
+{
+	struct symbol *sym;
+
+	sym = lookup_static_symbol(varname, VAR_DOMAIN).symbol;
+	if (sym) {
+		struct value *val = value_of_variable(sym, 0);
+		if (bufsz >= TYPE_LENGTH(value_type(val))) {
+			const gdb_byte *content = value_contents(val);
+			memcpy(buf, content, TYPE_LENGTH(value_type(val)));
+			return true;
+		}
+	}
+	return false;
+}
+
 static int
 thread_callback (struct thread_info *info, void *data)
 {
@@ -382,8 +413,6 @@ build_segments(void)
 bool
 update_memory_segments_and_heaps(void)
 {
-	bool rc = true;
-
 	/* reset internal quit flag */
 	g_quit = false;
 
@@ -425,9 +454,7 @@ update_memory_segments_and_heaps(void)
 		return false;
 	}
 	/* Probe for heap segments */
-	CA_HEAP->init_heap();
-
-	return rc;
+    return init_heap_managers();
 }
 
 int

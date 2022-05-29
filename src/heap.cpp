@@ -14,6 +14,14 @@
 
 CoreAnalyzerHeapInterface* gCAHeap;
 
+#define ENSURE_CA_HEAP()							\
+	do {											\
+		if (!CA_HEAP) {								\
+			CA_PRINT("No heap manager is detedted or selected.\n");	\
+			return false;							\
+		}											\
+	} while (0)
+
 std::map<std::string, CoreAnalyzerHeapInterface*> gCoreAnalyzerHeaps;
 
 static std::vector<void(*)()> gHeapRegistrationFuncs = {
@@ -151,10 +159,7 @@ char ca_help_msg[] = "Commands of core_analyzer " CA_VERSION_STRING "\n"
  */
 bool heap_command_impl(const char* args)
 {
-	if (!CA_HEAP) {
-		CA_PRINT("CA is not initialized.\n");
-		return false;
-	}
+	ENSURE_CA_HEAP();
 
 	bool rc = true;
 
@@ -348,10 +353,7 @@ bool heap_command_impl(const char* args)
  */
 bool ref_command_impl(const char* args)
 {
-	if (!CA_HEAP) {
-		CA_PRINT("CA is not initialized.\n");
-		return false;
-	}
+	ENSURE_CA_HEAP();
 
 	int rc;
 	bool threadref = false;
@@ -575,10 +577,7 @@ bool segment_command_impl(const char* args)
  */
 bool pattern_command_impl(const char* args)
 {
-	if (!CA_HEAP) {
-		CA_PRINT("CA is not initialized.\n");
-		return false;
-	}
+	ENSURE_CA_HEAP();
 
 	address_t lo = 0, hi = 0;
 	// Parse user input options

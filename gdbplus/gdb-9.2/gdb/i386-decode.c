@@ -155,11 +155,11 @@ struct dis_private {
 	jmp_buf bailout;
 };
 
-enum address_mode {
+enum my_address_mode {
 	mode_16bit, mode_32bit, mode_64bit
 };
 
-enum address_mode address_mode;
+enum my_address_mode my_address_mode;
 
 /* Flags for the prefixes for the current instruction.  See below.  */
 static int prefixes;
@@ -6646,7 +6646,7 @@ static int ckprefix(void) {
 		case 0x4d:
 		case 0x4e:
 		case 0x4f:
-			if (address_mode == mode_64bit)
+			if (my_address_mode == mode_64bit)
 				newrex = *codep;
 			else
 				return 1;
@@ -6806,7 +6806,7 @@ prefix_name(int pref, int sizeflag) {
 	case 0x66:
 		return (sizeflag & DFLAG) ? "data16" : "data32";
 	case 0x67:
-		if (address_mode == mode_64bit)
+		if (my_address_mode == mode_64bit)
 			return (sizeflag & AFLAG) ? "addr32" : "addr64";
 		else
 			return (sizeflag & AFLAG) ? "addr16" : "addr32";
@@ -6958,7 +6958,7 @@ get_valid_dis386(const struct dis386 *dp, disassemble_info *info) {
 		break;
 
 	case USE_X86_64_TABLE:
-		vindex = address_mode == mode_64bit ? 1 : 0;
+		vindex = my_address_mode == mode_64bit ? 1 : 0;
 		dp = &x86_64_table[dp->op[1].bytemode][vindex];
 		break;
 
@@ -7013,11 +7013,11 @@ get_valid_dis386(const struct dis386 *dp, disassemble_info *info) {
 		}
 		codep++;
 		vex.w = *codep & 0x80;
-		if (vex.w && address_mode == mode_64bit)
+		if (vex.w && my_address_mode == mode_64bit)
 			rex |= REX_W;
 
 		vex.register_specifier = (~(*codep >> 3)) & 0xf;
-		if (address_mode != mode_64bit && vex.register_specifier > 0x7) {
+		if (my_address_mode != mode_64bit && vex.register_specifier > 0x7) {
 			dp = &bad_opcode;
 			return dp;
 		}
@@ -7070,11 +7070,11 @@ get_valid_dis386(const struct dis386 *dp, disassemble_info *info) {
 		}
 		codep++;
 		vex.w = *codep & 0x80;
-		if (vex.w && address_mode == mode_64bit)
+		if (vex.w && my_address_mode == mode_64bit)
 			rex |= REX_W;
 
 		vex.register_specifier = (~(*codep >> 3)) & 0xf;
-		if (address_mode != mode_64bit && vex.register_specifier > 0x7) {
+		if (my_address_mode != mode_64bit && vex.register_specifier > 0x7) {
 			dp = &bad_opcode;
 			return dp;
 		}
@@ -7115,7 +7115,7 @@ get_valid_dis386(const struct dis386 *dp, disassemble_info *info) {
 		rex = (*codep & 0x80) ? 0 : REX_R;
 
 		vex.register_specifier = (~(*codep >> 3)) & 0xf;
-		if (address_mode != mode_64bit && vex.register_specifier > 0x7) {
+		if (my_address_mode != mode_64bit && vex.register_specifier > 0x7) {
 			dp = &bad_opcode;
 			return dp;
 		}
@@ -7174,7 +7174,7 @@ get_valid_dis386(const struct dis386 *dp, disassemble_info *info) {
 
 static void get_sib(disassemble_info *info) {
 	/* If modrm.mod == 3, operand must be register.  */
-	if (need_modrm && address_mode != mode_16bit && modrm.mod != 3
+	if (need_modrm && my_address_mode != mode_16bit && modrm.mod != 3
 			&& modrm.rm == 4) {
 		FETCH_DATA(info, codep + 2);
 		sib.index = (codep[1] >> 3) & 7;
@@ -7210,9 +7210,9 @@ static int print_insn(bfd_vma pc, struct decode_control_block* decode_cb)
 			|| info->mach == bfd_mach_x64_32_intel_syntax
 			|| info->mach == bfd_mach_x64_32 || info->mach == bfd_mach_l1om
 			|| info->mach == bfd_mach_l1om_intel_syntax)
-		address_mode = mode_64bit;
+		my_address_mode = mode_64bit;
 	else
-		address_mode = mode_32bit;
+		my_address_mode = mode_32bit;
 
 	if (intel_syntax == (char) -1)
 		intel_syntax = (info->mach == bfd_mach_i386_i386_intel_syntax
@@ -7234,13 +7234,13 @@ static int print_insn(bfd_vma pc, struct decode_control_block* decode_cb)
 
 	for (p = info->disassembler_options; p != NULL;) {
 		if (CONST_STRNEQ (p, "x86-64")) {
-			address_mode = mode_64bit;
+			my_address_mode = mode_64bit;
 			priv.orig_sizeflag = AFLAG | DFLAG;
 		} else if (CONST_STRNEQ (p, "i386")) {
-			address_mode = mode_32bit;
+			my_address_mode = mode_32bit;
 			priv.orig_sizeflag = AFLAG | DFLAG;
 		} else if (CONST_STRNEQ (p, "i8086")) {
-			address_mode = mode_16bit;
+			my_address_mode = mode_16bit;
 			priv.orig_sizeflag = 0;
 		} else if (CONST_STRNEQ (p, "intel")) {
 			intel_syntax = 1;
@@ -7251,7 +7251,7 @@ static int print_insn(bfd_vma pc, struct decode_control_block* decode_cb)
 			if (CONST_STRNEQ (p + 3, "-mnemonic"))
 				intel_mnemonic = 0;
 		} else if (CONST_STRNEQ (p, "addr")) {
-			if (address_mode == mode_64bit) {
+			if (my_address_mode == mode_64bit) {
 				if (p[4] == '3' && p[5] == '2')
 					priv.orig_sizeflag &= ~AFLAG;
 				else if (p[4] == '6' && p[5] == '4')
@@ -7406,7 +7406,7 @@ static int print_insn(bfd_vma pc, struct decode_control_block* decode_cb)
 	if (prefixes & PREFIX_ADDR) {
 		sizeflag ^= AFLAG;
 		if (dp->op[2].bytemode != loop_jcxz_mode || intel_syntax) {
-			if ((sizeflag & AFLAG) || address_mode == mode_64bit)
+			if ((sizeflag & AFLAG) || my_address_mode == mode_64bit)
 				all_prefixes[last_addr_prefix] = ADDR32_PREFIX;
 			else
 				all_prefixes[last_addr_prefix] = ADDR16_PREFIX;
@@ -7862,7 +7862,7 @@ static int putop(const char *in_template, int sizeflag) {
 					break;
 				}
 
-				if (address_mode == mode_64bit && !(prefixes & PREFIX_ADDR)) {
+				if (my_address_mode == mode_64bit && !(prefixes & PREFIX_ADDR)) {
 					*obufp++ = 'a';
 					*obufp++ = 'b';
 					*obufp++ = 's';
@@ -7909,7 +7909,7 @@ static int putop(const char *in_template, int sizeflag) {
 				*obufp++ = 'w';
 			break;
 		case 'E': /* For jcxz/jecxz */
-			if (address_mode == mode_64bit) {
+			if (my_address_mode == mode_64bit) {
 				if (sizeflag & AFLAG)
 					*obufp++ = 'r';
 				else
@@ -7923,9 +7923,9 @@ static int putop(const char *in_template, int sizeflag) {
 				break;
 			if ((prefixes & PREFIX_ADDR) || (sizeflag & SUFFIX_ALWAYS)) {
 				if (sizeflag & AFLAG)
-					*obufp++ = address_mode == mode_64bit ? 'q' : 'l';
+					*obufp++ = my_address_mode == mode_64bit ? 'q' : 'l';
 				else
-					*obufp++ = address_mode == mode_64bit ? 'l' : 'w';
+					*obufp++ = my_address_mode == mode_64bit ? 'l' : 'w';
 				used_prefixes |= (prefixes & PREFIX_ADDR);
 			}
 			break;
@@ -7975,7 +7975,7 @@ static int putop(const char *in_template, int sizeflag) {
 		case 'Z':
 			if (intel_syntax)
 				break;
-			if (address_mode == mode_64bit && (sizeflag & SUFFIX_ALWAYS)) {
+			if (my_address_mode == mode_64bit && (sizeflag & SUFFIX_ALWAYS)) {
 				*obufp++ = 'q';
 				g_op_size = 8;
 				break;
@@ -8020,7 +8020,7 @@ static int putop(const char *in_template, int sizeflag) {
 				used_prefixes |= (prefixes & PREFIX_DATA);
 			break;
 		case 'T':
-			if (!intel_syntax && address_mode == mode_64bit
+			if (!intel_syntax && my_address_mode == mode_64bit
 					&& (sizeflag & DFLAG)) {
 				*obufp++ = 'q';
 				g_op_size = 8;
@@ -8065,7 +8065,7 @@ static int putop(const char *in_template, int sizeflag) {
 		case 'U':
 			if (intel_syntax)
 				break;
-			if (address_mode == mode_64bit && (sizeflag & DFLAG)) {
+			if (my_address_mode == mode_64bit && (sizeflag & DFLAG)) {
 				if (modrm.mod != 3 || (sizeflag & SUFFIX_ALWAYS))
 				{
 					*obufp++ = 'q';
@@ -8145,7 +8145,7 @@ static int putop(const char *in_template, int sizeflag) {
 			if (l == 0 && len == 1) {
 				if (intel_syntax)
 					break;
-				if (address_mode == mode_64bit && (sizeflag & DFLAG)) {
+				if (my_address_mode == mode_64bit && (sizeflag & DFLAG)) {
 					if (sizeflag & SUFFIX_ALWAYS)
 					{
 						*obufp++ = 'q';
@@ -8197,7 +8197,7 @@ static int putop(const char *in_template, int sizeflag) {
 					break;
 				}
 
-				if (address_mode == mode_64bit && !(prefixes & PREFIX_ADDR)) {
+				if (my_address_mode == mode_64bit && !(prefixes & PREFIX_ADDR)) {
 					*obufp++ = 'a';
 					*obufp++ = 'b';
 					*obufp++ = 's';
@@ -8327,7 +8327,7 @@ static void OP_indirE(int bytemode, int sizeflag) {
 }
 
 static void print_operand_value(char *buf, int hex, bfd_vma disp) {
-	if (address_mode == mode_64bit) {
+	if (my_address_mode == mode_64bit) {
 		if (hex) {
 			char tmp[30];
 			int i;
@@ -8385,7 +8385,7 @@ static void print_displacement(char *buf, bfd_vma disp) {
 
 		/* Check for possible overflow.  */
 		if (val < 0) {
-			switch (address_mode) {
+			switch (my_address_mode) {
 			case mode_64bit:
 				strcpy(buf + j, "0x8000000000000000");
 				break;
@@ -8423,7 +8423,7 @@ static void intel_operand_size(int bytemode, int sizeflag) {
 		oappend("WORD PTR ");
 		break;
 	case stack_v_mode:
-		if (address_mode == mode_64bit && (sizeflag & DFLAG)) {
+		if (my_address_mode == mode_64bit && (sizeflag & DFLAG)) {
 			oappend("QWORD PTR ");
 			break;
 		}
@@ -8470,7 +8470,7 @@ static void intel_operand_size(int bytemode, int sizeflag) {
 		oappend("QWORD PTR ");
 		break;
 	case m_mode:
-		if (address_mode == mode_64bit)
+		if (my_address_mode == mode_64bit)
 			oappend("QWORD PTR ");
 		else
 			oappend("DWORD PTR ");
@@ -8588,11 +8588,11 @@ static void OP_E_register(int bytemode, int sizeflag) {
 		reg_size = 8;
 		break;
 	case m_mode:
-		names = address_mode == mode_64bit ? names64 : names32;
-		reg_size = address_mode == mode_64bit ? 8 : 4;
+		names = my_address_mode == mode_64bit ? names64 : names32;
+		reg_size = my_address_mode == mode_64bit ? 8 : 4;
 		break;
 	case stack_v_mode:
-		if (address_mode == mode_64bit && (sizeflag & DFLAG)) {
+		if (my_address_mode == mode_64bit && (sizeflag & DFLAG)) {
 			names = names64;
 			reg_size = 8;
 			break;
@@ -8652,7 +8652,7 @@ static void OP_E_memory(int bytemode, int sizeflag) {
 		intel_operand_size(bytemode, sizeflag);
 	append_seg();
 
-	if ((sizeflag & AFLAG) || address_mode == mode_64bit) {
+	if ((sizeflag & AFLAG) || my_address_mode == mode_64bit) {
 		/* 32/64 bit address mode */
 		int havedisp;
 		int havesib;
@@ -8685,7 +8685,7 @@ static void OP_E_memory(int bytemode, int sizeflag) {
 		case 0:
 			if (base == 5) {
 				havebase = 0;
-				if (address_mode == mode_64bit && !havesib)
+				if (my_address_mode == mode_64bit && !havesib)
 					riprel = 1;
 				disp = get32s();
 			}
@@ -8704,7 +8704,7 @@ static void OP_E_memory(int bytemode, int sizeflag) {
 		/* In 32bit mode, we need index register to tell [offset] from
 		 [eiz*1 + offset].  */
 		needindex = (havesib && !havebase && !haveindex
-				&& address_mode == mode_32bit);
+				&& my_address_mode == mode_32bit);
 		havedisp = (havebase || needindex
 				|| (havesib && (haveindex || scale != 0)));
 
@@ -8739,7 +8739,7 @@ static void OP_E_memory(int bytemode, int sizeflag) {
 		{
 			if (havebase)
 			{
-				if (address_mode == mode_64bit && (sizeflag & AFLAG))
+				if (my_address_mode == mode_64bit && (sizeflag & AFLAG))
 				{
 					g_operands[g_num_operand].mem.base_reg.name = names64[rbase];
 					g_operands[g_num_operand].mem.base_reg.size = 8;
@@ -8760,7 +8760,7 @@ static void OP_E_memory(int bytemode, int sizeflag) {
 				{
 					if (haveindex)
 					{
-						if (address_mode == mode_64bit	&& (sizeflag & AFLAG))
+						if (my_address_mode == mode_64bit	&& (sizeflag & AFLAG))
 						{
 							g_operands[g_num_operand].mem.index_reg.name = names64[vindex];
 							g_operands[g_num_operand].mem.index_reg.size = 8;
@@ -8774,7 +8774,7 @@ static void OP_E_memory(int bytemode, int sizeflag) {
 					}
 					else
 					{
-						if (address_mode == mode_64bit&& (sizeflag & AFLAG))
+						if (my_address_mode == mode_64bit&& (sizeflag & AFLAG))
 						{
 							g_operands[g_num_operand].mem.index_reg.name = index64;
 							g_operands[g_num_operand].mem.index_reg.size = 8;
@@ -8805,7 +8805,7 @@ static void OP_E_memory(int bytemode, int sizeflag) {
 			*obufp = '\0';
 			if (havebase)
 				oappend(
-						address_mode == mode_64bit && (sizeflag & AFLAG) ?
+						my_address_mode == mode_64bit && (sizeflag & AFLAG) ?
 								names64[rbase] : names32[rbase]);
 			if (havesib) {
 				/* ESP/RSP won't allow index.  If base isn't ESP/RSP,
@@ -8818,12 +8818,12 @@ static void OP_E_memory(int bytemode, int sizeflag) {
 					}
 					if (haveindex)
 						oappend(
-								address_mode == mode_64bit
+								my_address_mode == mode_64bit
 										&& (sizeflag & AFLAG) ?
 										names64[vindex] : names32[vindex]);
 					else
 						oappend(
-								address_mode == mode_64bit
+								my_address_mode == mode_64bit
 										&& (sizeflag & AFLAG) ?
 										index64 : index32);
 
@@ -9008,7 +9008,7 @@ static void OP_G(int bytemode, int sizeflag) {
 		}
 		break;
 	case m_mode:
-		if (address_mode == mode_64bit)
+		if (my_address_mode == mode_64bit)
 		{
 			name = names64[modrm.reg + add];
 			oappend(names64[modrm.reg + add]);
@@ -9095,7 +9095,7 @@ static int get16(void) {
 
 static void set_op(bfd_vma op, int riprel) {
 	op_index[op_ad] = op_ad;
-	if (address_mode == mode_64bit) {
+	if (my_address_mode == mode_64bit) {
 		op_address[op_ad] = op;
 		op_riprel[op_ad] = riprel;
 	} else {
@@ -9168,7 +9168,7 @@ static void OP_REG(int code, int sizeflag) {
 	case rBP_reg:
 	case rSI_reg:
 	case rDI_reg:
-		if (address_mode == mode_64bit && (sizeflag & DFLAG)) {
+		if (my_address_mode == mode_64bit && (sizeflag & DFLAG)) {
 			s = names64[code - rAX_reg + add];
 			reg_size = 8;
 			reg_index = code - rAX_reg + add;
@@ -9340,7 +9340,7 @@ static void OP_I(int bytemode, int sizeflag) {
 		mask = 0xff;
 		break;
 	case q_mode:
-		if (address_mode == mode_64bit) {
+		if (my_address_mode == mode_64bit) {
 			op = get32s();
 			break;
 		}
@@ -9392,7 +9392,7 @@ static void OP_I64(int bytemode, int sizeflag) {
 	bfd_signed_vma op;
 	bfd_signed_vma mask = -1;
 
-	if (address_mode != mode_64bit) {
+	if (my_address_mode != mode_64bit) {
 		OP_I(bytemode, sizeflag);
 		return;
 	}
@@ -9449,7 +9449,7 @@ static void OP_sI(int bytemode, int sizeflag) {
 		if ((op & 0x80) != 0)
 			op -= 0x100;
 		if (bytemode == b_T_mode) {
-			if (address_mode != mode_64bit || !(sizeflag & DFLAG)) {
+			if (my_address_mode != mode_64bit || !(sizeflag & DFLAG)) {
 				if (sizeflag & DFLAG)
 					op &= 0xffffffff;
 				else
@@ -9562,7 +9562,7 @@ static void OP_OFF(int bytemode, int sizeflag) {
 		intel_operand_size(bytemode, sizeflag);
 	append_seg();
 
-	if ((sizeflag & AFLAG) || address_mode == mode_64bit)
+	if ((sizeflag & AFLAG) || my_address_mode == mode_64bit)
 		off = get32();
 	else
 		off = get16();
@@ -9582,7 +9582,7 @@ static void OP_OFF(int bytemode, int sizeflag) {
 static void OP_OFF64(int bytemode, int sizeflag) {
 	bfd_vma off;
 
-	if (address_mode != mode_64bit || (prefixes & PREFIX_ADDR)) {
+	if (my_address_mode != mode_64bit || (prefixes & PREFIX_ADDR)) {
 		OP_OFF(bytemode, sizeflag);
 		return;
 	}
@@ -9611,7 +9611,7 @@ static void ptr_reg(int code, int sizeflag) {
 
 	*obufp++ = open_char;
 	used_prefixes |= (prefixes & PREFIX_ADDR);
-	if (address_mode == mode_64bit) {
+	if (my_address_mode == mode_64bit) {
 		if (!(sizeflag & AFLAG))
 		{
 			s = names32[code - eAX_reg];
@@ -9695,7 +9695,7 @@ static void OP_C(int dummy ATTRIBUTE_UNUSED, int sizeflag ATTRIBUTE_UNUSED) {
 	if (rex & REX_R) {
 		USED_REX(REX_R);
 		add = 8;
-	} else if (address_mode != mode_64bit && (prefixes & PREFIX_LOCK)) {
+	} else if (my_address_mode != mode_64bit && (prefixes & PREFIX_LOCK)) {
 		all_prefixes[last_lock_prefix] = 0;
 		used_prefixes |= PREFIX_LOCK;
 		add = 8;
@@ -9913,7 +9913,7 @@ static void OP_0f07(int bytemode, int sizeflag) {
 
 static void NOP_Fixup1(int bytemode, int sizeflag) {
 	if ((prefixes & PREFIX_DATA) != 0
-			|| (rex != 0 && rex != 0x48 && address_mode == mode_64bit))
+			|| (rex != 0 && rex != 0x48 && my_address_mode == mode_64bit))
 		OP_REG(bytemode, sizeflag);
 	else
 		strcpy(obuf, "nop");
@@ -9921,7 +9921,7 @@ static void NOP_Fixup1(int bytemode, int sizeflag) {
 
 static void NOP_Fixup2(int bytemode, int sizeflag) {
 	if ((prefixes & PREFIX_DATA) != 0
-			|| (rex != 0 && rex != 0x48 && address_mode == mode_64bit))
+			|| (rex != 0 && rex != 0x48 && my_address_mode == mode_64bit))
 		OP_IMREG(bytemode, sizeflag);
 }
 
@@ -10048,7 +10048,7 @@ static void OP_Mwait(int bytemode ATTRIBUTE_UNUSED,
 		int sizeflag ATTRIBUTE_UNUSED) {
 	/* mwait %eax,%ecx  */
 	if (!intel_syntax) {
-		const char **names = (address_mode == mode_64bit ? names64 : names32);
+		const char **names = (my_address_mode == mode_64bit ? names64 : names32);
 		strcpy(op_out[0], names[0]);
 		strcpy(op_out[1], names[1]);
 		two_source_ops = 1;
@@ -10062,14 +10062,14 @@ static void OP_Monitor(int bytemode ATTRIBUTE_UNUSED,
 	/* monitor %eax,%ecx,%edx"  */
 	if (!intel_syntax) {
 		const char **op1_names;
-		const char **names = (address_mode == mode_64bit ? names64 : names32);
+		const char **names = (my_address_mode == mode_64bit ? names64 : names32);
 
 		if (!(prefixes & PREFIX_ADDR))
-			op1_names = (address_mode == mode_16bit ? names16 : names);
+			op1_names = (my_address_mode == mode_16bit ? names16 : names);
 		else {
 			/* Remove "addr16/addr32".  */
 			all_prefixes[last_addr_prefix] = 0;
-			op1_names = (address_mode != mode_32bit ? names32 : names16);
+			op1_names = (my_address_mode != mode_32bit ? names32 : names16);
 			used_prefixes |= PREFIX_ADDR;
 		}
 		strcpy(op_out[0], op1_names[0]);
@@ -10277,7 +10277,7 @@ static unsigned char get_vex_imm8(int sizeflag, int opnum) {
 
 	if (modrm.mod != 3) {
 		/* There are SIB/displacement bytes.  */
-		if ((sizeflag & AFLAG) || address_mode == mode_64bit) {
+		if ((sizeflag & AFLAG) || my_address_mode == mode_64bit) {
 			/* 32/64 bit address mode */
 			int base = modrm.rm;
 
@@ -10361,7 +10361,7 @@ static void OP_EX_VexReg(int bytemode, int sizeflag, int reg) {
 			USED_REX(REX_B);
 			if (rex & REX_B)
 				reg += 8;
-		} else if (reg > 7 && address_mode != mode_64bit)
+		} else if (reg > 7 && my_address_mode != mode_64bit)
 			BadOp();
 	}
 
@@ -10488,7 +10488,7 @@ static void OP_REG_VexI4(int bytemode, int sizeflag ATTRIBUTE_UNUSED) {
 		BadOp();
 
 	reg >>= 4;
-	if (reg > 7 && address_mode != mode_64bit)
+	if (reg > 7 && my_address_mode != mode_64bit)
 		BadOp();
 
 	switch (vex.length) {

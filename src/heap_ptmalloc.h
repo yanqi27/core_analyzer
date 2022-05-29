@@ -417,24 +417,6 @@ struct malloc_state_GLIBC_2_22 {
 #define HEAP_MAX_SIZE_GLIBC_2_22    HEAP_MAX_SIZE_GLIBC_2_5
 #define MAX_FAST_SIZE_GLIBC_2_22    MAX_FAST_SIZE_GLIBC_2_12
 
-
-/************************************************************************
-**  GNU C Library version 2.26 -
-**    Per-thread cache is added
-************************************************************************/
-# define TCACHE_MAX_BINS		64
-
-typedef struct tcache_entry
-{
-  struct tcache_entry *next;
-} tcache_entry;
-
-typedef struct tcache_perthread_struct
-{
-  uint16_t counts[TCACHE_MAX_BINS];
-  tcache_entry *entries[TCACHE_MAX_BINS];
-} tcache_perthread_struct;
-
 #define chunk2mem(p)   ((void*)((char*)(p) + 2*SIZE_SZ))
 #define mem2chunk(mem) ((mchunkptr)((char*)(mem) - 2*SIZE_SZ))
 

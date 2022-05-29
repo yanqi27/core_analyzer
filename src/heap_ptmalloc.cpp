@@ -665,8 +665,8 @@ static CoreAnalyzerHeapInterface sPtMallHeapManager = {
    walk_inuse_blocks,
 };
 
-CoreAnalyzerHeapInterface* get_pt_malloc_heap_manager() {
-	return &sPtMallHeapManager;
+void register_pt_malloc() {
+    return register_heap_manager("pt", &sPtMallHeapManager, true);
 }
 /***************************************************************************
 * Ptmalloc Helper Functions

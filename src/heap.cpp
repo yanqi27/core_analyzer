@@ -18,12 +18,12 @@ std::map<std::string, CoreAnalyzerHeapInterface*> gCoreAnalyzerHeaps;
 
 static std::vector<void(*)()> gHeapInitFuncs = {
 	#ifdef WIN32
-    _init_mscrt_malloc,
+    register_mscrt_malloc,
 	#else
-    _init_pt_malloc_2_27,
-    _init_pt_malloc_2_31,
-    _init_pt_malloc_2_35,
-    //_init_tc_malloc,
+    register_pt_malloc_2_27,
+    register_pt_malloc_2_31,
+    register_pt_malloc_2_35,
+    //register_tc_malloc,
     #endif
 };
 

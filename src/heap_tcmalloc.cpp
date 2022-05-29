@@ -548,7 +548,7 @@ CoreAnalyzerHeapInterface sTcMallHeapManager = {
    walk_inuse_blocks,
 };
 
-void _init_tc_malloc() {
+void register_tc_malloc() {
     return register_heap_manager("tc", &sTcMallHeapManager, false);
 }
 /******************************************************************************

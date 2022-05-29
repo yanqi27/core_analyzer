@@ -237,7 +237,7 @@ CoreAnalyzerHeapInterface sMscrtMallocHeap = {
    get_biggest_blocks,
    walk_inuse_blocks,
 };
-void _init_mscrt_malloc() {
+void register_mscrt_malloc() {
     register_heap_manager(HeapManagerMscrtMalloc, &sMscrtMallocHeap, true);
 }
 /////////////////////////////////////////////////////

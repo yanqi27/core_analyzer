@@ -12,32 +12,63 @@
 #include "search.h"
 
 
+CoreAnalyzerHeapInterface* gCAHeap;
+
+#define ENSURE_CA_HEAP()							\
+	do {											\
+		if (!CA_HEAP) {								\
+			CA_PRINT("No heap manager is detedted or selected.\n");	\
+			return false;							\
+		}											\
+	} while (0)
+
 std::map<std::string, CoreAnalyzerHeapInterface*> gCoreAnalyzerHeaps;
 
-CoreAnalyzerHeapInterface* gCAHeap;
-void register_heap_managers() {
+static std::vector<void(*)()> gHeapRegistrationFuncs = {
 	#ifdef WIN32
-	gCoreAnalyzerHeaps[HeapManagerMscrtMalloc] = get_mscrt_malloc_heap_manager();
-	gCAHeap = get_mscrt_malloc_heap_manager();
+    register_mscrt_malloc,
 	#else
-	// heap.cpp is used by ref.dll, and we only support switching heap in Linux currently.
-	//gCoreAnalyzerHeaps.emplace(std::make_pair<std::string, CoreAnalyzerHeapInterface*>("pt", get_pt_malloc_heap_manager()));
-	//gCoreAnalyzerHeaps.emplace(std::make_pair<std::string, CoreAnalyzerHeapInterface*>("tc",get_tc_malloc_heap_manager()));
-	gCoreAnalyzerHeaps.emplace(std::make_pair<std::string, CoreAnalyzerHeapInterface*>("pt 2.35", get_pt_malloc_2_35_heap_manager()));
-	// default is pt malloc heap, in the future we will auto detect the heap.
-	gCAHeap = get_pt_malloc_2_35_heap_manager();
-	#endif
+    register_pt_malloc_2_27,
+    register_pt_malloc_2_31,
+    register_pt_malloc_2_35,
+    //register_tc_malloc,
+    #endif
+};
+
+bool init_heap_managers() {
+    gCoreAnalyzerHeaps.clear();
+    gCAHeap = nullptr;
+
+    for (auto f: gHeapRegistrationFuncs)
+        f();
+
+    if (gCAHeap) {
+        CA_HEAP->init_heap();
+        return true;
+    }
+	CA_PRINT("failed to parse heap data\n");
+    return false;
+}
+
+void register_heap_manager(std::string name, CoreAnalyzerHeapInterface* heapIntf, bool detected) {
+    gCoreAnalyzerHeaps[name] = heapIntf;
+    if (detected) {
+        /* TODO we need to resolve the scenario that multi heap managers are present */
+        gCAHeap = heapIntf;
+    }
 }
 
 std::string get_supported_heaps() {
 	std::string lSupportedHeaps;
 	bool first_entry = true;
-	for (const auto&[k, v] : gCoreAnalyzerHeaps) {
+	for (const auto &itr : gCoreAnalyzerHeaps) {
 		if (!first_entry)
 		{
 			lSupportedHeaps += ", ";
 		}
-		lSupportedHeaps +=k;
+		if (itr.second == gCAHeap)
+			lSupportedHeaps += "(current)";
+		lSupportedHeaps += itr.first;
 		first_entry = false;
 	}
 	return lSupportedHeaps;
@@ -128,6 +159,8 @@ char ca_help_msg[] = "Commands of core_analyzer " CA_VERSION_STRING "\n"
  */
 bool heap_command_impl(const char* args)
 {
+	ENSURE_CA_HEAP();
+
 	bool rc = true;
 
 	address_t addr = 0;
@@ -320,6 +353,8 @@ bool heap_command_impl(const char* args)
  */
 bool ref_command_impl(const char* args)
 {
+	ENSURE_CA_HEAP();
+
 	int rc;
 	bool threadref = false;
 	address_t addr = 0;
@@ -542,6 +577,8 @@ bool segment_command_impl(const char* args)
  */
 bool pattern_command_impl(const char* args)
 {
+	ENSURE_CA_HEAP();
+
 	address_t lo = 0, hi = 0;
 	// Parse user input options
 	// argument is in the form of <start> <end>
@@ -1293,7 +1330,6 @@ leak_check_out:
  */
 void display_mem_histogram(const char* prefix)
 {
-
 	if (!g_mem_hist.num_buckets || !g_mem_hist.bucket_sizes
 		|| !g_mem_hist.inuse_cnt || !g_mem_hist.inuse_bytes
 		|| !g_mem_hist.free_cnt || !g_mem_hist.free_bytes)

@@ -578,15 +578,17 @@ add_one_big_block(struct heap_block *blks, unsigned int num,
 bool
 gdb_symbol_prelude(void)
 {
+	struct symbol *pagemap2;
 	struct symbol *pagemap3;
 
 	/*
 	 * template <int BITS>
-	 *     class TCMalloc_PageMap3
+	 *     class TCMalloc_PageMap2, TCMalloc_PageMap3
 	 */
+	pagemap2 = lookup_symbol("TCMalloc_PageMap2<35>", 0, VAR_DOMAIN, 0).symbol;
 	pagemap3 = lookup_symbol("TCMalloc_PageMap3<35>", 0, VAR_DOMAIN, 0).symbol;
-	if (pagemap3 == NULL) {
-		CA_PRINT_DBG("Failed to lookup type \"TCMalloc_PageMap3<35>\""
+	if (pagemap2 == NULL && pagemap3 == NULL) {
+		CA_PRINT_DBG("Failed to lookup type \"TCMalloc_PageMap2<35>\" and \"TCMalloc_PageMap3<35>\""
 		    "\n");
 		return false;
 	}

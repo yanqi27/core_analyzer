@@ -1095,6 +1095,7 @@ COMMON_SFILES = \
 	heap_ptmalloc_2_27.c \
 	heap_ptmalloc_2_31.c \
 	heap_ptmalloc_2_35.c \
+	heap_tcmalloc.c \
 	heapcmd.c \
 	i386-decode.c \
 	inf-child.c \

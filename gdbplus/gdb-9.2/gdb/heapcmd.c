@@ -279,7 +279,10 @@ switch_heap_command(const char *arg, int from_tty)
 	auto it = gCoreAnalyzerHeaps.find(arg);
 	if (it != gCoreAnalyzerHeaps.end()) {
 		CA_PRINT("switch to heap %s\n", arg);
-		CA_HEAP = it->second;
+		if (CA_HEAP != it->second) {
+			CA_HEAP = it->second;
+			CA_HEAP->init_heap();
+		}
 	} else {
 		auto supported_heaps = get_supported_heaps();
 		CA_PRINT("Please provide the heap manager name, currently supported heap managers: %s.\n", supported_heaps.c_str());	

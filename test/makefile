@@ -30,7 +30,7 @@ mallocTest_tcmalloc: mallocTest_tcmalloc.o
 	$(CXX) $(COMP_OPT) -o $@ $^ $(LIBS) -ltcmalloc
 
 check-tcmalloc: mallocTest_tcmalloc
-	$(GDB) mallocTest_tcmalloc -q -ex 'switch_heap tc' -x verify.py
+	export LD_LIBRARY_PATH=/usr/local/lib; $(GDB) mallocTest_tcmalloc -q -x verify.py
 
 clean:
 	rm *.o ${TARGETS}

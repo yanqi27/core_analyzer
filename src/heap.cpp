@@ -31,7 +31,7 @@ static std::vector<void(*)()> gHeapRegistrationFuncs = {
     register_pt_malloc_2_27,
     register_pt_malloc_2_31,
     register_pt_malloc_2_35,
-    //register_tc_malloc,
+    register_tc_malloc,
     #endif
 };
 

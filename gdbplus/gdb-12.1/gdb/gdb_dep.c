@@ -53,6 +53,26 @@ void ca_switch_to_thread(struct thread_info *info)
     switch_to_thread (info);
 }
 
+struct type *ca_type(struct symbol *sym)
+{
+	return sym->type();
+}
+
+const char *ca_name(struct type *type)
+{
+	return type->name();
+}
+
+enum type_code ca_code(struct type *type)
+{
+	return type->code();
+}
+
+struct type *ca_field_type(struct type *type, int i)
+{
+	return type->field(i).type();
+}
+
 int ca_num_fields(struct type *type)
 {
     return type->num_fields();

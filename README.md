@@ -19,17 +19,18 @@ A power tool to debug memory issues. By parsing the memory image of a process's 
 
 The tool supports x86_64 architecture including Windows/RedHat/SUSE/MacOSX. It integrates with gdb and Windbg debuggers and supports gdb's python extension.
 
+# How to build it
+To build it, just run the `./build_gdb.sh`, it will build the gdb with core analyzer support. You can modified the `build_gdb.sh` to configure how the gdb is built and which version you would like to build.
+
 # How to use it
-To use the core analyzer, you need to build it. Just run the `./build_gdb.sh`, it will build the gdb with core analyzer support. You can modified the `build_gdb.sh` to configure how the gdb is built and which version you would like to build.
-
-
 For more information, please see the project's web site http://core-analyzer.sourceforge.net/
 
 # Tested Platforms
-The latest build passed the sanity tests on the following platforms
-| Heap Manager | Ubuntu | CentOS | Windows | Darwin |
-| ----------- | ----------- | ----------- | ----------- | ----------- |
-| ptmalloc | Ubuntu 20 / gdb 9.2 | CentOS 8.5 / gdb 9.2 | | |
-| tcmalloc | Tcmalloc 4.5.3 / gdb 9.2 | | | |
-| Windows  | | | Windows 10 / VS2019 | |
-| Darwin   | | | | |
+The latest release passed the build and sanity tests (with a few exceptions) on the following platforms with various versions of heap manager, gdb and OS.
+
+| Heap Manager | gdb | OS | Compiler |
+| ----------- | ----------- | ----------- | ----------- |
+| glibc/ptmalloc 2.27, 2.31, 2.35   | 7.1.11, 8.1, 9.2, 12.1| Ubuntu 16.04, 18.04, 20.04, 22.04 | gcc 5, 7, 9, 12 |
+| gperftools/tcmalloc 2.7, 2.8, 2.9 | 1824 (Darwin)     | CentOS 8.5 | VS2019 |
+| Windows/mscrt 9, 10, 11           |                       | Windows 9, 10, 11 | 
+| Darwin                            |

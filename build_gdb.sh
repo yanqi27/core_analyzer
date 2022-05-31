@@ -39,4 +39,5 @@ PWD=$(pwd)
 # $PWD/../configure -disable-binutils --with-python --disable-ld --disable-gold --disable-gas --disable-sim --disable-gprof CXXFLAGS='-g' CFLAGS='-g' --prefix=/usr
 
 $PWD/../configure --with-python --prefix=/usr
-make -j 8 && make install && rm -rf $build_folder
+make -j 8 && make install # do not remove the build folder && rm -rf $build_folder
+echo "if you want to remove the build folder, please run `rm -rf $build_folder`"

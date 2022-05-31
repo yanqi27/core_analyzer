@@ -1,4 +1,4 @@
-# Core Analyzer
+# Core Analyzer [![Docker Image CI](https://github.com/yanqi27/core_analyzer/actions/workflows/docker-image.yml/badge.svg?event=pull_request)](https://github.com/yanqi27/core_analyzer/actions/workflows/docker-image.yml)
 A power tool to debug memory issues. By parsing the memory image of a process's core dump file or its live address space, core analyzer is able to scan the target's heap data for memory corruption, search the whole address space for data object's references, or analyze memory pattern. It is thorough, labor-free, and insightful. It is proved to be invaluable to debug many tough issues.
 
 # Features

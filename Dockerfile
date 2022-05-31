@@ -24,6 +24,7 @@ WORKDIR /workspaces/core_analyzer/
 COPY . .
 
 RUN ./build_gdb.sh
-RUN cd test
+WORKDIR test
 RUN make check
+
 

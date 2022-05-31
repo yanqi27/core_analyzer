@@ -12,7 +12,8 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     && apt install -y wget \
     && apt install -y python-dev \
     && apt install -y python3-dev \
-    && apt install -y dh-autoreconf \
+    && apt install -y dh-autoreconf 
+
+RUN ./build_tcmalloc.sh 2.7
 
 
-    

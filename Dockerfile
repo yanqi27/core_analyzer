@@ -23,8 +23,10 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
 WORKDIR /workspaces/core_analyzer/
 COPY . .
 
+RUN ./build_tcmalloc.sh 2.7
 RUN ./build_gdb.sh
 WORKDIR test
 RUN make check
+RUN make check-tcmalloc
 
 

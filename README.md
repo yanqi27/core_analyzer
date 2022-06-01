@@ -30,7 +30,7 @@ The latest release passed the build and sanity tests (with a few exceptions) on 
 
 | Heap Manager | gdb | OS | Compiler |
 | ----------- | ----------- | ----------- | ----------- |
-| glibc/ptmalloc 2.27, 2.31, 2.35   | 7.1.11, 8.1, 9.2, 12.1| Ubuntu 16.04, 18.04, 20.04, 22.04 | gcc 5, 7, 9, 12 |
-| gperftools/tcmalloc 2.7, 2.8, 2.9 | 1824 (Darwin)     | CentOS 8.5 | VS2019 |
+| glibc/ptmalloc 2.17, 2.27, 2.31, 2.35   | 7.1.11, 8.1, 9.2, 12.1| Ubuntu 16.04, 18.04, 20.04, 22.04 | gcc 5, 7, 9, 12 |
+| gperftools/tcmalloc 2.7, 2.8, 2.9 | 1824 (Darwin)     | CentOS 7.6, 8.5 | VS2019 |
 | Windows/mscrt 9, 10, 11           |                       | Windows 9, 10, 11 | 
 | Darwin                            |

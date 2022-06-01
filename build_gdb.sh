@@ -40,4 +40,4 @@ PWD=$(pwd)
 
 $PWD/../configure --with-python --prefix=/usr
 make -j 8 && sudo make install # do not remove the build folder && rm -rf $build_folder
-echo "if you want to remove the build folder, please run `rm -rf $build_folder`"
+echo "if you want to remove the build folder, please run \"rm -rf $build_folder\""

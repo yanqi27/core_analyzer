@@ -7,7 +7,6 @@
 #include "segment.h"
 #include "heap.h"
 #include "search.h"
-#include "stl_container.h"
 #include "decode.h"
 
 #ifdef linux
@@ -562,8 +561,8 @@ read_registers(const struct ca_segment* segment, struct reg_value* regs, int buf
 
 bool
 search_registers(const struct ca_segment* segment,
-		struct CA_LIST* targets,
-		struct CA_LIST* refs)
+		std::list<struct object_range*>& targets,
+		std::list<struct object_reference*>& refs)
 {
 	size_t ptr_sz = g_ptr_bit >> 3;
 	int lbFound = false;
@@ -580,9 +579,7 @@ search_registers(const struct ca_segment* segment,
 			if (register_size(gdbarch, i) <= ptr_sz
 				&& regcache_cooked_read_unsigned (regcache, i, &val) == REG_VALID)
 			{
-				struct object_range* target;
-				ca_list_traverse_start(targets);
-				while ( (target = (struct object_range*) ca_list_traverse_next(targets)) )
+				for (auto target : targets)
 				{
 					if (val >= target->low && val < target->high)
 					{
@@ -594,7 +591,7 @@ search_registers(const struct ca_segment* segment,
 						ref->where.reg.name    = gdbarch_register_name (gdbarch, i);
 						ref->vaddr        = 0;
 						ref->value        = val;
-						ca_list_push_front(refs, ref);
+						refs.push_front(ref);
 						lbFound = true;
 						break;
 					}
@@ -1585,7 +1582,7 @@ get_real_type_from_exp(char* exp)
 /* search C++ vtables of the type of the input expression */
 bool
 get_vtable_from_exp(const char*expression,
-		    struct CA_LIST*vtables,
+		    std::list<struct object_range*>& vtables,
 		    char* type_name,
 		    size_t bufsz, size_t* type_sz)
 {
@@ -1614,7 +1611,7 @@ get_vtable_from_exp(const char*expression,
 
 				vtable->low = BMSYMBOL_VALUE_ADDRESS(bmsym);
 				vtable->high = vtable->low  + MSYMBOL_SIZE(bmsym.minsym);
-				ca_list_push_front(vtables, vtable);
+				vtables.push_front(vtable);
 				snprintf(type_name, bufsz, "%s", type->name());
 				*type_sz = TYPE_LENGTH (type);
 				rc = true;

@@ -8,7 +8,6 @@
 #include "defs.h"
 #include "heap.h"
 #include "segment.h"
-#include "stl_container.h"
 #include "search.h"
 
 

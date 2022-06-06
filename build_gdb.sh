@@ -1,3 +1,5 @@
+#!/usr/bin/env bash
+
 # ==============================================================================================
 # FILENAME	:	build_gdb.sh
 # AUTHOR	:	Celthi
@@ -10,8 +12,16 @@
 # 4. build the gdb
 # ==============================================================================================
 
+set -e
+gdb_version="12.1"
+if [ "$#" -ne 1 ]
+then
+  echo "build gdb 12.1"
+else
+gdb_version=$1
+fi
+
 PROJECT_FOLDER=$(pwd)
-gdb_version='12.1'
 echo "Current project folder is $PROJECT_FOLDER"
 echo "installing gdb $gdb_version..."
 build_folder=$PROJECT_FOLDER/build

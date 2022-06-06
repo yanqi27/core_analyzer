@@ -8,15 +8,15 @@
 #define X_DEP_H_
 
 #include "x_type.h"
+#include <list>
 
 #define CA_VERSION_MAJOR 2
-#define CA_VERSION_MINOR 20
-#define CA_VERSION_STRING "2.20"
+#define CA_VERSION_MINOR 22
+#define CA_VERSION_STRING "2.22"
 
 struct object_reference;
 struct reg_value;
 struct ca_segment;
-struct CA_LIST;
 
 struct ca_debug_context
 {
@@ -53,7 +53,7 @@ extern void print_type_layout (char*);
 
 extern void print_build_ids(void);
 
-extern bool get_vtable_from_exp(const char*, struct CA_LIST*, char*, size_t, size_t*);
+extern bool get_vtable_from_exp(const char*, std::list<struct object_range*>&, char*, size_t, size_t*);
 
 extern bool user_request_break(void);
 

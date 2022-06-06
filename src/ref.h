@@ -8,6 +8,7 @@
 #define REF_H_
 
 #include "x_dep.h"
+#include <list>
 
 #define ALIGN(x,s) ( ((x) + (s) - 1) & (~((s) - 1)) )
 #define NAME_BUF_SZ 1024
@@ -100,13 +101,12 @@ struct reg_value
 	address_t value;
 };
 
-struct CA_LIST;
-
 /////////////////////////////////////////////////////////////////////////
 // Import functions (required from heap parser, x_dep, etc.)
 /////////////////////////////////////////////////////////////////////////
 extern bool is_heap_object_with_vptr(const struct object_reference*, char*, size_t);
-extern bool search_registers(const struct ca_segment*, struct CA_LIST*, struct CA_LIST*);
+extern bool search_registers(const struct ca_segment*,
+	const std::list<struct object_range*>&, std::list<struct object_reference*>&);
 extern int read_registers(const struct ca_segment*, struct reg_value*, int);
 extern int get_frame_number(const struct ca_segment*, address_t, int*);
 extern int get_thread_id(const struct ca_segment*);

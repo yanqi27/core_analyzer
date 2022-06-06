@@ -194,10 +194,10 @@ search_value_by_range(struct ca_segment* segment,
 // Return true if at least one is found
 /////////////////////////////////////////////////////////////////////////
 static bool
-search_value_internal(std::list<struct object_range*>& targets,
-					bool target_is_ptr,
-					enum storage_type stype,
-					std::list<struct object_reference*>& refs)
+search_value_internal(const std::list<struct object_range*>& targets,
+		bool target_is_ptr,
+		enum storage_type stype,
+		std::list<struct object_reference*>& refs)
 {
 	bool lbFound = false;
 	unsigned int i;

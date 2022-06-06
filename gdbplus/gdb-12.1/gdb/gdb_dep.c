@@ -561,7 +561,7 @@ read_registers(const struct ca_segment* segment, struct reg_value* regs, int buf
 
 bool
 search_registers(const struct ca_segment* segment,
-		std::list<struct object_range*>& targets,
+		const std::list<struct object_range*>& targets,
 		std::list<struct object_reference*>& refs)
 {
 	size_t ptr_sz = g_ptr_bit >> 3;

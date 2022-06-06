@@ -106,7 +106,7 @@ struct reg_value
 /////////////////////////////////////////////////////////////////////////
 extern bool is_heap_object_with_vptr(const struct object_reference*, char*, size_t);
 extern bool search_registers(const struct ca_segment*,
-	std::list<struct object_range*>&, std::list<struct object_reference*>&);
+	const std::list<struct object_range*>&, std::list<struct object_reference*>&);
 extern int read_registers(const struct ca_segment*, struct reg_value*, int);
 extern int get_frame_number(const struct ca_segment*, address_t, int*);
 extern int get_thread_id(const struct ca_segment*);

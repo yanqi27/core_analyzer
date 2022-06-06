@@ -1146,7 +1146,6 @@ COMMON_SFILES = \
 	stabsread.c \
 	stack.c \
 	std-regs.c \
-	stl_container.c \
 	symfile.c \
 	symfile-debug.c \
 	symmisc.c \

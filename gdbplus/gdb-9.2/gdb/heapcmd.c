@@ -9,7 +9,6 @@
 #include "segment.h"
 #include "search.h"
 #include "decode.h"
-#include "stl_container.h"
 
 /***************************************************************************
 * gdb commands
@@ -201,13 +200,12 @@ max_indirection_level_command (const char *arg, int from_tty)
 static void
 shrobj_command (const char *args, int from_tty)
 {
-	struct CA_LIST* threads = NULL;
+	std::list<int> threads;
 
 	/* We depend on typed segments */
 	if (!update_memory_segments_and_heaps())
 		return;
 
-	threads = ca_list_new();
 	if (args)
 	{
 		char* options[MAX_NUM_OPTIONS];
@@ -220,9 +218,7 @@ shrobj_command (const char *args, int from_tty)
 			int tid = atoi(option);
 			if (tid >= 0)
 			{
-				int* p = (int*) malloc(sizeof(int));
-				*p = tid;
-				ca_list_push_front(threads, p);
+				threads.push_front(tid);
 			}
 		}
 	}
@@ -231,16 +227,6 @@ shrobj_command (const char *args, int from_tty)
 	scoped_restore_current_thread mythread;
 
 	find_shared_objects_by_threads(threads);
-
-	// cleanup thread list
-	if (!ca_list_empty(threads))
-	{
-		int* p;
-		ca_list_traverse_start(threads);
-		while ( (p = (int*) ca_list_traverse_next(threads)))
-			free (p);
-	}
-	ca_list_delete(threads);
 }
 
 static void

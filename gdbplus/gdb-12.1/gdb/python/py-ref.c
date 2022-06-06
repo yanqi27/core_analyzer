@@ -13,7 +13,6 @@
 #include "ref.h"
 #include "search.h"
 #include "segment.h"
-#include "stl_container.h"
 
 extern PyTypeObject object_ref_type
     CPYCHECKER_TYPE_OBJECT_FOR_TYPEDEF ("object_ref");
@@ -51,7 +50,7 @@ object_ref_get_storage_type (PyObject *self, void *closure)
 {
 	object_ref *obj_ref = (object_ref *) self;
 
-	return PyInt_FromLong (obj_ref->ref.storage_type);
+	return PyLong_FromLong (obj_ref->ref.storage_type);
 }
 
 /* Return the address of the input  */
@@ -78,7 +77,7 @@ object_ref_get_tid (PyObject *self, void *closure)
 {
 	object_ref *obj_ref = (object_ref *) self;
 	if (obj_ref->ref.storage_type == ENUM_REGISTER || obj_ref->ref.storage_type == ENUM_STACK)
-		return PyInt_FromLong (obj_ref->ref.where.stack.tid);
+		return PyLong_FromLong (obj_ref->ref.where.stack.tid);
 	else
 	{
 		Py_INCREF (Py_None);
@@ -116,7 +115,7 @@ object_ref_get_frame (PyObject *self, void *closure)
 {
 	object_ref *obj_ref = (object_ref *) self;
 	if (obj_ref->ref.storage_type == ENUM_STACK)
-		return PyInt_FromLong (obj_ref->ref.where.stack.frame);
+		return PyLong_FromLong (obj_ref->ref.where.stack.frame);
 	else
 	{
 		Py_INCREF (Py_None);
@@ -192,7 +191,7 @@ object_ref_get_heap_inuse (PyObject *self, void *closure)
 {
 	object_ref *obj_ref = (object_ref *) self;
 	if (obj_ref->ref.storage_type == ENUM_HEAP)
-		return PyInt_FromLong (obj_ref->ref.where.heap.inuse);
+		return PyLong_FromLong (obj_ref->ref.where.heap.inuse);
 	else
 	{
 		Py_INCREF (Py_None);
@@ -472,7 +471,6 @@ PyObject *gdbpy_cpp_object (PyObject *self, PyObject *args)
 {
 	PyObject *result = NULL;
 	gdb::unique_xmalloc_ptr<char> exp;
-	struct CA_LIST* objects;
 
 	// Get the input parameters
 	if (PyTuple_Size (args) == 1)
@@ -500,18 +498,13 @@ PyObject *gdbpy_cpp_object (PyObject *self, PyObject *args)
 	}
 
 	// Search for the objects
-	objects = search_cplusplus_objects_with_vptr (exp.get());
-	if (objects)
+	std::list<struct object_reference*> objects = search_cplusplus_objects_with_vptr (exp.get());
+	if (!objects.empty())
 	{
-		struct object_reference* ref;
-		unsigned int n = ca_list_size(objects);
-		unsigned int i;
+		result = PyList_New(objects.size());
 
-		result = PyList_New(n);
-
-		i = 0;
-		ca_list_traverse_start(objects);
-		while ( (ref = (struct object_reference*) ca_list_traverse_next(objects)) )
+		unsigned int i = 0;
+		for (auto ref : objects)
 		{
 			object_ref* obj_ref = PyObject_New (object_ref, &object_ref_type);
 			obj_ref->ref = *ref;
@@ -520,7 +513,6 @@ PyObject *gdbpy_cpp_object (PyObject *self, PyObject *args)
 
 			free (ref);
 		}
-		ca_list_delete (objects);
 	}
 	else
 	{
@@ -537,9 +529,6 @@ PyObject *gdbpy_cpp_object (PyObject *self, PyObject *args)
 PyObject *gdbpy_shared_object (PyObject *self, PyObject *args)
 {
 	PyObject *result = NULL;
-	struct CA_LIST* threads;
-	struct CA_LIST* objects;
-	int* ptid;
 	int i;
 
 	// Make sure we have built necessary data structures to do searching
@@ -549,7 +538,7 @@ PyObject *gdbpy_shared_object (PyObject *self, PyObject *args)
 		return NULL;
 	}
 
-	threads = ca_list_new();
+	std::list<int> threads;
 	// Get the input parameters
 	for (i = 0; i< PyTuple_Size (args); i++)
 	{
@@ -573,9 +562,7 @@ PyObject *gdbpy_shared_object (PyObject *self, PyObject *args)
 
 			if (valid_tid)
 			{
-				ptid = (int*) malloc(sizeof(int));
-				*ptid = tid;
-				ca_list_push_front(threads, ptid);
+				threads.push_front(tid);
 			}
 			else
 			{
@@ -591,17 +578,13 @@ PyObject *gdbpy_shared_object (PyObject *self, PyObject *args)
 	}
 
 	// Search for the objects
-	objects = search_shared_objects_by_threads(threads);
-	if (objects)
+	std::list<struct object_reference*> objects = search_shared_objects_by_threads(threads);
+	if (!objects.empty())
 	{
-		struct object_reference* ref;
-		unsigned int n = ca_list_size(objects);
-
-		result = PyList_New(n);
+		result = PyList_New(objects.size());
 
 		i = 0;
-		ca_list_traverse_start(objects);
-		while ( (ref = (struct object_reference*) ca_list_traverse_next(objects)) )
+		for (auto ref : objects)
 		{
 			object_ref* obj_ref = PyObject_New (object_ref, &object_ref_type);
 			obj_ref->ref = *ref;
@@ -610,19 +593,12 @@ PyObject *gdbpy_shared_object (PyObject *self, PyObject *args)
 
 			free (ref);
 		}
-		ca_list_delete (objects);
 	}
 	else
 	{
 		Py_INCREF (Py_None);
 		result = Py_None;
 	}
-
-	// clean up
-	ca_list_traverse_start(threads);
-	while ( (ptid = (int*) ca_list_traverse_next(threads)))
-		free (ptid);
-	ca_list_delete(threads);
 
 	return result;
 }
@@ -639,7 +615,6 @@ PyObject *gdbpy_objref (PyObject *self, PyObject *args)
 	PyObject *result = NULL;
 	address_t obj_addr = 0;
 	size_t    obj_size = 1;
-	struct CA_LIST* refs;
 	int num_args = PyTuple_Size (args);
 	PyObject *obj;
 	enum storage_type stype = ENUM_UNKNOWN;
@@ -693,18 +668,13 @@ PyObject *gdbpy_objref (PyObject *self, PyObject *args)
 	}
 
 	// Search for the references
-	refs = search_object_refs (obj_addr, obj_size, 1, stype);
-	if (refs)
+	std::list<struct object_reference*> refs = search_object_refs (obj_addr, obj_size, 1, stype);
+	if (!refs.empty())
 	{
-		struct object_reference* ref;
-		unsigned int n = ca_list_size(refs);
-		unsigned int i;
+		result = PyList_New(refs.size());
 
-		result = PyList_New(n);
-
-		i = 0;
-		ca_list_traverse_start(refs);
-		while ( (ref = (struct object_reference*) ca_list_traverse_next(refs)) )
+		unsigned int i = 0;
+		for (auto ref : refs)
 		{
 			object_ref* obj_ref = PyObject_New (object_ref, &object_ref_type);
 			obj_ref->ref = *ref;
@@ -713,8 +683,6 @@ PyObject *gdbpy_objref (PyObject *self, PyObject *args)
 
 			free (ref);
 		}
-		// caller is responsible to release the returned list
-		ca_list_delete (refs);
 	}
 	else
 	{

@@ -28,5 +28,10 @@ RUN ./build_gdb.sh
 WORKDIR test
 RUN make check
 RUN make check-tcmalloc
+WORKDIR /workspaces/core_analyzer/
+RUN ./build_gdb.sh 9.2
 
+WORKDIR test
+RUN make check
+RUN make check-tcmalloc
 

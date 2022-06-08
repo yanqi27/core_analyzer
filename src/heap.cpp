@@ -5,10 +5,73 @@
  *  Created on: Dec 13, 2011
  *      Author: myan
  */
+#include "defs.h"
 #include "heap.h"
 #include "segment.h"
-#include "stl_container.h"
 #include "search.h"
+
+
+CoreAnalyzerHeapInterface* gCAHeap;
+
+#define ENSURE_CA_HEAP()							\
+	do {											\
+		if (!CA_HEAP) {								\
+			CA_PRINT("No heap manager is detedted or selected.\n");	\
+			return false;							\
+		}											\
+	} while (0)
+
+std::map<std::string, CoreAnalyzerHeapInterface*> gCoreAnalyzerHeaps;
+
+static std::vector<void(*)()> gHeapRegistrationFuncs = {
+	#ifdef WIN32
+    register_mscrt_malloc,
+	#else
+    register_pt_malloc_2_27,
+    register_pt_malloc_2_31,
+    register_pt_malloc_2_35,
+    register_tc_malloc,
+    #endif
+};
+
+bool init_heap_managers() {
+    gCoreAnalyzerHeaps.clear();
+    gCAHeap = nullptr;
+
+    for (auto f: gHeapRegistrationFuncs)
+        f();
+
+    if (gCAHeap) {
+        CA_HEAP->init_heap();
+        return true;
+    }
+	CA_PRINT("failed to parse heap data\n");
+    return false;
+}
+
+void register_heap_manager(std::string name, CoreAnalyzerHeapInterface* heapIntf, bool detected) {
+    gCoreAnalyzerHeaps[name] = heapIntf;
+    if (detected) {
+        /* TODO we need to resolve the scenario that multi heap managers are present */
+        gCAHeap = heapIntf;
+    }
+}
+
+std::string get_supported_heaps() {
+	std::string lSupportedHeaps;
+	bool first_entry = true;
+	for (const auto &itr : gCoreAnalyzerHeaps) {
+		if (!first_entry)
+		{
+			lSupportedHeaps += ", ";
+		}
+		if (itr.second == gCAHeap)
+			lSupportedHeaps += "(current)";
+		lSupportedHeaps += itr.first;
+		first_entry = false;
+	}
+	return lSupportedHeaps;
+}
 
 // Used to search for variables that allocate/reach the most heap memory
 struct heap_owner
@@ -135,6 +198,8 @@ find_reachable_block(address_t addr, struct search_reachable_block *blocks,
 bool
 heap_command_impl(char* args)
 {
+	ENSURE_CA_HEAP();
+
 	bool rc = true;
 
 	address_t addr = 0;
@@ -169,7 +234,7 @@ heap_command_impl(char* args)
 			if (*option == '/')	{
 				if (strcmp(option, "/m") == 0) {
 					check_exclusive_option();
-					CA_PRINT("Target allocator: %s\n", heap_version());
+					CA_PRINT("Target allocator: %s\n", CA_HEAP->heap_version());
 					return true;
 				} else if (strcmp(option, "/leak") == 0 || strcmp(option, "/l") == 0) {
 					check_leak = true;
@@ -219,7 +284,7 @@ heap_command_impl(char* args)
 			CA_PRINT("Heap block address is expected\n");
 		else {
 			struct heap_block heap_block;
-			if (get_heap_block_info(addr, &heap_block)) {
+			if (CA_HEAP->get_heap_block_info(addr, &heap_block)) {
 				if (heap_block.inuse)
 					CA_PRINT("\t[In-use]\n");
 				else
@@ -231,9 +296,10 @@ heap_command_impl(char* args)
 				CA_PRINT("[Error] Failed to query the memory block\n");
 			}
 		}
-	} else if (cluster_blocks) {
+	}
+	else if (cluster_blocks) {
 		if (addr) {
-			if (!heap_walk(addr, verbose))
+			if (!CA_HEAP->heap_walk(addr, verbose))
 				CA_PRINT("[Error] Failed to walk heap\n");
 		} else {
 			CA_PRINT("Heap block address is expected\n");
@@ -254,9 +320,11 @@ heap_command_impl(char* args)
 	} else {
 		if (addr)
 			CA_PRINT("Unexpected address expression\n");
-		else if (!heap_walk(addr, verbose))
+		else if (!CA_HEAP->heap_walk(addr, verbose))
 			CA_PRINT("[Error] Failed to walk heap\n");
 	}
+	if (expr)
+		free(expr);
 	return rc;
 }
 
@@ -265,6 +333,8 @@ heap_command_impl(char* args)
  */
 bool ref_command_impl(char* args)
 {
+	ENSURE_CA_HEAP();
+
 	int rc;
 	bool threadref = false;
 	address_t addr = 0;
@@ -408,9 +478,8 @@ bool segment_command_impl(char* args)
 		CA_PRINT("=====================================================\n");
 		for (i=0; i<g_segment_count; i++)
 		{
-			struct ca_segment* segment = &g_segments[i];
 			CA_PRINT("[%4d] ", i);
-			print_segment(segment);
+			print_segment(&g_segments[i]);
 		}
 		// Find out why SIZE is much bigger than RSS, it might be modules, thread stack or heap, or all
 		/*if (!g_debug_core)
@@ -482,6 +551,8 @@ bool segment_command_impl(char* args)
  */
 bool pattern_command_impl(char* args)
 {
+	ENSURE_CA_HEAP();
+
 	address_t lo = 0, hi = 0;
 	// Parse user input options
 	// argument is in the form of <start> <end>
@@ -542,7 +613,7 @@ build_inuse_heap_blocks(unsigned long* opCount)
 
 	*opCount = 0;
 	// 1st walk counts the number of in-use blocks
-	if (walk_inuse_blocks(NULL, &total_inuse) && total_inuse > 0)
+	if (CA_HEAP->walk_inuse_blocks(NULL, &total_inuse) && total_inuse)
 	{
 		// allocate memory for inuse_block array
 		blocks = (struct inuse_block*) calloc(total_inuse, sizeof(struct inuse_block));
@@ -552,7 +623,7 @@ build_inuse_heap_blocks(unsigned long* opCount)
 			return NULL;
 		}
 		// 2nd walk populate the array for in-use block info
-		if (!walk_inuse_blocks(blocks, opCount) || *opCount != total_inuse)
+		if (!CA_HEAP->walk_inuse_blocks(blocks, opCount) || *opCount != total_inuse)
 		{
 			CA_PRINT("Unexpected error while walking in-use blocks\n");
 			*opCount = 0;
@@ -713,7 +784,7 @@ bool biggest_blocks(unsigned int num)
 	if (!blocks)
 		return false;
 
-	if (get_biggest_blocks (blocks, num))
+	if (CA_HEAP->get_biggest_blocks (blocks, num))
 	{
 		unsigned int i;
 		// display big blocks
@@ -1249,7 +1320,6 @@ leak_check_out:
  */
 void display_mem_histogram(const char* prefix)
 {
-
 	if (!g_mem_hist.num_buckets || !g_mem_hist.bucket_sizes
 		|| !g_mem_hist.inuse_cnt || !g_mem_hist.inuse_bytes
 		|| !g_mem_hist.free_cnt || !g_mem_hist.free_bytes)

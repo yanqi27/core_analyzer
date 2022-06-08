@@ -313,6 +313,7 @@ build_segments(void)
 		error (_("Memory segments are not properly sorted"));
 		return false;
 	}
+#if 0
 	/*
 	 * find/set storage types of segments of shared modules
 	 */
@@ -336,21 +337,27 @@ build_segments(void)
 			}
 		}
 	}
-	/* Set executable segments */
-	if (exec_bfd)
-	{
-		struct bfd_section* section = exec_bfd->sections;
-		unsigned int i;
-		for (i=0; i<exec_bfd->section_count; i++, section=section->next)
-		{
-			enum storage_type type = ENUM_UNKNOWN;
-			if (strcmp(section->name, ".text") == 0 || strcmp(section->name, ".rodata") == 0)
-				type = ENUM_MODULE_TEXT;
-			else if (strcmp(section->name, ".data") == 0 || strcmp(section->name, ".bss") == 0)
-				type = ENUM_MODULE_DATA;
-			if (type != ENUM_UNKNOWN)
-				set_segment_module_type(type, section->vma, section->vma + section->size, exec_bfd->filename);
-		}
+#endif
+	/* Set segments' type by tranversing all target sections */
+	if (current_target_sections) {
+			struct target_section *p;
+			for (p =  current_target_sections->sections;
+				p < current_target_sections->sections_end;
+				p++) {
+				struct bfd_section *psect = p->the_bfd_section;
+				bfd *pbfd = psect->owner;
+				enum storage_type type = ENUM_UNKNOWN;
+				const char *name = bfd_section_name (pbfd, psect);
+
+				if (strcmp (name, ".data") == 0 || strcmp (name, ".bss") == 0) {
+					type = ENUM_MODULE_DATA;
+				} else if (strcmp (name, ".text") == 0 || strcmp (name, ".rodata") == 0) {
+					/* .rodata and .text sections are in the same segment */
+					type = ENUM_MODULE_TEXT;
+				}
+				if (type != ENUM_UNKNOWN)
+					set_segment_module_type(type, p->addr, p->endaddr, bfd_get_filename (pbfd));
+			}
 	}
 
 	/* thread stacks */
@@ -545,7 +552,7 @@ search_registers(const struct ca_segment* segment,
 						ref->where.reg.name    = gdbarch_register_name (gdbarch, i);
 						ref->vaddr        = 0;
 						ref->value        = val;
-						ca_list_push_back(refs, ref);
+						ca_list_push_front(refs, ref);
 						lbFound = true;
 						break;
 					}

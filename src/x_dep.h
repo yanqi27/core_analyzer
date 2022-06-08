@@ -8,15 +8,15 @@
 #define X_DEP_H_
 
 #include "x_type.h"
+#include <list>
 
 #define CA_VERSION_MAJOR 2
-#define CA_VERSION_MINOR 20
-#define CA_VERSION_STRING "2.20"
+#define CA_VERSION_MINOR 22
+#define CA_VERSION_STRING "2.22"
 
 struct object_reference;
 struct reg_value;
 struct ca_segment;
-struct CA_LIST;
 
 struct ca_debug_context
 {
@@ -29,6 +29,14 @@ struct ca_debug_context
 extern bool update_memory_segments_and_heaps(void);
 
 extern bool inferior_memory_read (address_t addr, void* buffer, size_t sz);
+extern void ca_switch_to_thread(struct thread_info *info);
+extern struct type *ca_type(struct symbol *sym);
+extern enum type_code ca_code(struct type *type);
+extern const char *ca_name(struct type *type);
+extern struct type *ca_field_type(struct type *type, int i);
+extern int ca_num_fields(struct type *type);
+extern const char *ca_field_name(struct type *type, int i);
+extern bool get_gv_value(const char *varname, char *buf, size_t bufsz);
 
 extern void print_register_ref(const struct object_reference* ref);
 extern void print_stack_ref(const struct object_reference* ref);
@@ -45,7 +53,9 @@ extern void print_type_layout (char*);
 extern void search_types_by_size(size_t, size_t);
 extern bool display_object_stats(void);
 
-extern bool get_vtable_from_exp(const char*, struct CA_LIST*, char*, size_t, size_t*);
+extern void print_build_ids(void);
+
+extern bool get_vtable_from_exp(const char*, std::list<struct object_range*>&, char*, size_t, size_t*);
 
 extern bool user_request_break(void);
 

@@ -13,6 +13,7 @@ these functions may be found in the project's website:
 http://core-analyzer.sourceforge.net/
 
 ### How to Build
+
 The source bundle includes an executable "gdb" under `bin` directory. This is for
 evaluation and testing purpose. It is recommended to build your own executable
 in your environment. You will need to download the corresponding verion of gdb
@@ -24,13 +25,34 @@ $ ./configure --with-python --prefix=/usr/local
 $ make
 ```
 
-### Debug Symbols of Heap Structures
+There is a `build_gdb.sh` in the root folder, you can directly build the custom gdb by running the script.
+(The version gdb-1824 is not supported as it has a different layout than others.)
+
+### Useful Command Options
+
+#### data-directory
+If you use gdb python, you will need to install python scripts which are usually
+under `/usr/share/gdb` for many Linux distros. The `gdb` binary included in this
+repo has a different path `/usr/local/share/gdb`. You may use `--data-directory` option
+to specify the installed python script path on your host.
+```
+gdb --data-directory=/usr/share/gdb
+```
+
+#### Debug Symbols of Heap Structures
 Core analyzer extracts heap metadata with the help of debug symbols. Without the
 matching debug symbols, its functions are limited or don't work at all. For
 example, Linux heap data structures are defined in libc.so which debug symbols
-are required. On Ubuntu, this is package `libc6-dbg` which is installed out of box.
-On CentOS, you can run command `sudo debuginfo-install -y glibc`.
-libc.so debug symbols are installed at /usr/lib/debug by default. If gdb doesn't find
+are required. The following table lists the command to install libc debug symbols
+on various Linux distros.
+
+|Distro|Command|Comment|
+|------|-------|-------|
+|Ubuntu|`sudo apt install libc6-dbg`|The package is installed out of box|
+|CentOS|`sudo debuginfo-install -y glibc`|You may need to set `enable=1` in file `/etc/yum.repos.d/CentOS-Debuginfo.repo`|
+|RedHat|`yum install glibc-debuginfo`| |
+
+The libc.so debug symbols are installed at /usr/lib/debug by default. If gdb doesn't find
 it, you can add the following line in you `.gdbinit` file.
 ```
 set debug-file-directory /usr/lib/debug

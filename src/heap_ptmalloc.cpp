@@ -204,19 +204,20 @@ static bool get_field_value(struct value *, const char *, size_t *, bool);
 
 static bool memcpy_field_value(struct value *, const char *, char *, size_t);
 
+static std::string read_libc_version();
 /***************************************************************************
 * Exposed functions
 ***************************************************************************/
-const char *
+static const char *
 heap_version(void)
 {
 	static char glibc_ver[64];
 	if (glibc_ver[0] == '\0')
-		snprintf(glibc_ver, 64, "glibc %s", gnu_get_libc_version());
+		snprintf(glibc_ver, 64, "glibc %s", read_libc_version().c_str());
 	return glibc_ver;
 }
 
-bool init_heap(void)
+static bool init_heap(void)
 {
 	bool rc = build_heaps();
 
@@ -226,7 +227,7 @@ bool init_heap(void)
 /*
  * Return true and detail info if the input addr belongs to a heap memory block
  */
-bool get_heap_block_info(address_t addr, struct heap_block* blk)
+static bool get_heap_block_info(address_t addr, struct heap_block* blk)
 {
 	struct ca_heap* heap;
 
@@ -243,7 +244,7 @@ bool get_heap_block_info(address_t addr, struct heap_block* blk)
 /*
  * Return true and detail info of the heap block after the input addr
  */
-bool get_next_heap_block(address_t addr, struct heap_block* blk)
+static bool get_next_heap_block(address_t addr, struct heap_block* blk)
 {
 	struct ca_heap* heap = NULL;
 	address_t next_addr = 0;
@@ -299,7 +300,7 @@ bool get_next_heap_block(address_t addr, struct heap_block* blk)
 }
 
 /* Return true if the block belongs to a heap */
-bool is_heap_block(address_t addr)
+static bool is_heap_block(address_t addr)
 {
 	struct ca_heap* heap;
 
@@ -316,7 +317,7 @@ bool is_heap_block(address_t addr)
 /*
  * Traverse all heaps unless a non-zero address is given, in which case the specific heap is used
  */
-bool heap_walk(address_t heapaddr, bool verbose)
+static bool heap_walk(address_t heapaddr, bool verbose)
 {
 	size_t size_t_sz =  sizeof(INTERNAL_SIZE_T);
 	bool rc = true;
@@ -486,7 +487,7 @@ static void add_one_big_block(struct heap_block* blks, unsigned int num, struct 
 	}
 }
 
-bool get_biggest_blocks(struct heap_block* blks, unsigned int num)
+static bool get_biggest_blocks(struct heap_block* blks, unsigned int num)
 {
 	size_t mchunk_sz = sizeof(struct malloc_chunk);
 	size_t size_t_sz = sizeof(INTERNAL_SIZE_T);
@@ -580,7 +581,7 @@ bool get_biggest_blocks(struct heap_block* blks, unsigned int num)
 	return true;
 }
 
-bool walk_inuse_blocks(struct inuse_block* opBlocks, unsigned long* opCount)
+static bool walk_inuse_blocks(struct inuse_block* opBlocks, unsigned long* opCount)
 {
 	unsigned int heap_index;
 	struct inuse_block* pBlockinfo = opBlocks;
@@ -653,6 +654,20 @@ bool walk_inuse_blocks(struct inuse_block* opBlocks, unsigned long* opCount)
 	return true;
 }
 
+static CoreAnalyzerHeapInterface sPtMallHeapManager = {
+   heap_version,
+   init_heap,
+   heap_walk,
+   is_heap_block,
+   get_heap_block_info,
+   get_next_heap_block,
+   get_biggest_blocks,
+   walk_inuse_blocks,
+};
+
+void register_pt_malloc() {
+    return register_heap_manager("pt", &sPtMallHeapManager, true);
+}
 /***************************************************************************
 * Ptmalloc Helper Functions
 ***************************************************************************/
@@ -916,13 +931,19 @@ thread_tcache (struct thread_info *info, void *data)
 		CA_PRINT("Failed to lookup thread-local variable \"tcache\"\n");
 		return false;
 	}
-	val = value_of_variable(tcsym, 0);
+	try {
+		val = value_of_variable(tcsym, 0);
+	} catch (gdb_exception_error &e) {
+		CA_PRINT("Failed to evaluate thread-local variable \"tcache\": %s\n", e.what());
+		return false;
+	}
 	val = value_coerce_to_target(val);
 	type = value_type(val);
 	type = check_typedef (TYPE_TARGET_TYPE (type));
 	valsz = TYPE_LENGTH(type);
-	if (sizeof(tcps) < valsz) {
+	if (sizeof(tcps) != valsz) {
 		CA_PRINT("Internal error: \"struct tcache_perthread_struct\" is incorrect\n");
+		CA_PRINT("Assumed tcache size=%ld while gdb sees size=%ld\n", sizeof(tcps), valsz);
 		return false;
 	}
 	addr = value_as_address(val);
@@ -1081,7 +1102,13 @@ static struct ca_arena* build_arena(address_t arena_vaddr, enum HEAP_TYPE type)
 		// Parse arena's metadata by symbol if available
 		rc = read_malloc_state_by_symbol(arena_vaddr, &arena->mpState);
 		if (!rc) {
-			// Read in arena's meta data, i.e. struct malloc_state
+			/* 
+			 * Read in arena's meta data, i.e. struct malloc_state
+			 * 
+			 * !TODO!
+			 * The following libc version-based method doesn't apply to all Linux distros.
+			 * We should depend on the type debug symbols of the target process
+			 */
 			rc = read_memory_wrapper(NULL, arena_vaddr, &arena_state, mstate_size);
 			if (rc) {
 				if (glibc_ver_minor == 3)
@@ -1550,19 +1577,19 @@ static bool build_heaps(void)
 		release_all_ca_arenas();
 		release_tcache_chunks();
 	}
-
+#if 0
 	// Support a subset of all glibc versions
 	if (glibc_ver_minor != 3
 		&& glibc_ver_minor != 4
 		&& glibc_ver_minor != 5
 		//&& glibc_ver_minor != 11
-		&& (glibc_ver_minor < 12 || glibc_ver_minor > 27))
+		&& (glibc_ver_minor < 12 || glibc_ver_minor > 29))
 	{
 		CA_PRINT("The memory manager of glibc %d.%d is not supported in this release\n",
 				glibc_ver_major, glibc_ver_minor);
 		return false;
 	}
-
+#endif
 	main_arena_vaddr = get_var_addr_by_name("main_arena", true);
 	mparams_vaddr    = get_var_addr_by_name("mp_", true);
 	if (main_arena_vaddr == 0 || mparams_vaddr == 0)
@@ -2069,40 +2096,45 @@ static bool traverse_heap_blocks(struct ca_heap* heap,
 	return true;
 }
 
+static std::string read_libc_version()
+{
+	std::string version;
+	struct symbol *sym = lookup_static_symbol("__libc_version", VAR_DOMAIN).symbol;
+	if (sym == NULL) {
+		CA_PRINT("Cannot get the \"__libc_version\" from the debugee, read it from the host machine. This might not be accurate.\n");
+		version = gnu_get_libc_version();
+	} else {
+		struct value *val = value_of_variable(sym, 0);
+		constexpr int bufsz = 64;
+		char buf[bufsz];
+		if (!read_memory_wrapper(NULL,  value_address(val), buf, TYPE_LENGTH(value_type(val)))) {
+			CA_PRINT("Failed to read \"__libc_version\" from the debugee.\n");
+			return version;
+		}
+		version = buf;
+	}
+	return version;
+}
+
 /*
- * Get the glibc version of the host machine.
- * Assume it is the same or compatible with the target machine.
+ * Get the glibc version of the debugee
  */
 static bool get_glibc_version(void)
 {
-	const size_t bufsz = 64;
-	char buf[bufsz];
-	const char* version = gnu_get_libc_version();
-	int len = strlen(version);
-	int i;
-
-	if (len >= bufsz)
+	std::string version = read_libc_version();
+	if (version.empty())
 		return false;
-
-	strncpy(buf, version, len+1);
-	for (i=0; i<len; i++)
+	auto dot_idx = version.find_first_of('.');
+	glibc_ver_major = atoi(version.substr(0, dot_idx).c_str());
+	glibc_ver_minor = atoi(version.substr(dot_idx+1).c_str());
+	if (glibc_ver_major != 2)
 	{
-		if (buf[i] == '.')
-		{
-			buf[i] = '\0';
-			glibc_ver_major = atoi(&buf[0]);
-			glibc_ver_minor = atoi(&buf[i+1]);
-			if (glibc_ver_major != 2)
-			{
-				CA_PRINT("This version of glibc %d.%d is not tested, please contact the owner\n",
-						glibc_ver_major, glibc_ver_minor);
-				return false;
-			}
-			return true;
-		}
+		CA_PRINT("This version of glibc %d.%d is not tested, please contact the owner\n",
+				glibc_ver_major, glibc_ver_minor);
+		return false;
 	}
 
-	return false;
+	return true;
 }
 
 /*

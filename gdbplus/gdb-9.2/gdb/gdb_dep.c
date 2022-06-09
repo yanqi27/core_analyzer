@@ -1634,6 +1634,123 @@ get_vtable_from_exp(const char*expression,
 	return rc;
 }
 
+/* Search and print types that matches the size range */
+void
+search_types_by_size(size_t min_sz, size_t max_sz)
+{
+	global_symbol_searcher spec(TYPES_DOMAIN, nullptr);
+	std::vector<symbol_search> symbols = spec.search();
+	for (const symbol_search &p : symbols) {
+		QUIT;
+
+		size_t tsize;
+		const char *tname;
+		if (p.msymbol.minsym != NULL) {
+			tsize = p.msymbol.minsym->size;
+			if (tsize < min_sz || tsize > max_sz)
+				continue;
+			tname = p.msymbol.minsym->natural_name();
+			if (min_sz == max_sz)
+				printf_filtered (_("  %s\n"), tname);
+			else
+				printf_filtered (_("  %s (%ld)\n"), tname, tsize);
+		} else {
+			struct type *type = SYMBOL_TYPE(p.symbol);
+			tsize = TYPE_LENGTH(type);
+			tname = p.symbol->natural_name();
+			if (tsize < min_sz || tsize > max_sz)
+				continue;
+			type_print (type, "", gdb_stdout, -1);
+			if (min_sz != max_sz)
+				printf_filtered (_(" (%ld)\n"), tsize);
+			printf_filtered (_("\n"));
+		}
+	}
+}
+
+static bool
+identify_direct_objects(struct inuse_block* blocks, unsigned long total_blocks)
+{
+	unsigned int seg_index;
+	size_t ptr_sz = g_ptr_bit >> 3;
+
+	for (seg_index = 0; seg_index < g_segment_count; seg_index++)
+	{
+		struct ca_segment* segment = &g_segments[seg_index];
+
+		// This search may take long, bail out if user is impatient
+		if (user_request_break())
+		{
+			CA_PRINT("Abort searching\n");
+			break;
+		}
+
+		if (segment->m_fsize == 0)
+			continue;
+
+		// Only local/global variables are checked
+		if (segment->m_type == ENUM_STACK
+			|| segment->m_type == ENUM_MODULE_DATA
+			|| segment->m_type == ENUM_MODULE_TEXT)
+		{
+			address_t start, next, end;
+
+			start = segment->m_vaddr;
+			end   = start + segment->m_fsize;
+			// ignore stack memory below stack pointer
+			if (segment->m_type == ENUM_STACK)
+			{
+				address_t rsp = get_rsp(segment);
+				if (rsp >= segment->m_vaddr && rsp < segment->m_vaddr + segment->m_vsize)
+					start = rsp;
+			}
+
+			next = ALIGN(start, ptr_sz);
+			while (next + ptr_sz <= end)
+			{
+				address_t ptr;
+				struct inuse_block* blk;
+
+				if (!read_memory_wrapper(segment, next, &ptr, ptr_sz))
+					break;
+
+				blk = find_inuse_block(ptr, blocks, total_blocks);
+				if (blk)
+				{
+					unsigned long index = blk - blocks;
+					//set_queued_and_visited(qv_bitmap, index);
+				}
+				next += ptr_sz;
+			}
+		}
+	}
+
+	return true;
+}
+
+/*
+ * Identify types of all heap in-use memory blocks and display the stats by type
+ * and size.
+ */
+bool
+display_object_stats(void)
+{
+	unsigned long total_blocks = 0;
+	struct inuse_block *blocks = NULL;
+
+	// create and populate an array of all in-use blocks
+	blocks = build_inuse_heap_blocks(&total_blocks);
+	if (!blocks || total_blocks == 0) {
+		CA_PRINT("Failed: no in-use heap block is found\n");
+		return false;
+	}
+
+	if (!identify_direct_objects(blocks, total_blocks))
+		return false;
+
+	return true;
+}
+
 /* print structure layout in windbg "dt" style */
 void
 print_type_layout (char* exp)
@@ -2610,11 +2727,24 @@ calc_heap_usage(char *exp)
 				{
 					unsigned long aggr_count = 0;
 					size_t aggr_size = 0;
+					struct search_reachable_block *blocks;
+					unsigned long index;
+
+					blocks = (struct search_reachable_block *) calloc(num_inuse_blocks,
+					    sizeof *blocks);
+					if (!blocks) {
+						printf_filtered("Out of memory\n");
+						return;
+					}
+					for (index = 0; index < num_inuse_blocks; index++) {
+						blocks[index].addr = inuse_blocks[index].addr;
+						blocks[index].size = inuse_blocks[index].size;
+					}
 
 					CA_PRINT("Heap memory consumed by ");
 					print_ref(&ref, 0, false, false);
 					/* Include all reachable blocks */
-					if (calc_aggregate_size(&ref, var_len, true, inuse_blocks, num_inuse_blocks, &aggr_size, &aggr_count))
+					if (calc_aggregate_size(&ref, var_len, true, blocks, num_inuse_blocks, &aggr_size, &aggr_count))
 					{
 						CA_PRINT("All reachable:\n");
 						CA_PRINT("    |--> ");
@@ -2624,7 +2754,7 @@ calc_heap_usage(char *exp)
 					else
 						CA_PRINT("Failed to calculate heap usage\n");
 					/* Directly referenced heap blocks only */
-					if (calc_aggregate_size(&ref, var_len, false, inuse_blocks, num_inuse_blocks, &aggr_size, &aggr_count))
+					if (calc_aggregate_size(&ref, var_len, false, blocks, num_inuse_blocks, &aggr_size, &aggr_count))
 					{
 						CA_PRINT("Directly referenced:\n");
 						CA_PRINT("    |--> ");
@@ -2632,7 +2762,13 @@ calc_heap_usage(char *exp)
 						CA_PRINT(" (%ld blocks)\n", aggr_count);
 					}
 					/* remember to cleanup */
-					free_inuse_heap_blocks (inuse_blocks, num_inuse_blocks);
+					if (blocks) {
+						for (index = 0; index < num_inuse_blocks; index++) {
+							if (blocks[index].reachable.index_map)
+								free(blocks[index].reachable.index_map);
+						}
+						free(blocks);
+					}
 				}
 			}
 			else

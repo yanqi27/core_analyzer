@@ -27,6 +27,13 @@ struct search_reachable_block {
 	struct reachable reachable;
 };
 
+struct inuse_block
+{
+	address_t addr;
+	size_t    size;
+	struct reachable reachable;
+};
+
 
 typedef const char * (*HeapVersionFunc)(void);
 typedef bool (*InitHeapFunc)(void);

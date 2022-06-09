@@ -20,9 +20,12 @@ heap_command (const char *args, int from_tty)
 	if (!update_memory_segments_and_heaps())
 		return;
 
+	if (!args)
+		args = "";
+	gdb::unique_xmalloc_ptr<char> myargs(xstrdup(args));
+
 	// remember to resume the current thread/frame
 	scoped_restore_current_thread mythread;
-	gdb::unique_xmalloc_ptr<char> myargs(xstrdup(args));
 	heap_command_impl(myargs.get());
 }
 
@@ -36,9 +39,10 @@ ref_command (const char *args, int from_tty)
 	if (!update_memory_segments_and_heaps())
 		return;
 
+	gdb::unique_xmalloc_ptr<char> myargs(xstrdup(args));
+
 	// remember to resume the current thread/frame
 	scoped_restore_current_thread mythread;
-	gdb::unique_xmalloc_ptr<char> myargs(xstrdup(args));
 	ref_command_impl(myargs.get());
 }
 
@@ -52,9 +56,10 @@ pattern_command (const char *args, int from_tty)
 	if (!update_memory_segments_and_heaps())
 		return;
 
+	gdb::unique_xmalloc_ptr<char> myargs(xstrdup(args));
+
 	// remember to resume the current thread/frame
 	scoped_restore_current_thread mythread;
-	gdb::unique_xmalloc_ptr<char> myargs(xstrdup(args));
 	pattern_command_impl(myargs.get());
 }
 
@@ -66,8 +71,8 @@ segment_command (const char *args, int from_tty)
 
 	if (!args)
 		args = "";
-
 	gdb::unique_xmalloc_ptr<char> myargs(xstrdup(args));
+
 	segment_command_impl(myargs.get());
 }
 
@@ -301,16 +306,20 @@ shrobj_command (const char *args, int from_tty)
 }
 
 static void
-decode_command (const char *arg, int from_tty)
+decode_command (const char *args, int from_tty)
 {
 	/* We depend on typed segments */
 	if (!update_memory_segments_and_heaps())
 		return;
 
+	if (!args)
+		args = "";
+	gdb::unique_xmalloc_ptr<char> myargs(xstrdup(args));
+
 	// remember to resume the current thread/frame
 	scoped_restore_current_thread mythread;
 
-	decode_func(arg);
+	decode_func(myargs.get());
 }
 
 static void
@@ -398,12 +407,12 @@ _initialize_heapcmd (void)
 
 	// Misc
 	add_cmd("ca_help", class_info, display_help_command, _("Display core analyzer help"), &cmdlist);
+	add_cmd("switch_heap", class_info, switch_heap_command, _("switch another heap like pt, tc,"), &cmdlist);
+
 	add_cmd("dt", class_info, dt_command, _("Display type (windbg style) that matches the input expression or size or size ragne\n"
 	    "dt <type|variable>\n"
 		"dt [/size or /s] <size> [<size-max>]"),
 		&cmdlist);
-	add_cmd("info_local", class_info, info_local_command, _("Display local variables"), &cmdlist);
-	
 	add_cmd("info_local", class_info, info_local_command, _("Display local variables"), &cmdlist);
 	add_cmd("buildid", class_info, buildid_command, _("Display build-ids of target modules"), &cmdlist);
 }

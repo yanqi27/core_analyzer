@@ -914,7 +914,7 @@ print_type_name(struct type *type, const char* field_name,
 		if (prefix)
 			printf_filtered(_("%s"), prefix);
 
-		if (TYPE_NAME(type))
+		if (TYPE_CODE (type) == TYPE_CODE_STRUCT)
 			printf_filtered("struct ");
 		printf_filtered(_("%s"), TYPE_SAFE_NAME(type));
 
@@ -1529,7 +1529,7 @@ print_type_members(struct type *type, int indent)
 		}
 		else
 			print_type_name(field_type, TYPE_FIELD_NAME(type, i), NULL, NULL);
-		printf_filtered(_("  size=%lu\n"), field_type->length);
+		printf_filtered(_("  (size=%lu)\n"), field_type->length);
 		offset += field_type->length;
 		/* the field is a base class */
 		if (i < num_baseclasses)
@@ -1650,19 +1650,17 @@ search_types_by_size(size_t min_sz, size_t max_sz)
 			if (tsize < min_sz || tsize > max_sz)
 				continue;
 			tname = p.msymbol.minsym->natural_name();
-			if (min_sz == max_sz)
-				printf_filtered (_("  %s\n"), tname);
-			else
-				printf_filtered (_("  %s (%ld)\n"), tname, tsize);
+			printf_filtered (_("  %s (size=%ld)\n"), tname, tsize);
 		} else {
 			struct type *type = SYMBOL_TYPE(p.symbol);
 			tsize = TYPE_LENGTH(type);
 			tname = p.symbol->natural_name();
 			if (tsize < min_sz || tsize > max_sz)
 				continue;
+			if (TYPE_CODE(type) == TYPE_CODE_STRUCT)
+				printf_filtered(_("struct "));
 			type_print (type, "", gdb_stdout, -1);
-			if (min_sz != max_sz)
-				printf_filtered (_(" (%ld)\n"), tsize);
+			printf_filtered (_(" (size=%ld)\n"), tsize);
 			printf_filtered (_("\n"));
 		}
 	}
@@ -1717,7 +1715,7 @@ identify_direct_objects(struct inuse_block* blocks, unsigned long total_blocks)
 				blk = find_inuse_block(ptr, blocks, total_blocks);
 				if (blk)
 				{
-					unsigned long index = blk - blocks;
+					//unsigned long index = blk - blocks;
 					//set_queued_and_visited(qv_bitmap, index);
 				}
 				next += ptr_sz;

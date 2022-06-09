@@ -200,6 +200,7 @@ dt_command (const char *args, int from_tty)
 				return;
 			}
 		} else {
+			myargs.reset(xstrdup(args));
 			print_type = true;
 		}
 		break;

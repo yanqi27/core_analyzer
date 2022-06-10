@@ -8,9 +8,9 @@ FROM mcr.microsoft.com/vscode/devcontainers/cpp:0-${VARIANT}
 RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     && apt install -y texinfo \
     && apt install -y libgmp-dev \
+    && apt install -y libdebuginfod-dev \
     && apt install -y build-essential \
     && apt install -y wget \
-    && apt install -y python-dev \
     && apt install -y python3-dev \
     && apt install -y dh-autoreconf 
 

@@ -2714,24 +2714,17 @@ calc_heap_usage(char *exp)
 				{
 					unsigned long aggr_count = 0;
 					size_t aggr_size = 0;
-					struct search_reachable_block *blocks;
+					std::vector<struct reachable_block> blocks;
 					unsigned long index;
 
-					blocks = (struct search_reachable_block *) calloc(num_inuse_blocks,
-					    sizeof *blocks);
-					if (!blocks) {
-						printf_filtered("Out of memory\n");
-						return;
-					}
-					for (index = 0; index < num_inuse_blocks; index++) {
-						blocks[index].addr = inuse_blocks[index].addr;
-						blocks[index].size = inuse_blocks[index].size;
-					}
+					blocks.reserve(num_inuse_blocks);
+					for (index = 0; index < num_inuse_blocks; index++)
+						blocks.push_back(inuse_blocks[index]);
 
 					CA_PRINT("Heap memory consumed by ");
 					print_ref(&ref, 0, false, false);
 					/* Include all reachable blocks */
-					if (calc_aggregate_size(&ref, var_len, true, blocks, num_inuse_blocks, &aggr_size, &aggr_count))
+					if (calc_aggregate_size(&ref, var_len, true, blocks, &aggr_size, &aggr_count))
 					{
 						CA_PRINT("All reachable:\n");
 						CA_PRINT("    |--> ");
@@ -2741,20 +2734,12 @@ calc_heap_usage(char *exp)
 					else
 						CA_PRINT("Failed to calculate heap usage\n");
 					/* Directly referenced heap blocks only */
-					if (calc_aggregate_size(&ref, var_len, false, blocks, num_inuse_blocks, &aggr_size, &aggr_count))
+					if (calc_aggregate_size(&ref, var_len, false, blocks, &aggr_size, &aggr_count))
 					{
 						CA_PRINT("Directly referenced:\n");
 						CA_PRINT("    |--> ");
 						print_size(aggr_size);
 						CA_PRINT(" (%ld blocks)\n", aggr_count);
-					}
-					/* remember to cleanup */
-					if (blocks) {
-						for (index = 0; index < num_inuse_blocks; index++) {
-							if (blocks[index].reachable.index_map)
-								free(blocks[index].reachable.index_map);
-						}
-						free(blocks);
 					}
 				}
 			}

@@ -10,28 +10,33 @@
 #include <string>
 #include <map>
 #include "ref.h"
-/*
- * Memory usage/leak
- * Aggregated memory is the collection of memory blocks that are reachable from
- * either a global variable or a local variable
- */
-struct reachable {
-	size_t        aggr_size;	// cached reachable count/size by me (solely)
-	unsigned long aggr_count;
-	unsigned int* index_map;	// cached indexes of all sub in-use blocks
-};
-
-struct search_reachable_block {
-	address_t addr;
-	size_t    size;
-	struct reachable reachable;
-};
 
 struct inuse_block
 {
 	address_t addr;
 	size_t    size;
-	struct reachable reachable;
+};
+
+/*
+ * Memory usage/leak
+ * Aggregated memory is the collection of memory blocks that are reachable from
+ * either a global variable or a local variable
+ */
+struct reachable_block : public inuse_block {
+	reachable_block(address_t a, size_t s) : addr(a), size(s) {}
+	reachable_block(const struct inuse_block &blk) : addr(blk.addr), size(blk.size) {}
+	~reachable_block() {
+		if (reachable.index_map)
+			free(reachable.index_map);
+	}
+
+	address_t addr = 0;
+	size_t    size = 0;
+	struct reachable {
+		size_t        aggr_size = 0;	// cached reachable count/size by me (solely)
+		unsigned long aggr_count = 0;
+		unsigned int* index_map = nullptr;	// cached indexes of all sub in-use blocks
+	} reachable;
 };
 
 
@@ -99,12 +104,6 @@ extern std::string get_supported_heaps();
 extern struct inuse_block* build_inuse_heap_blocks(unsigned long*);
 extern struct inuse_block* find_inuse_block(address_t, struct inuse_block*, unsigned long);
 
-extern struct search_reachable_block* build_search_reachable_blocks(unsigned long*);
-extern void free_search_reachable_blocks(struct search_reachable_block*, unsigned long);
-
-//extern struct search_reachable_block* find_reachable_block(address_t,
-//    struct search_reachable_block*, unsigned long);
-
 extern bool display_heap_leak_candidates(void);
 
 extern bool biggest_blocks(unsigned int num);
@@ -115,8 +114,7 @@ extern bool
 calc_aggregate_size(const struct object_reference *ref,
 					size_t var_len,
 					bool all_reachable_blocks,
-					struct search_reachable_block *inuse_blocks,
-					unsigned long num_inuse_blocks,
+					std::vector<struct reachable_block>& inuse_blocks,
 					size_t *aggr_size,
 					unsigned long *count);
 

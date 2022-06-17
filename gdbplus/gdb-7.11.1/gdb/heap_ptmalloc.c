@@ -916,12 +916,7 @@ thread_tcache (struct thread_info *info, void *data)
 		CA_PRINT("Failed to lookup thread-local variable \"tcache\"\n");
 		return false;
 	}
-	try {
-		val = value_of_variable(tcsym, 0);
-	} catch (gdb_exception &e) {
-		CA_PRINT("Failed to evaluate thread-local variable \"tcache\": %s\n", e.message);
-		return false;
-	}
+	val = value_of_variable(tcsym, 0);
 	val = value_coerce_to_target(val);
 	type = value_type(val);
 	type = check_typedef (TYPE_TARGET_TYPE (type));

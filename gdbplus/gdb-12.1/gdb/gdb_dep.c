@@ -1704,7 +1704,7 @@ identify_direct_objects(struct inuse_block* blocks, unsigned long total_blocks)
 				blk = find_inuse_block(ptr, blocks, total_blocks);
 				if (blk)
 				{
-					//unsigned long index = blk - blocks;
+					unsigned long index = blk - blocks;
 					//set_queued_and_visited(qv_bitmap, index);
 				}
 				next += ptr_sz;

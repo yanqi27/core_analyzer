@@ -109,57 +109,6 @@ static struct MemHistogram g_mem_hist;
 static struct inuse_block *g_inuse_blocks = NULL;
 static unsigned long       g_num_inuse_blocks = 0;
 
-char ca_help_msg[] = "Commands of core_analyzer " CA_VERSION_STRING "\n"
-	"   ref <addr_exp>\n"
-	"           Find a symbol/type associated with the input address directly or indirectly\n"
-	"   ref [/thread or /t] <addr_exp> <size> [level]\n"
-	"           Search all references to the object starting at input address\n"
-	"           parameter [size] specifies the object size\n"
-	"           optional parameter [level] limits the levels of indirect reference, which is one by default\n"
-	"           option [/thread] limits search to thread contexts only\n"
-	"   obj <expr>\n"
-	"           Extended function of Windbg \"s -v <Range> <Object>\" command; Search for object and reference to C++ object of the same type as the input expression\n"
-	"   obj [/stats or /s]\n"
-	"           Display objects stats in turns of count and size\n"
-	"   shrobj [tid0] [tid1] [...]\n"
-	"           Find objects that currently referenced from multiple threads\n"
-	"\n"
-	"   heap [/verbose or /v] [/leak or /l]\n"
-	"           Heap walk; report memory corruption if any, usage statistics, etc.\n"
-	"           option [/v] turns on verbose mode which includes more detail like memory histogram\n"
-	"           option [/leak] lists all heap memory blocks that are not reachable from any code; i.e. leak candidates\n"
-	"   heap [/block or /b] [/cluster or /c] <addr_exp>\n"
-	"           option [/block] displays information about the memory block containing the given address\n"
-	"           option [/cluster] displays a cluster of memory blocks surrounding the given address\n"
-	"   heap [/usage or /u] <var_exp>\n"
-	"           option [/usage] calculates heap memory consumption by input variable or memory object\n"
-	"   heap [/topblock or /tb] [/topuser or /tu] <num>\n"
-	"           option [/topblock] lists biggest <num> heap memory blocks\n"
-	"           option [/topuser] lists the top <num> local/global variables that consume the most heap memory\n"
-	"   heap [/m]\n"
-	"           Display heap manager information\n"
-	//"   heap [/fragmentation or /f]\n"
-	"\n"
-	"   segment [addr_exp]\n"
-	"           Print process' virtual address space in segments\n"
-	"           optional parameter [addr] specifies the segment to display\n"
-	"   pattern <start> <end>\n"
-	"           Reveal the data pattern within the given range\n"
-	"   decode /v [reg=<val>] [from=<addr>] [to=<addr>|end]\n"
-	"           Disassemble current function with detail annotation of object context\n"
-	"           option [/v] turns on verbose mode\n"
-	"           option [reg=<val>] specifies initial register values at the first instruction to disassemble\n"
-	"           option [from=<addr>] and [to=<addr>] specifies the instruction addresses to disassemble\n"
-	"\n"
-	"   dt <type|variable>\n"
-	"           Display type (windbg style) that matches the input expression\n"
-	"   dt [/size or /s] <size> [<size-max>]\n"
-	"           List types that matches the size or a range of size\n"
-	"   shrobj_level [n]   - Set/Show the indirection level of shared-object search\n"
-	"   max_indirection_level [n] - Set/Show the maximum levels of indirection\n"
-	"   set/assign <addr> <val>   - Set a pseudo value at address\n"
-	"   unset/unassign <addr>     - Undo the pseudo value at address\n";
-
 // Binary search if addr belongs to one of the blocks
 static int
 inuse_block_cmp(const void *key, const void *elmt)
@@ -1084,10 +1033,10 @@ calc_aggregate_size(const struct object_reference *ref,
 		if (blk)
 		{
 			// cached result is available, return now
-			if (all_reachable_blocks && blk->reachable.aggr_size)
+			if (all_reachable_blocks && blk->aggr_size)
 			{
-				*total_size  = blk->reachable.aggr_size;
-				*total_count = blk->reachable.aggr_count;
+				*total_size  = blk->aggr_size;
+				*total_count = blk->aggr_count;
 				return true;
 			}
 			else
@@ -1114,10 +1063,10 @@ calc_aggregate_size(const struct object_reference *ref,
 				blk = find_reachable_block(addr, inuse_blocks);
 				if (blk)
 				{
-					if (blk->reachable.aggr_size)
+					if (blk->aggr_size)
 					{
-						*total_size  = blk->reachable.aggr_size;
-						*total_count = blk->reachable.aggr_count;
+						*total_size  = blk->aggr_size;
+						*total_count = blk->aggr_count;
 						return true;
 					}
 				}
@@ -1162,8 +1111,8 @@ calc_aggregate_size(const struct object_reference *ref,
 		if (ref->storage_type == ENUM_REGISTER || ref->storage_type == ENUM_HEAP)
 		{
 			blk = find_reachable_block(ref->vaddr, inuse_blocks);
-			blk->reachable.aggr_size = aggr_size;
-			blk->reachable.aggr_count = aggr_count;
+			blk->aggr_size = aggr_size;
+			blk->aggr_count = aggr_count;
 		}
 		else if (var_len == ptr_sz)
 		{
@@ -1172,8 +1121,8 @@ calc_aggregate_size(const struct object_reference *ref,
 				blk = find_reachable_block(addr, inuse_blocks);
 				if (blk)
 				{
-					blk->reachable.aggr_size = aggr_size;
-					blk->reachable.aggr_count = aggr_count;
+					blk->aggr_size = aggr_size;
+					blk->aggr_count = aggr_count;
 				}
 			}
 		}
@@ -1236,7 +1185,7 @@ bool display_heap_leak_candidates(void)
 		{
 			unsigned int* indexp;
 			blk = &blocks[cur_index];
-			if (!blk->reachable.index_map)
+			if (!blk->index_map)
 			{
 				if (!build_block_index_map(blk, blocks))
 				{
@@ -1245,7 +1194,7 @@ bool display_heap_leak_candidates(void)
 				}
 			}
 			// We have index map to work with by now
-			indexp = blk->reachable.index_map;
+			indexp = blk->index_map;
 			while (*indexp != UINT_MAX)
 			{
 				unsigned int index = *indexp;
@@ -1625,7 +1574,7 @@ static bool build_block_index_map(struct reachable_block* blk,
 {
 	size_t ptr_sz = g_ptr_bit >> 3;
 	// Prepare this
-	if (!blk->reachable.index_map)
+	if (!blk->index_map)
 	{
 		address_t start, end, cursor;
 		unsigned int max_sub_blocks, total_sub_blocks;
@@ -1676,13 +1625,13 @@ static bool build_block_index_map(struct reachable_block* blk,
 		}
 		// allocate cache to hold the indexes of this block
 		index_buf[total_sub_blocks++] = UINT_MAX;	// this value serves as terminator
-		blk->reachable.index_map = (unsigned int*) malloc(total_sub_blocks * sizeof(unsigned int));
-		if (!blk->reachable.index_map)
+		blk->index_map = (unsigned int*) malloc(total_sub_blocks * sizeof(unsigned int));
+		if (!blk->index_map)
 		{
 			CA_PRINT("Out-of-memory\n");
 			return false;
 		}
-		memcpy(blk->reachable.index_map, index_buf, total_sub_blocks * sizeof(unsigned int));
+		memcpy(blk->index_map, index_buf, total_sub_blocks * sizeof(unsigned int));
 	}
 	return true;
 }
@@ -1719,14 +1668,14 @@ heap_aggregate_size(struct reachable_block *blk,
 		set_visited(qv_bitmap, blk_index);
 
 		// Prepare this block's index map, which is an array of indexes of sub blocks
-		if (!blk->reachable.index_map)
+		if (!blk->index_map)
 		{
 			if (!build_block_index_map(blk, inuse_blocks))
 				return 0;
 		}
 
 		// We have index map to work with by now
-		indexp = blk->reachable.index_map;
+		indexp = blk->index_map;
 		while (*indexp != UINT_MAX)
 		{
 			unsigned int index = *indexp;

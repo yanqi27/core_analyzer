@@ -320,6 +320,21 @@ decode_command (const char *args, int from_tty)
 	decode_func(myargs.get());
 }
 
+static char ca_help_msg[] = "Commands of core_analyzer " CA_VERSION_STRING "\n"
+	"   heap    -- Heap walk, object query, memory usage statistics, leak check, etc.\n"
+	"   ref     -- Search for references to a given object.\n"
+	"   obj     -- Search for objects that matches the type of the input expression.\n"
+	"   dt      -- Display type (windbg style) that matches the input expression.\n"
+	"   decode  -- Disassemble current function with detail annotation of object context.\n"
+	"   shrobj  -- Find objects that currently referenced from multiple threads.\n"
+	"   segment -- Display memory segment(s).\n"
+	"   pattern -- Reveal memory pattern.\n"
+	"   set/assign     -- Set a pseudo value at address.\n"
+	"   unset/unassign -- Undo the pseudo value at address.\n"
+	"   shrobj_level -- Set/Show the indirection level of shared-object search.\n"
+	"   max_indirection_level -- Set/Show the maximum levels of indirection\n"
+	"type 'help <command>' to get more detail and usage info\n";
+
 static void
 display_help_command (const char *args, int from_tty)
 {
@@ -365,40 +380,75 @@ void
 _initialize_heapcmd ()
 {
 	add_cmd("ref", class_info, ref_command, _("Search for references to a given object.\n"
-		"ref <addr_exp>\n"
-		"ref [/thread or /t] <addr_exp> <size> [level]"),
+		"Usage:\n"
+		"   ref <addr_exp>\n"
+		"           Find a symbol/type associated with the input address directly or indirectly\n"
+		"   ref [/thread or /t] <addr_exp> <size> [level]\n"
+		"           Search all references to the object starting at input address\n"
+		"           parameter [size] specifies the object size\n"
+		"           optional parameter [level] limits the levels of indirect reference, which is one by default\n"
+		"           option [/thread] limits search to thread contexts only\n"),
 		&cmdlist);
 
-	add_cmd("obj", class_info, obj_command, _("Search for objects that matches the type of the input expression; Stats of all objects\n"
-		"obj [/stats or /s]\n"
-		"obj [/ref or /r] <type|variable>"),
+	add_cmd("obj", class_info, obj_command, _("Search for objects that matches the type of the input expression.\n"
+		"Usage:\n"
+		"   obj <type|variable>\n"
+		"           Extended function of Windbg \"s -v <Range> <Object>\" command; Search for object and reference to C++ object of the same type as the input expression\n"),
+		//"   obj [/ref or /r] <type|variable>\n"
+		//"           Search references to all instances of the specified class\n"
+		//"   obj [/stats or /s]\n"
+		//"           Display objects stats in turns of count and size\n"
 		&cmdlist);
 
-	add_cmd("shrobj", class_info, shrobj_command, _("Find objects that currently referenced from multiple threads\n"
-		"shrobj [tid0] [tid1] [...]"),
+	add_cmd("shrobj", class_info, shrobj_command, _("Find objects that currently referenced from multiple threads.\n"
+		"Usage:\n"
+		"   shrobj [tid0] [tid1] [...]\n"
+		"           Find objects that currently referenced from multiple threads\n"),
 		&cmdlist);
 
 	add_cmd("heap", class_info, heap_command, _("Heap walk, query, memory usage statistics, leak check, etc.\n"
-		"heap\n"
-		"heap [/block or /b] <addr_exp>\n"
-		"heap [/cluster or /c] <addr_exp>\n"
-		"heap [/usage or /u] <var_exp>\n"
-		"heap [/topblock or /tb] <num>\n"
-		"heap [/topuser or /tu] <num>\n"
-		"heap [/verbose or /v] [/leak or /l]\n"
-		"heap [/m]"),
+		"Usage:\n"
+		"   heap [/verbose or /v]\n"
+		"           Heap walk; report memory corruption if any, total memory usage\n"
+		"           option [/v] turns on verbose mode which includes more detail like memory histogram\n"
+		"   heap [/leak or /l]\n"
+		"           option [/leak] lists all heap memory blocks that are not reachable from any code; i.e. leak candidates\n"
+		"   heap [/block or /b] <addr_exp>\n"
+		"           option [/block] displays information about the memory block containing the given address\n"
+		"   heap [/cluster or /c] <addr_exp>\n"
+		"           option [/cluster] displays a cluster of memory blocks surrounding the given address\n"
+		"   heap [/usage or /u] <var_exp>\n"
+		"           option [/usage] calculates heap memory consumed/referenced by the input variable or memory object\n"
+		"   heap [/topblock or /tb] <num>\n"
+		"           option [/topblock] lists biggest <num> heap memory blocks\n"
+		"   heap [/topuser or /tu] <num>\n"
+		"           option [/topuser] lists the top <num> local/global variables that consume the most heap memory\n"),
+		//"   heap [/m]\n"
+		//"           Display heap manager information\n"
+		//"   heap [/fragmentation or /f]\n"
 		&cmdlist);
 
 	add_cmd("pattern", class_info, pattern_command, _("Reveal memory pattern\n"
-		"pattern <start> <end>"),
+		"Usage:\n"
+		"   pattern <start> <end>\n"
+		"           Display the data pattern within the given address range\n"),
 		&cmdlist);
 
 	add_cmd("segment", class_info, segment_command, _("Display memory segment(s)\n"
-		"segment [address]"),
+		"Usage:\n"
+		"    segment [address]\n"
+		"           Print memory segments/regions of the target process's virtual address space\n"
+		"           optional parameter [addr] specifies the segment to display\n"),
 		&cmdlist);
 
 	add_cmd("decode", class_info, decode_command, _("Disassemble current function with detail annotation of object context\n"
-		"decode %reg=<val> from=<addr> to=<addr>|end"),
+		"Usage:\n"
+		"   decode %reg=<val> from=<addr> to=<addr>|end frame=n\n"
+		"           Disassemble current function with detail annotation of object context\n"
+		"           option [/v] turns on verbose mode\n"
+		"           option [reg=<val>] specifies initial register values at the first instruction to disassemble\n"
+		"           option [frame=<val>] specifies the frame number to start disassembling\n"
+		"           option [from=<addr>] and [to=<addr>] specifies the instruction addresses to disassemble\n"),
 		&cmdlist);
 
 	// Settings
@@ -415,7 +465,13 @@ _initialize_heapcmd ()
 	add_cmd("ca_help", class_info, display_help_command, _("Display core analyzer help"), &cmdlist);
 	add_cmd("switch_heap", class_info, switch_heap_command, _("switch another heap like pt, tc,"), &cmdlist);
 
-	add_cmd("dt", class_info, dt_command, _("Display type (windbg style)\ndt <type|variable>"), &cmdlist);
+	add_cmd("dt", class_info, dt_command, _("Display type (windbg style)\n"
+		"Usage:\n"
+		"   dt <type|variable>\n"
+		"           Display type (windbg style) that matches the input expression\n"
+		"   dt [/size or /s] <size> [<size-max>]\n"
+		"           List types that matches the size or a range of size\n"),
+		&cmdlist);
 	add_cmd("info_local", class_info, info_local_command, _("Display local variables"), &cmdlist);
 	add_cmd("buildid", class_info, buildid_command, _("Display build-ids of target modules"), &cmdlist);
 

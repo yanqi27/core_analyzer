@@ -74,8 +74,6 @@ extern void init_progress_bar(unsigned long total);
 extern void set_current_progress(unsigned long);
 extern void end_progress_bar(void);
 
-extern char ca_help_msg[];
-
 extern address_t ca_eval_address(const char*);
 
 extern bool heap_command_impl(char* args);

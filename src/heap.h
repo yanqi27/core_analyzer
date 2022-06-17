@@ -13,6 +13,8 @@
 
 struct inuse_block
 {
+	inuse_block(address_t a, size_t s) : addr(a), size(s) {}
+	inuse_block(const struct inuse_block &blk) : addr(blk.addr), size(blk.size) {}
 	address_t addr;
 	size_t    size;
 };
@@ -23,20 +25,16 @@ struct inuse_block
  * either a global variable or a local variable
  */
 struct reachable_block : public inuse_block {
-	reachable_block(address_t a, size_t s) : addr(a), size(s) {}
-	reachable_block(const struct inuse_block &blk) : addr(blk.addr), size(blk.size) {}
+	reachable_block(address_t a, size_t s) : inuse_block(a, s) {}
+	reachable_block(const struct inuse_block &blk) : inuse_block(blk) {}
 	~reachable_block() {
-		if (reachable.index_map)
-			free(reachable.index_map);
+		if (index_map)
+			free(index_map);
 	}
 
-	address_t addr = 0;
-	size_t    size = 0;
-	struct reachable {
-		size_t        aggr_size = 0;	// cached reachable count/size by me (solely)
-		unsigned long aggr_count = 0;
-		unsigned int* index_map = nullptr;	// cached indexes of all sub in-use blocks
-	} reachable;
+	size_t        aggr_size  = 0;		// cached reachable count/size by me (solely)
+	unsigned long aggr_count = 0;
+	unsigned int* index_map  = nullptr;	// cached indexes of all sub in-use blocks
 };
 
 

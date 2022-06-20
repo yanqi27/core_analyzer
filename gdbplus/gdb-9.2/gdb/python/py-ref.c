@@ -533,7 +533,6 @@ PyObject *gdbpy_cpp_object (PyObject *self, PyObject *args)
 PyObject *gdbpy_shared_object (PyObject *self, PyObject *args)
 {
 	PyObject *result = NULL;
-	int* ptid;
 	int i;
 
 	// Make sure we have built necessary data structures to do searching

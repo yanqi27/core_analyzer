@@ -869,7 +869,7 @@ SFILES = ada-exp.y ada-lang.c ada-typeprint.c ada-valprint.c ada-tasks.c \
 	objfiles.c osabi.c observer.c osdata.c \
 	opencl-lang.c \
 	p-exp.y p-lang.c p-typeprint.c p-valprint.c parse.c printcmd.c \
-	heapcmd.c segment.c search.c stl_container.c heap.c heap_ptmalloc.c heap_tcmalloc.c gdb_dep.c i386-decode.c decode.c \
+	heapcmd.c segment.c search.c stl_container.c heap.c heap_ptmalloc.c gdb_dep.c i386-decode.c decode.c \
 	proc-service.list progspace.c \
 	prologue-value.c psymtab.c \
 	regcache.c reggroups.c remote.c remote-fileio.c remote-notif.c reverse.c \
@@ -1029,7 +1029,7 @@ COMMON_OBS = $(DEPFILES) $(CONFIG_OBS) $(YYOBJ) \
 	findvar.o regcache.o cleanups.o \
 	charset.o continuations.o corelow.o disasm.o dummy-frame.o dfp.o \
 	source.o value.o eval.o valops.o valarith.o valprint.o printcmd.o \
-	heapcmd.o segment.o search.o stl_container.o heap.o heap_ptmalloc.o heap_tcmalloc.o gdb_dep.o i386-decode.o decode.o \
+	heapcmd.o segment.o search.o stl_container.o heap.o heap_ptmalloc.o gdb_dep.o i386-decode.o decode.o \
 	block.o symtab.o psymtab.o symfile.o symfile-debug.o symmisc.o \
 	linespec.o dictionary.o namespace.o \
 	location.o infcall.o \

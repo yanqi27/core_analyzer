@@ -50,6 +50,8 @@ extern address_t get_var_addr_by_name(const char*, bool);
 
 extern void print_func_locals (void);
 extern void print_type_layout (char*);
+extern void search_types_by_size(size_t, size_t);
+extern bool display_object_stats(void);
 
 extern void print_build_ids(void);
 
@@ -72,13 +74,11 @@ extern void init_progress_bar(unsigned long total);
 extern void set_current_progress(unsigned long);
 extern void end_progress_bar(void);
 
-extern char ca_help_msg[];
-
 extern address_t ca_eval_address(const char*);
 
-extern bool heap_command_impl(const char* args);
-extern bool ref_command_impl(const char* args);
-extern bool segment_command_impl(const char* args);
-extern bool pattern_command_impl(const char* args);
+extern bool heap_command_impl(char* args);
+extern bool ref_command_impl(char* args);
+extern bool segment_command_impl(char* args);
+extern bool pattern_command_impl(char* args);
 
 #endif // X_DEP_H_

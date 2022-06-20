@@ -1047,7 +1047,7 @@ std::list<struct object_reference*> search_cplusplus_objects_with_vptr(const cha
 /////////////////////////////////////////////////////////////////////////
 // search C++ objects and references to them by the type of the input expression
 /////////////////////////////////////////////////////////////////////////
-bool search_cplusplus_objects_and_references(const char* exp, bool thread_scope)
+bool search_cplusplus_objects_and_references(const char* exp, bool search_ref, bool thread_scope)
 {
 	bool lbFound = false;
 	std::list<struct object_range*> vtables;
@@ -1138,7 +1138,7 @@ bool search_cplusplus_objects_and_references(const char* exp, bool thread_scope)
     		ref_list.clear();
 
 			#if 0	// This seems nice-to-have but unnecessary, it sometimes takes forever to finish
-    		if (!ref_targets.empty())
+    		if (search_ref && !ref_targets.empty())
     		{
 				// Search the references to found objects
 				CA_PRINT ("\nSearching references to above objects\n");

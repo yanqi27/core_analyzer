@@ -10,22 +10,31 @@
 #include <string>
 #include <map>
 #include "ref.h"
-/*
- * Memory usage/leak
- * Aggregated memory is the collection of memory blocks that are reachable from a variable
- */
-struct reachable
-{
-	size_t        aggr_size;	// cached reachable count/size by me (solely)
-	unsigned long aggr_count;
-	unsigned int* index_map;	// cached indexes of all sub in-use blocks
-};
 
 struct inuse_block
 {
+	inuse_block(address_t a, size_t s) : addr(a), size(s) {}
+	inuse_block(const struct inuse_block &blk) : addr(blk.addr), size(blk.size) {}
 	address_t addr;
 	size_t    size;
-	struct reachable reachable;
+};
+
+/*
+ * Memory usage/leak
+ * Aggregated memory is the collection of memory blocks that are reachable from
+ * either a global variable or a local variable
+ */
+struct reachable_block : public inuse_block {
+	reachable_block(address_t a, size_t s) : inuse_block(a, s) {}
+	reachable_block(const struct inuse_block &blk) : inuse_block(blk) {}
+	~reachable_block() {
+		if (index_map)
+			free(index_map);
+	}
+
+	size_t        aggr_size  = 0;		// cached reachable count/size by me (solely)
+	unsigned long aggr_count = 0;
+	unsigned int* index_map  = nullptr;	// cached indexes of all sub in-use blocks
 };
 
 
@@ -91,8 +100,6 @@ extern void register_mscrt_malloc();
 extern std::string get_supported_heaps();
 
 extern struct inuse_block* build_inuse_heap_blocks(unsigned long*);
-extern void free_inuse_heap_blocks(struct inuse_block*, unsigned long);
-
 extern struct inuse_block* find_inuse_block(address_t, struct inuse_block*, unsigned long);
 
 extern bool display_heap_leak_candidates(void);
@@ -105,8 +112,7 @@ extern bool
 calc_aggregate_size(const struct object_reference *ref,
 					size_t var_len,
 					bool all_reachable_blocks,
-					struct inuse_block *inuse_blocks,
-					unsigned long num_inuse_blocks,
+					std::vector<struct reachable_block>& inuse_blocks,
 					size_t *aggr_size,
 					unsigned long *count);
 

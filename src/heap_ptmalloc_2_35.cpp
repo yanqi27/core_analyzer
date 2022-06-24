@@ -281,7 +281,7 @@ static bool get_next_heap_block(address_t addr, struct heap_block* blk)
 		if (heap && fill_heap_block(heap, addr, blk))
 		{
 			next_addr = blk->addr + blk->size + size_t_sz;
-			if (next_addr >= heap->mEndAddr)
+			if (next_addr + MIN_CHUNK_SIZE > heap->mEndAddr)
 			{
 				// the given address is the last heap block of its heap
 				// move to the next heap if any
@@ -717,7 +717,7 @@ static bool get_glibc_version(int *major, int *minor)
 		if (len >= bufsz)
 			return false;
 
-		strncpy(buf, version, len+1);
+		strncpy(buf, version, bufsz - 1);
 	}
 
 	int len = strlen(buf);
@@ -1825,7 +1825,7 @@ static bool fill_heap_block(struct ca_heap* heap, address_t addr, struct heap_bl
 	struct malloc_chunk achunk;
 	size_t chunksz;
 	size_t size_t_sz = sizeof(INTERNAL_SIZE_T);
-	size_t mchunk_sz = sizeof(struct malloc_chunk);
+	size_t mchunk_sz = sizeof(struct malloc_chunk_s);
 
 	// For mmap heap, there is only one block and in-use
 	if (heap->mArena->mType == ENUM_HEAP_MMAP_BLOCK)

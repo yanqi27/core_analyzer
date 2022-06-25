@@ -34,6 +34,11 @@ typedef long unsigned int size_t;
 #define MALLOC_ALIGNMENT       (2 * SIZE_SZ)
 #define MALLOC_ALIGN_MASK      (MALLOC_ALIGNMENT - 1)
 
+struct malloc_chunk_s {
+  INTERNAL_SIZE_T      prev_size;  /* Size of previous chunk (if free).  */
+  INTERNAL_SIZE_T      size;       /* Size in bytes, including overhead. */
+};
+
 struct malloc_chunk {
 
   INTERNAL_SIZE_T      prev_size;  /* Size of previous chunk (if free).  */

@@ -52,6 +52,12 @@ extern bool set_addressable_bit_vec(struct ca_segment*);
 
 extern bool read_memory_wrapper (struct ca_segment*, address_t, void*, size_t);
 
+template<typename T>
+bool read_variable(address_t addr, T* val_pointer, struct ca_segment* segment =nullptr)
+{
+       return read_memory_wrapper(segment, addr, val_pointer, sizeof(T));
+}
+
 extern void* core_to_mmap_addr(address_t vaddr);
 
 extern void set_value (address_t addr, address_t value);

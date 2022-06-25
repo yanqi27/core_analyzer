@@ -172,7 +172,7 @@ struct ca_arena
 		mparams.HEAP_MAX_SIZE = HEAP_MAX_SIZE_GLIBC_2_##v;				\
 		mparams.MAX_FAST_SIZE = MAX_FAST_SIZE_GLIBC_2_##v;				\
 		mparams.mstate_size = sizeof(struct malloc_state_GLIBC_2_##v);	\
-		rc = read_memory_wrapper(NULL, mparams_vaddr, &pars, sizeof(pars));	\
+		rc = read_variable(mparams_vaddr, &pars);	\
 		if (rc)									\
 			COPY_MALLOC_PAR_WITHOUT_PAGESIZE(pars);				\
 	} while (0)
@@ -530,7 +530,7 @@ static bool get_biggest_blocks(struct heap_block* blks, unsigned int num)
 			// Traverse the link list of heaps of this arena
 			while (heap)
 			{
-				if (!read_memory_wrapper(NULL, heap->mStartAddr - size_t_sz, &achunk, mchunk_sz))
+				if (!read_variable(heap->mStartAddr - size_t_sz, &achunk))
 					break;
 				blk.size = chunksize(&achunk) - size_t_sz * 2;
 				if (blk.size > smallest->size)
@@ -564,7 +564,7 @@ static bool get_biggest_blocks(struct heap_block* blks, unsigned int num)
 				{
 					size_t chunksz;
 					address_t chunk_addr = heap->mChunks[bi] - size_t_sz;
-					if (!read_memory_wrapper(NULL, chunk_addr, &achunk, mchunk_sz))
+					if (!read_variable(chunk_addr, &achunk))
 						break;
 					chunksz = chunksize(&achunk);
 					if (chunk_addr + chunksz + mchunk_sz >= heap->mEndAddr)
@@ -575,7 +575,7 @@ static bool get_biggest_blocks(struct heap_block* blks, unsigned int num)
 					{
 						// Get the next chunk which has the prev_inuse bit flag
 						struct malloc_chunk next_chunk;
-						if (!read_memory_wrapper(NULL, chunk_addr + chunksz, &next_chunk, mchunk_sz))
+						if (!read_variable(chunk_addr + chunksz, &next_chunk))
 							break;
 
 						if (prev_inuse(&next_chunk) &&
@@ -619,7 +619,7 @@ static bool walk_inuse_blocks(struct inuse_block* opBlocks, unsigned long* opCou
 		// For mmap heap, there is only one block and in-use
 		if (heap->mArena->mType == ENUM_HEAP_MMAP_BLOCK)
 		{
-			if (!read_memory_wrapper(NULL, heap->mStartAddr - size_t_sz, &achunk, mchunk_sz))
+			if (!read_variable(heap->mStartAddr - size_t_sz, &achunk))
 				continue;
 			(*opCount)++;
 			if (pBlockinfo)
@@ -641,7 +641,7 @@ static bool walk_inuse_blocks(struct inuse_block* opBlocks, unsigned long* opCou
 				address_t chunk_addr = heap->mChunks[chunk_index] - size_t_sz;
 				size_t chunksz;
 				// read current chunk's size tag
-				if (!read_memory_wrapper(NULL, chunk_addr, &achunk, mchunk_sz))
+				if (!read_variable(chunk_addr, &achunk))
 					break;
 				chunksz = chunksize(&achunk);
 				// top pad
@@ -651,7 +651,7 @@ static bool walk_inuse_blocks(struct inuse_block* opBlocks, unsigned long* opCou
 				{
 					// Get the next chunk which has the prev_inuse bit flag
 					struct malloc_chunk next_chunk;
-					if (!read_memory_wrapper(NULL, chunk_addr + chunksz, &next_chunk, mchunk_sz))
+					if (!read_variable(chunk_addr + chunksz, &next_chunk))
 						break;
 
 					if (prev_inuse(&next_chunk) &&
@@ -1032,7 +1032,7 @@ thread_tcache (struct thread_info *info, void *data)
 				break;
 			}
 			add_cached_chunk(mem2chunk(entry));
-			if (!read_memory_wrapper(NULL, (address_t)entry, &next_entry, sizeof(next_entry))) {
+			if (!read_variable((address_t)entry, &next_entry)) {
 				CA_PRINT("Failed to walk tcache.entries[%d]\n", i);
 				return false;
 			}
@@ -1223,7 +1223,7 @@ static struct ca_arena* build_arena(address_t arena_vaddr, enum HEAP_TYPE type)
 				while (chunk_vaddr) {
 					struct malloc_chunk fast_chunk;
 
-					if (!read_memory_wrapper(NULL, chunk_vaddr, &fast_chunk, mchunk_sz))
+					if (!read_variable(chunk_vaddr, &fast_chunk))
 						break;
 					if (chunksize(&fast_chunk) > mparams.MAX_FAST_SIZE) {
 						CA_PRINT("Invalid fast chunk 0x%lx, its size %ld is "

@@ -279,7 +279,7 @@ static bool get_next_heap_block(address_t addr, struct heap_block* blk)
 		if (heap && fill_heap_block(heap, addr, blk))
 		{
 			next_addr = blk->addr + blk->size + size_t_sz;
-			if (next_addr >= heap->mEndAddr)
+			if (next_addr + MIN_CHUNK_SIZE > heap->mEndAddr)
 			{
 				// the given address is the last heap block of its heap
 				// move to the next heap if any
@@ -714,7 +714,7 @@ static bool get_glibc_version(int *major, int *minor)
 		if (len >= bufsz)
 			return false;
 
-		strncpy(buf, version, len+1);
+		strncpy(buf, version, bufsz - 1);
 	}
 
 	int len = strlen(buf);
@@ -1813,15 +1813,14 @@ static address_t search_chunk(struct ca_heap* heap, address_t addr)
 static bool fill_heap_block(struct ca_heap* heap, address_t addr, struct heap_block* blk)
 {
 	address_t chunk_addr;
-	struct malloc_chunk achunk;
+	struct malloc_chunk_s achunk;
 	size_t chunksz;
 	size_t size_t_sz = sizeof(INTERNAL_SIZE_T);
-	size_t mchunk_sz = sizeof(struct malloc_chunk);
 
 	// For mmap heap, there is only one block and in-use
 	if (heap->mArena->mType == ENUM_HEAP_MMAP_BLOCK)
 	{
-		if (!read_memory_wrapper(NULL, heap->mStartAddr - size_t_sz, &achunk, mchunk_sz))
+		if (!read_memory_wrapper(NULL, heap->mStartAddr - size_t_sz, &achunk, sizeof(achunk)))
 			return false;
 		blk->addr = heap->mStartAddr + size_t_sz;
 		blk->size = chunksize(&achunk) - size_t_sz*2;
@@ -1833,12 +1832,12 @@ static bool fill_heap_block(struct ca_heap* heap, address_t addr, struct heap_bl
 	if (!heap->mChunks)
 		build_heap_chunks(heap);
 	chunk_addr = search_chunk(heap, addr) - size_t_sz;
-	if (!read_memory_wrapper(NULL, chunk_addr, &achunk, mchunk_sz))
+	if (!read_memory_wrapper(NULL, chunk_addr, &achunk, sizeof(achunk)))
 		return false;
 	chunksz = chunksize(&achunk);
 	blk->addr = chunk_addr + size_t_sz*2;
 	// top pad
-	if (chunk_addr + chunksz + mchunk_sz >= heap->mEndAddr)
+	if (chunk_addr + chunksz + sizeof(struct malloc_chunk_s) >= heap->mEndAddr)
 	{
 		blk->size = heap->mEndAddr - chunk_addr - size_t_sz*2;
 		blk->inuse = false;
@@ -1846,8 +1845,8 @@ static bool fill_heap_block(struct ca_heap* heap, address_t addr, struct heap_bl
 	else
 	{
 		// Get the next chunk which has the prev_inuse bit flag
-		struct malloc_chunk next_chunk;
-		if (!read_memory_wrapper(NULL, chunk_addr + chunksz, &next_chunk, mchunk_sz))
+		struct malloc_chunk_s next_chunk;
+		if (!read_memory_wrapper(NULL, chunk_addr + chunksz, &next_chunk, sizeof(next_chunk)))
 			return false;
 
 		if (prev_inuse(&next_chunk) &&

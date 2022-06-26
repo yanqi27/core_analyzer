@@ -17,18 +17,13 @@ namespace pt
 std::string read_libc_version()
 {
 	std::string version;
-	struct symbol *sym = lookup_static_symbol("__libc_version", VAR_DOMAIN).symbol;
-	if (sym == NULL) {
+	const size_t bufsz = 64;
+	char buf[bufsz];
+	memset(buf, 0, bufsz);
+	if (!get_gv_value("__libc_version", buf, bufsz)) {
 		CA_PRINT("Cannot get the \"__libc_version\" from the debugee, read it from the host machine. This might not be accurate.\n");
 		version = gnu_get_libc_version();
 	} else {
-		struct value *val = value_of_variable(sym, 0);
-		constexpr int bufsz = 64;
-		char buf[bufsz];
-		if (!read_memory_wrapper(NULL,  value_address(val), buf, TYPE_LENGTH(value_type(val)))) {
-			CA_PRINT("Failed to read \"__libc_version\" from the debugee.\n");
-			return version;
-		}
 		version = buf;
 	}
 	return version;

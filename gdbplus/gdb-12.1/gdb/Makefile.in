@@ -1092,7 +1092,7 @@ COMMON_SFILES = \
 	go-typeprint.c \
 	go-valprint.c \
 	heap.c \
-	heap_ptmalloc.c \
+	heap_ptmalloc_common.c \
 	heap_ptmalloc_2_27.c \
 	heap_ptmalloc_2_31.c \
 	heap_ptmalloc_2_35.c \

@@ -425,4 +425,10 @@ struct malloc_state_GLIBC_2_22 {
 #define chunk2mem(p)   ((void*)((char*)(p) + 2*SIZE_SZ))
 #define mem2chunk(mem) ((mchunkptr)((char*)(mem) - 2*SIZE_SZ))
 
+// share function for different pt malloc
+namespace pt 
+{
+std::string read_libc_version();
+bool get_glibc_version(int *major, int *minor);
+}
 #endif /* _MM_PTMALLOC_H */

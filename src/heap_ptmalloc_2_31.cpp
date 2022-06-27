@@ -220,7 +220,6 @@ static bool get_field_value(struct value *, const char *, size_t *, bool);
 
 static bool memcpy_field_value(struct value *, const char *, char *, size_t);
 
-static bool get_glibc_version(int *major, int *minor);
 /***************************************************************************
 * Exposed functions
 ***************************************************************************/
@@ -683,7 +682,7 @@ static CoreAnalyzerHeapInterface sPtMallHeapManager = {
 
 void register_pt_malloc_2_31() {
     bool my_heap = false;
-    if (get_glibc_version(&glibc_ver_major, &glibc_ver_minor)) {
+    if (pt::get_glibc_version(&glibc_ver_major, &glibc_ver_minor)) {
         if (glibc_ver_major == 2 && glibc_ver_minor >= 28 && glibc_ver_minor <= 31)
             my_heap = true;
     }
@@ -693,48 +692,6 @@ void register_pt_malloc_2_31() {
 * Ptmalloc Helper Functions
 ***************************************************************************/
 
-/*
- * Get the glibc version of the debugee
- */
-static bool get_glibc_version(int *major, int *minor)
-{
-	if (!major || !minor)
-		return false;
-
-	const size_t bufsz = 64;
-	char buf[bufsz];
-
-	memset(buf, 0, bufsz);
-	if (!get_gv_value("__libc_version", buf, bufsz)) {
-		CA_PRINT("Cannot get the \"__libc_version\" from the debugee, read it from the host machine. This might not be accurate.\n");
-		const char* version = gnu_get_libc_version();
-		int len = strlen(version);
-		if (len >= bufsz)
-			return false;
-
-		strncpy(buf, version, bufsz - 1);
-	}
-
-	int len = strlen(buf);
-	for (int i=0; i<len; i++)
-	{
-		if (buf[i] == '.')
-		{
-			buf[i] = '\0';
-			*major = atoi(&buf[0]);
-			*minor = atoi(&buf[i+1]);
-			if (*major != 2)
-			{
-				CA_PRINT("This version of glibc %d.%d is not tested, please contact the owner\n",
-						*major, *minor);
-				return false;
-			}
-			return true;
-		}
-	}
-
-	return false;
-}
 
 /*
  * compare two ca_heaps by their starting address

@@ -168,7 +168,7 @@ try:
 
 	print("[ca_test] Pass")
 except Exception as e:
-	print(("[ca_test] " + e.message))
+	print(("[ca_test] " + str(e)))
 	print("[ca_test] Test failed")
 	if core_name and os.path.isfile(core_name):
 		os.unlink(core_name)

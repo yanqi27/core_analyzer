@@ -1596,19 +1596,6 @@ static bool build_heaps(void)
 		release_all_ca_arenas();
 		release_tcache_chunks();
 	}
-#if 0
-	// Support a subset of all glibc versions
-	if (glibc_ver_minor != 3
-		&& glibc_ver_minor != 4
-		&& glibc_ver_minor != 5
-		//&& glibc_ver_minor != 11
-		&& (glibc_ver_minor < 12 || glibc_ver_minor > 29))
-	{
-		CA_PRINT("The memory manager of glibc %d.%d is not supported in this release\n",
-				glibc_ver_major, glibc_ver_minor);
-		return false;
-	}
-#endif
 	main_arena_vaddr = get_var_addr_by_name("main_arena", true);
 	mparams_vaddr    = get_var_addr_by_name("mp_", true);
 	if (main_arena_vaddr == 0 || mparams_vaddr == 0)

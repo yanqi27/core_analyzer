@@ -42,7 +42,10 @@ bool init_heap_managers() {
         f();
 
     if (gCAHeap) {
-        CA_HEAP->init_heap();
+        if (!CA_HEAP->init_heap()) {
+			CA_PRINT("failed to init heap\n");
+			return false;
+		}
         return true;
     }
 	CA_PRINT("failed to parse heap data\n");

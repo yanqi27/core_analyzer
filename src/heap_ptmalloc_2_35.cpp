@@ -952,33 +952,33 @@ thread_tcache (struct thread_info *info, void *data)
 
 	switch_to_thread (info);
 
-	try {
-		tcsym = lookup_symbol("tcache", 0, VAR_DOMAIN, 0).symbol;
-		if (tcsym == NULL) {
-			CA_PRINT("Failed to lookup thread-local variable \"tcache\"\n");
+	tcsym = lookup_symbol("tcache", 0, VAR_DOMAIN, 0).symbol;
+	if (tcsym == NULL) {
+		CA_PRINT("Failed to lookup thread-local variable \"tcache\"\n");
+		return false;
+	}
+	try
+	{
+		val = value_of_variable(tcsym, 0);
+
+		val = value_coerce_to_target(val);
+		type = value_type(val);
+		type = check_typedef(TYPE_TARGET_TYPE(type));
+		valsz = TYPE_LENGTH(type);
+		if (sizeof(tcps) != valsz)
+		{
+			CA_PRINT("Internal error: \"struct tcache_perthread_struct\" is incorrect\n");
+			CA_PRINT("Assumed tcache size=%ld while gdb sees size=%ld\n", sizeof(tcps), valsz);
 			return false;
 		}
-		val = value_of_variable(tcsym, 0);
-	} catch (gdb_exception_error &e) {
+		addr = value_as_address(val);
+	}
+	catch (gdb_exception_error &e)
+	{
 		CA_PRINT("Failed to evaluate thread-local variable \"tcache\": %s\n", e.what());
 		return false;
 	}
-	val = value_coerce_to_target(val);
-	type = value_type(val);
-	type = check_typedef (TYPE_TARGET_TYPE (type));
-	valsz = TYPE_LENGTH(type);
-	if (sizeof(tcps) != valsz) {
-		CA_PRINT("Internal error: \"struct tcache_perthread_struct\" is incorrect\n");
-		CA_PRINT("Assumed tcache size=%ld while gdb sees size=%ld\n", sizeof(tcps), valsz);
-		return false;
-	}
-	// temp fix
-	tcache_perthread_struct *ptcps;
-
-	gdb::array_view<gdb_byte> content = value_contents_raw(val);
-	memcpy(&ptcps, content.data(), sizeof(ptcps));
-	//addr = value_as_address(val);
-	addr = (address_t)ptcps;	//CA_PRINT("tcache for ptid.pid [%d]: 0x%lx\n", info->ptid.pid(), addr);
+	//CA_PRINT("tcache for ptid.pid [%d]: 0x%lx\n", info->ptid.pid(), addr);
 	if (!read_memory_wrapper(NULL, addr, &tcps, valsz)) {
 		CA_PRINT("Failed to read thread-local variable \"tcache\"\n");
 		return false;

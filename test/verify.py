@@ -151,6 +151,7 @@ def run_tests():
 	check_heap_walk(user_blks)
 	check_cplusplus_object("Derived", object_count)
 	check_ref()
+	check_heap_commands()
 
 #
 # Fun starts here

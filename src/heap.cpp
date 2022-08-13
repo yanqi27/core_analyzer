@@ -303,8 +303,7 @@ bool heap_command_impl(const char* args)
 		else if (!CA_HEAP->heap_walk(addr, verbose))
 			CA_PRINT("[Error] Failed to walk heap\n");
 	}
-	if (expr)
-		free(expr);
+
 	return rc;
 }
 

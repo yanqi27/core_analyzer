@@ -134,6 +134,10 @@ def check_ref():
 	print("[ca_test]\tFound heap reference: addr=0x%x size=%u to object at address 0x%x" \
 		% (refs[0].heap_addr, refs[0].heap_size, obj_addr))
 
+def check_heap_commands():
+	gdb.execute('heap /u regions')
+	gdb.execute('heap /tb 3')
+
 def run_tests():
 	# Retrieve global variables defined in mallocTest
 	count = gdb.parse_and_eval("num_regions")

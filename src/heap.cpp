@@ -10,7 +10,6 @@
 #include "segment.h"
 #include "search.h"
 
-
 CoreAnalyzerHeapInterface* gCAHeap;
 
 #define ENSURE_CA_HEAP()							\
@@ -899,10 +898,9 @@ bool biggest_heap_owners_generic(unsigned int num, bool all_reachable_blocks)
 					if (known_global_sym(&ref, &sym_addr, &sym_sz) && sym_sz)
 						known_sym = true;
 				}
-				if (known_sym)
+				// In rare case, symbol can be wacky; use it only if it matches the input address
+				if (known_sym && cursor == sym_addr)
 				{
-					if (cursor != sym_addr)
-						ref.vaddr = cursor = sym_addr;	// we should never come to here!
 					val_len = sym_sz;
 				}
 

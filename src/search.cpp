@@ -45,7 +45,7 @@ static unsigned int g_output_count = 0;
 
 static bool shared_object_comp_func(void *lhs, void *rhs);
 typedef std::set<struct shared_object*, decltype(&shared_object_comp_func)> SharedObjectSet;
-static  SharedObjectSet g_shared_objects;
+static  SharedObjectSet g_shared_objects(&shared_object_comp_func);
 
 /////////////////////////////////////////////////////
 // forward declarations.

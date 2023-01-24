@@ -1286,7 +1286,7 @@ static bool shared_objects_internal(std::list<int>& threads, bool verbose)
 {
 	unsigned int i;
 	struct ca_segment* segment;
-	char* input_tid_map = NULL;
+	char* input_tid_map = nullptr;
 	int max_tid = 0;
 
 	// check whether the thread list contains valid thread IDs
@@ -1312,7 +1312,7 @@ static bool shared_objects_internal(std::list<int>& threads, bool verbose)
 		return false;
 	}
 	// convert the thread list into an array indexed by thread id
-	input_tid_map = (char*) malloc (max_tid + 1);
+	input_tid_map = new char [max_tid + 1];
 	if (!threads.empty())
 	{
 		memset(input_tid_map, 0, max_tid + 1);
@@ -1325,7 +1325,7 @@ static bool shared_objects_internal(std::list<int>& threads, bool verbose)
 			{
 				if (verbose)
 					CA_PRINT("Input thread id is out of range %d\n", tid);
-				free (input_tid_map);
+				delete[] input_tid_map;
 				return false;
 			}
 		}
@@ -1350,8 +1350,12 @@ static bool shared_objects_internal(std::list<int>& threads, bool verbose)
 		if (segment->m_type == ENUM_STACK && input_tid_map[segment->m_thread.tid])
 			find_shared_objects_one_thread (segment, false);
 	}
+
+#if 0
 	// Second search all other threads' registers/stacks,
 	// ignore all new shared objects, and append owner for previously found shared objects
+
+	// It is a bit confusing to include threads that are not selected
 	for (i=0; i<g_segment_count; i++)
 	{
 		if (user_request_break())
@@ -1365,9 +1369,10 @@ static bool shared_objects_internal(std::list<int>& threads, bool verbose)
 		if (segment->m_type == ENUM_STACK && !input_tid_map[segment->m_thread.tid])
 			find_shared_objects_one_thread (segment, true);
 	}
+#endif
 
 	// clean up
-	free(input_tid_map);
+	delete[] input_tid_map;
 
 	return true;
 }

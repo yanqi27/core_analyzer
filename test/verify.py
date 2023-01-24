@@ -143,6 +143,8 @@ def check_heap_commands():
 def check_misc_commands():
 	print("[ca_test] Execute command 'shrobj'")
 	gdb.execute('shrobj')
+	print("[ca_test] Execute command 'segment'")
+	gdb.execute('segment')
 
 def run_tests():
 	# Retrieve global variables defined in mallocTest

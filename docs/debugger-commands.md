@@ -12,11 +12,11 @@ Examples are taken from the repo's test program `mallocTest`.
 - [reference](#reference) Search variables/objects that reference the input address range
 - [object](#object) Search for objects that match the input type
 - [decode](#decode) Disassemble current function with detail annotation of object context
-- [shared objects](#shared-objects) Find objects that are currently referenced from multiple threads
+- [shared object](#shared-object) Find objects that are currently referenced from multiple threads
 - [segment](#segment) Display memory segment(s)
 - [pattern](#pattern) Guess the data types of the given memory region
 - [misc](#miscellaneous) Helpers
-- [setting](#settings) Parameters to change the behavior/configuration of the core analyzer
+- [setting](#setting) Parameters to change the behavior/configuration of the core analyzer
 
 ### help
 ```shell
@@ -114,7 +114,7 @@ Option `/topuser` lists local or global variables that consume the most heap mem
                 [0x7fffe80008d0 - 0x7fffe821c000] Total 2MB in-use 2013(1MB) free 1416(1MB)
         Dynamic arena (0x7ffff0000020) owns regions:
                 [0x7ffff00008d0 - 0x7ffff0214000] Total 2MB
-				Failed to walk arena. The chunk at 0x7ffff0000de0 may be corrupted. Its size tag is 0x0
+                Failed to walk arena. The chunk at 0x7ffff0000de0 may be corrupted. Its size tag is 0x0
 
         mmap-ed large memory blocks:
                 [0x7ffff67a9010 - 0x7ffff67cd000] Total 143KB in-use 1(143KB) free 0(0)
@@ -379,7 +379,7 @@ Total objects found: 4
 ```
 
 ### decode
-```
+```shell
 decode [<%reg>=<val>] [from=<addr>] [to=<addr>|end] [frame=f1-f2]
 ```
 This command displays disassembled instructions with annotations of object context. It is intended to help the user to read machine instructions even if they are highly optimized. The annotation tries to reveal the values operated on by the instructions and how they are associated with source-level variables and symbols.
@@ -408,8 +408,8 @@ Dump of assembler code for function main(int, char**):
    0x0000555555556942 <+21>:    mov    %rsi,-0x90(%rbp)         ## [%rbp-0x90]=0x7fffffffe0e8(symbol="argv" type="struct char**")
 ```
 
-### shared objects
-```
+### shared object
+```shell
 shrobj [tid0] [tid1] [...]
 ```
 This command displays the objects that are referenced by local variables (including registers and valid stack memory) from at least two selected threads. It is intended to show a full list of candidates that may be subject to threading issues like race conditions or deadlock, etc.
@@ -449,7 +449,7 @@ shared object: [.data/.bss] /lib/x86_64-linux-gnu/libpthread.so.0 stack_used
 ```
 
 ### segment
-```
+```shell
 segment [address]
 ```
 This command displays the target's virtual address segment information.
@@ -464,7 +464,7 @@ Address $rsp belongs to segment:
 ```
 
 ### pattern
-```
+```shell
 pattern <start> <end>
 ```
 This command guesses the data types of the memory content within the input address range [start, end]. For example, it tries to interpret a group of bytes as a string if they are all printable characters; an object pointer if the aligned bytes forms a pointer value that points to a valid heap memory block, etc.
@@ -520,7 +520,7 @@ system-supplied DSO at 0x7ffff7fcd000 d63643a7045f18103e9c9455b9f8f09a1c60ba65
 /lib/x86_64-linux-gnu/libm.so.6 fe91b4090ea04c1559ff71dd9290062776618891
 ```
 
-### settings
+### setting
 These commands may change the default configuration of the core analyzer.
 
 **Example:** set/show the underlying heap manager of the target. Heap parsers of various allocators including different versions are compiled into the core analyzer. At the initialization, the proper one is activated based on the target's symbols that are unique to that allocator of a specific version. The user may use this command to view or change the selection.

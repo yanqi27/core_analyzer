@@ -408,7 +408,7 @@ bool segment_command_impl(char* args)
 {
 	struct ca_segment* segment;
 
-	if (args)
+	if (args && *args != '\0')
 	{
 		address_t addr = ca_eval_address (args);
 		segment = get_segment(addr, 0);

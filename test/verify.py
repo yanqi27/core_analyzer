@@ -135,8 +135,16 @@ def check_ref():
 		% (refs[0].heap_addr, refs[0].heap_size, obj_addr))
 
 def check_heap_commands():
+	print("[ca_test] Execute command 'heap /u regions'")
 	gdb.execute('heap /u regions')
+	print("[ca_test] Execute command 'heap /tb 3'")
 	gdb.execute('heap /tb 3')
+
+def check_misc_commands():
+	print("[ca_test] Execute command 'shrobj'")
+	gdb.execute('shrobj')
+	print("[ca_test] Execute command 'segment'")
+	gdb.execute('segment')
 
 def run_tests():
 	# Retrieve global variables defined in mallocTest
@@ -152,6 +160,7 @@ def run_tests():
 	check_cplusplus_object("Derived", object_count)
 	check_ref()
 	check_heap_commands()
+	check_misc_commands()
 
 #
 # Fun starts here

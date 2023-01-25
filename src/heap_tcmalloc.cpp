@@ -1412,7 +1412,7 @@ parse_span(struct value *span)
 
 	segment = get_segment(my_span->start << g_config.kPageShift,
 	    my_span->length << g_config.kPageShift);
-	if (segment != NULL)
+	if (segment != NULL && segment->m_type == ENUM_UNKNOWN)
 		segment->m_type = ENUM_HEAP;
 
 	return true;

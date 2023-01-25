@@ -822,7 +822,8 @@ static void add_ca_heap(struct ca_arena* arena, struct ca_heap* heap)
 	heap->mpNext = NULL;
 
 	// fixup segment type
-	if (heap->mSegment->m_type != ENUM_HEAP)
+	// TODO could heap share a segment with stack?
+	if (heap->mSegment->m_type == ENUM_UNKNOWN)
 		heap->mSegment->m_type = ENUM_HEAP;
 
 }

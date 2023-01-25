@@ -262,7 +262,7 @@ main(int argc, char** argv)
 	}
 	hidden_object = (uintptr_t)objlist.front();
 
-	bool flags[NUM_THREADS];
+	bool *flags = new bool [NUM_THREADS];
 	for (i = 0; i < NUM_THREADS; i++)
 		flags[i] = false;
 
@@ -290,6 +290,8 @@ main(int argc, char** argv)
 
 	// Test driver may break at this function for inspection or create a core dump
 	last_call();
+
+	delete[] flags;
 
 	return 0;
 }

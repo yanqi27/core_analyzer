@@ -1704,7 +1704,7 @@ identify_direct_objects(struct inuse_block* blocks, unsigned long total_blocks)
 				blk = find_inuse_block(ptr, blocks, total_blocks);
 				if (blk)
 				{
-					unsigned long index = blk - blocks;
+					//unsigned long index = blk - blocks;
 					//set_queued_and_visited(qv_bitmap, index);
 				}
 				next += ptr_sz;
@@ -2796,4 +2796,70 @@ address_t
 ca_eval_address(const char* expr)
 {
 	return parse_and_eval_address(expr);
+}
+
+static int
+type_field_name2no(struct type *type, const char *field_name)
+{
+	int n;
+
+	if (type == NULL)
+		return -1;
+
+	type = check_typedef (type);
+
+	for (n = 0; n < ca_num_fields(type); n++) {
+		const char* name = ca_field_name(type, n);
+		if (name && strcmp (field_name, name) == 0)
+			return n;
+	}
+	return -1;
+}
+
+bool
+ca_get_field_value(struct value *val, const char *fieldname,
+				size_t *data, bool optional)
+{
+	int fieldno;
+	struct value *field_val;
+
+	*data = ULONG_MAX;
+	fieldno = type_field_name2no(value_type(val), fieldname);
+	if (fieldno < 0) {
+		if (optional) {
+			return true;
+		} else {
+			CA_PRINT("Failed to find member \"%s\"\n", fieldname);
+			return false;
+		}
+	}
+	field_val = value_field(val, fieldno);
+	*data = value_as_long(field_val);
+	return true;
+}
+
+bool
+ca_memcpy_field_value(struct value *val, const char *fieldname, char *buf,
+    size_t bufsz)
+{
+	int fieldno;
+	struct value *field_val;
+	size_t fieldsz;
+
+	fieldno = type_field_name2no(value_type(val), fieldname);
+	if (fieldno < 0) {
+		return false;
+	}
+	field_val = value_field(val, fieldno);
+	fieldsz = TYPE_LENGTH(value_type(field_val));
+	if (bufsz < fieldsz) {
+		CA_PRINT("Internal error: buffer of member \"%s\" is too small\n",
+		    fieldname);
+		return false;
+	}
+	if (!read_memory_wrapper(NULL, value_address(field_val), buf, fieldsz)) {
+		CA_PRINT("Failed to read member \"%s\"\n", fieldname);
+		return false;
+	}
+	return true;
 }

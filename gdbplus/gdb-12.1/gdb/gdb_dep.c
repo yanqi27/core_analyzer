@@ -2801,17 +2801,28 @@ ca_eval_address(const char* expr)
 static int
 type_field_name2no(struct type *type, const char *field_name)
 {
-	int n;
-
 	if (type == NULL)
 		return -1;
 
 	type = check_typedef (type);
 
-	for (n = 0; n < ca_num_fields(type); n++) {
-		const char* name = ca_field_name(type, n);
-		if (name && strcmp (field_name, name) == 0)
-			return n;
+	for (int n = 0; n < type->num_fields(); n++) {
+		const char* name = type->field(n).name();
+		if (name && *name != '\0') {
+			if (strcmp (field_name, name) == 0)
+				return n;
+		} else {
+			// if the field is unnamed struct/union
+			struct type *ftype = type->field(n).type();
+			ftype = check_typedef (ftype);
+			if (ftype->code() == TYPE_CODE_STRUCT || ftype->code() == TYPE_CODE_UNION) {
+				for (int i = 0; i < ftype->num_fields(); i++) {
+					const char *fname = ftype->field(i).name();
+					if (strcmp (field_name, fname) == 0)
+						return n;
+				}
+			}
+		}
 	}
 	return -1;
 }
@@ -2862,4 +2873,35 @@ ca_memcpy_field_value(struct value *val, const char *fieldname, char *buf,
 		return false;
 	}
 	return true;
+}
+
+struct value *
+ca_get_field_gdb_value(struct value *val, const char *field_name)
+{
+	struct type *type = value_type(val);
+	type = check_typedef (type);
+
+	int fieldno = type_field_name2no(type, field_name);
+	if (fieldno < 0) {
+		CA_PRINT("failed to find member \"%s\"\n", field_name);
+		return NULL;
+	}
+
+	const char *name = type->field(fieldno).name();
+	if (name && *name != '\0')
+		return value_field(val, fieldno);
+	else {
+		struct type *ftype = type->field(fieldno).type();
+		ftype = check_typedef (ftype);		
+		if (ftype->code() == TYPE_CODE_STRUCT || ftype->code() == TYPE_CODE_UNION) {
+			for (int i = 0; i < ftype->num_fields(); i++) {
+				const char *fname = ftype->field(i).name();
+				if (strcmp (field_name, fname) == 0) {
+					val = value_field(val, fieldno);
+					return value_field(val, i);
+				}
+			}
+		}
+	}
+	return NULL;
 }

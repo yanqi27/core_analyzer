@@ -40,6 +40,7 @@ extern const char *ca_field_name(struct type *type, int i);
 extern bool get_gv_value(const char *varname, char *buf, size_t bufsz);
 extern bool ca_get_field_value(struct value *, const char *, size_t *, bool);
 extern bool ca_memcpy_field_value(struct value *, const char *, char *, size_t);
+extern struct value *ca_get_field_gdb_value(struct value *, const char *);
 
 extern void print_register_ref(const struct object_reference* ref);
 extern void print_stack_ref(const struct object_reference* ref);

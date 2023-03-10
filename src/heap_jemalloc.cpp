@@ -20,6 +20,7 @@ static jemalloc *g_jemalloc = nullptr;
  */
 static bool gdb_symbol_probe(void);
 static bool parse_edata(je_bin_info_t *bininfo, je_edata_t *slab, struct value *edata_v);
+static bool parse_edata_heap(je_bin_info_t *bininfo, je_edata_set& slab_set, struct value *heap_v, struct type *edata_p_type);
 
 /******************************************************************************
  * Exposed functions
@@ -188,12 +189,21 @@ init_heap(void)
 			stats_v = ca_get_field_gdb_value(bin_v, "stats");
 			ca_get_field_value(stats_v, "curslabs", &arena->bins[j].stats.curslabs, false);
 			ca_get_field_value(stats_v, "nonfull_slabs", &arena->bins[j].stats.nonfull_slabs, false);
+			// je_arenas[i].bins[j].slabcur
 			struct value *slabcur_v = ca_get_field_gdb_value(bin_v, "slabcur");
-			if (value_as_address(slabcur_v) == 0)
-				continue;
-			slabcur_v = value_ind(slabcur_v);
-			if (!parse_edata(&g_jemalloc->bin_infos[j], &arena->bins[j].slabcur, slabcur_v)) {
-				CA_PRINT("Failed to parse je_arenas[%d].bins[%d] data memeber \"slabcur\"\n", i, j);
+			struct type *edata_p_type = value_type(slabcur_v);
+			if (value_as_address(slabcur_v) != 0) {
+				slabcur_v = value_ind(slabcur_v);
+				if (!parse_edata(&g_jemalloc->bin_infos[j], &arena->bins[j].slabcur, slabcur_v)) {
+					CA_PRINT("Failed to parse je_arenas[%d].bins[%d] data memeber \"slabcur\"\n", i, j);
+					return false;
+				}
+			}
+			// je_arenas[i].bins[j].slabs_nonfull
+			// type = edata_heap_t
+			struct value *slabs_nonfull_v = ca_get_field_gdb_value(bin_v, "slabs_nonfull");
+			if (!parse_edata_heap(&g_jemalloc->bin_infos[j], arena->bins[j].slabs, slabs_nonfull_v, edata_p_type)) {
+				CA_PRINT("Failed to parse je_arenas[%d].bins[%d] data memeber \"slabs_nonfull\"\n", i, j);
 				return false;
 			}
 		}
@@ -245,16 +255,25 @@ heap_walk(address_t heapaddr, bool verbose)
 
 	int i = 0;
 	for (auto arena : g_jemalloc->je_arenas) {
+		// arena
 		CA_PRINT("arena[%d]: base=%ld resident=%ld\n",
 			i++, arena->stats.base, arena->stats.resident);
 		for (int bi = 0; bi < g_jemalloc->nbins_total; bi++) {
+			// bins
 			je_bin_t *bin = &arena->bins[bi];
 			if (bin->stats.curslabs == 0 && bin->stats.nonfull_slabs == 0)
 				continue;
 			CA_PRINT("\tbin[%d]: curslabs=%ld nonfull_slabs=%ld\n",
 				bi, bin->stats.curslabs, bin->stats.nonfull_slabs);
-			CA_PRINT("\t\tslabcur: reg_size=%ld inuse=%d free=%d\n",
-				g_jemalloc->bin_infos[bi].reg_size, bin->slabcur.inuse_cnt, bin->slabcur.free_cnt);
+			//CA_PRINT("\t\tslabcur: reg_size=%ld inuse=%d free=%d\n",
+			//	g_jemalloc->bin_infos[bi].reg_size, bin->slabcur.inuse_cnt, bin->slabcur.free_cnt);
+			if (bin->slabs.size()) {
+				for (auto slab : bin->slabs) {
+					CA_PRINT("\t\t%p %s reg_size=%ld inuse=%d free=%d\n",
+						slab->e_addr, slab->full ? "full":"non_full",
+						g_jemalloc->bin_infos[bi].reg_size, slab->inuse_cnt, slab->free_cnt);
+				}
+			}
 		}
 	}
 	return true;
@@ -352,5 +371,39 @@ parse_edata(je_bin_info_t *bininfo, je_edata_t *slab, struct value *edata_v)
 				nfree, slab->free_cnt, slab->inuse_cnt, bininfo->nregs);
 		}
 	}
+	return true;
+}
+
+// Parameters:
+//     val: type = struct edata_heap_t {
+//                     ph_t ph;
+//                 };
+bool
+parse_edata_heap(je_bin_info_t *bininfo, je_edata_set& slab_set, struct value *heap_v, struct type *edata_p_type)
+{
+	if (!heap_v)
+		return false;
+
+	// type = struct ph_s {
+	//     void *root;
+	//     size_t auxcount;
+	// }
+	heap_v = ca_get_field_gdb_value(heap_v, "ph");
+	if (!heap_v)
+		return false;
+	struct value *root_v = ca_get_field_gdb_value(heap_v, "root");
+	if (value_as_address(root_v) == 0)
+		return true;
+
+	// parse root
+	struct value *edata_p_v = value_cast(edata_p_type, root_v);
+	je_edata_t *new_slab = new je_edata_t;
+	new_slab->full = false;
+	if (parse_edata(bininfo, new_slab, value_ind(edata_p_v))) {
+		slab_set.insert(new_slab);
+	} else {
+		delete new_slab;
+	}
+
 	return true;
 }

@@ -8,6 +8,7 @@
 #pragma once
 #include "heap.h"
 #include <list>
+#include <set>
 #include <vector>
 
 struct je_bitmap_info_t {
@@ -85,15 +86,22 @@ struct je_edata_t {
 	*/
 	unsigned int free_cnt = 0;
 	unsigned int inuse_cnt = 0;
+	bool full = false;
 };
+
+//auto je_edata_cmp = [](je_edata_t *a, je_edata_t *b) { return a->e_addr < b->e_addr; };
+//typedef std::set<je_edata_t *, decltype(je_edata_cmp)> je_edata_set(je_edata_cmp);
+struct je_edata_cmp {
+	bool operator() (je_edata_t *a, je_edata_t *b) const {
+		return a->e_addr < b->e_addr;
+	}
+};
+typedef std::set<je_edata_t *, je_edata_cmp> je_edata_set;
 
 struct je_bin_t {
 	je_bin_t() {}
 	~je_bin_t() {
-		for (auto itr : slabs_nonfull) {
-			delete itr;
-		}
-		for (auto itr : slabs_full) {
+		for (auto itr : slabs) {
 			delete itr;
 		}
 	}
@@ -102,8 +110,7 @@ struct je_bin_t {
     je_edata_t slabcur;
     //edata_heap_t slabs_nonfull;
     //edata_list_active_t slabs_full;
-	std::list<je_edata_t *> slabs_nonfull;
-	std::list<je_edata_t *> slabs_full;
+	je_edata_set slabs;
 };
 
 struct je_arena {

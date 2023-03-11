@@ -2798,6 +2798,25 @@ ca_eval_address(const char* expr)
 	return parse_and_eval_address(expr);
 }
 
+// return true if an unamed union has a data member of given name
+static bool
+union_has_field_name(struct type *type, const char *field_name)
+{
+	type = check_typedef (type);
+	if (type->code() != TYPE_CODE_UNION)
+		return false;
+	for (int i = 0; i < type->num_fields(); i++) {
+		const char *name = type->field(i).name();
+		if (name && *name != '\0') {
+			if (strcmp (field_name, name) == 0)
+				return true;
+		} else if (union_has_field_name(type->field(i).type(), field_name)) {
+			return true;
+		}
+	}
+	return false;
+}
+
 static int
 type_field_name2no(struct type *type, const char *field_name)
 {
@@ -2811,17 +2830,8 @@ type_field_name2no(struct type *type, const char *field_name)
 		if (name && *name != '\0') {
 			if (strcmp (field_name, name) == 0)
 				return n;
-		} else {
-			// if the field is unnamed struct/union
-			struct type *ftype = type->field(n).type();
-			ftype = check_typedef (ftype);
-			if (ftype->code() == TYPE_CODE_STRUCT || ftype->code() == TYPE_CODE_UNION) {
-				for (int i = 0; i < ftype->num_fields(); i++) {
-					const char *fname = ftype->field(i).name();
-					if (strcmp (field_name, fname) == 0)
-						return n;
-				}
-			}
+		} else if (union_has_field_name(type->field(n).type(), field_name)) {
+			return n;
 		}
 	}
 	return -1;
@@ -2892,15 +2902,8 @@ ca_get_field_gdb_value(struct value *val, const char *field_name)
 		return value_field(val, fieldno);
 	else {
 		struct type *ftype = type->field(fieldno).type();
-		ftype = check_typedef (ftype);		
-		if (ftype->code() == TYPE_CODE_STRUCT || ftype->code() == TYPE_CODE_UNION) {
-			for (int i = 0; i < ftype->num_fields(); i++) {
-				const char *fname = ftype->field(i).name();
-				if (strcmp (field_name, fname) == 0) {
-					val = value_field(val, fieldno);
-					return value_field(val, i);
-				}
-			}
+		if (ftype->code() == TYPE_CODE_UNION) {
+			return ca_get_field_gdb_value(value_field(val, fieldno), field_name);
 		}
 	}
 	return NULL;

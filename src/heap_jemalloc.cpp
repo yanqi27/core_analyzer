@@ -19,8 +19,9 @@ static jemalloc *g_jemalloc = nullptr;
  * Forward declaration
  */
 static bool gdb_symbol_probe(void);
-static bool parse_edata(je_bin_info_t *bininfo, je_edata_t *slab, struct value *edata_v);
+static bool parse_edata(je_bin_info_t *bininfo, je_edata_set& slab_set, struct value *edata_v, ENUM_SLAB_OWNER owner);
 static bool parse_edata_heap(je_bin_info_t *bininfo, je_edata_set& slab_set, struct value *heap_v, struct type *edata_p_type);
+static bool parse_edata_list(je_bin_info_t *bininfo, je_edata_set& slab_set, struct value *list_v, struct type *edata_p_type);
 
 /******************************************************************************
  * Exposed functions
@@ -184,6 +185,7 @@ init_heap(void)
 			return false;
 		}
 		for (int j = 0; j < g_jemalloc->nbins_total; j++) {
+			auto binfo = &g_jemalloc->bin_infos[j];
 			// je_arenas[i].bins[j]
 			struct value *bin_v = value_subscript(bins_v, j);
 			stats_v = ca_get_field_gdb_value(bin_v, "stats");
@@ -194,7 +196,7 @@ init_heap(void)
 			struct type *edata_p_type = value_type(slabcur_v);
 			if (value_as_address(slabcur_v) != 0) {
 				slabcur_v = value_ind(slabcur_v);
-				if (!parse_edata(&g_jemalloc->bin_infos[j], &arena->bins[j].slabcur, slabcur_v)) {
+				if (!parse_edata(binfo, arena->bins[j].slabs, slabcur_v, ENUM_SLAB_CUR)) {
 					CA_PRINT("Failed to parse je_arenas[%d].bins[%d] data memeber \"slabcur\"\n", i, j);
 					return false;
 				}
@@ -202,9 +204,14 @@ init_heap(void)
 			// je_arenas[i].bins[j].slabs_nonfull
 			// type = edata_heap_t
 			struct value *slabs_nonfull_v = ca_get_field_gdb_value(bin_v, "slabs_nonfull");
-			if (!parse_edata_heap(&g_jemalloc->bin_infos[j], arena->bins[j].slabs, slabs_nonfull_v, edata_p_type)) {
+			if (!parse_edata_heap(binfo, arena->bins[j].slabs, slabs_nonfull_v, edata_p_type)) {
 				CA_PRINT("Failed to parse je_arenas[%d].bins[%d] data memeber \"slabs_nonfull\"\n", i, j);
 				return false;
+			}
+			// je_arenas[i].bins[j].slabs_full
+			// type = struct edata_list_active_t
+			struct value *slabs_full_v = ca_get_field_gdb_value(bin_v, "slabs_full");
+			if (!parse_edata_list(binfo, arena->bins[j].slabs, slabs_full_v, edata_p_type)) {
 			}
 		}
 		g_jemalloc->je_arenas.push_back(arena);
@@ -241,6 +248,28 @@ is_heap_block(address_t addr)
 	return false;
 }
 
+static const char *slab_owner_name(je_edata_t *slab)
+{
+	const char *name;
+	switch (slab->slab_owner)
+	{
+	case ENUM_SLAB_CUR:
+		name = "slab_cur";
+		break;
+	case ENUM_SLAB_FULL:
+		name = "slab_full";
+		break;
+	case ENUM_SLAB_NONFULL:
+		name = "slab_nonfull";
+		break;
+	
+	default:
+		name = "invalid";
+		break;
+	}
+	return name;
+}
+
 /*
  * Traverse all spans unless a non-zero address is given, in which case the
  * specific span is walked
@@ -254,23 +283,34 @@ heap_walk(address_t heapaddr, bool verbose)
 	}
 
 	int i = 0;
+	// arenas
 	for (auto arena : g_jemalloc->je_arenas) {
-		// arena
 		CA_PRINT("arena[%d]: base=%ld resident=%ld\n",
 			i++, arena->stats.base, arena->stats.resident);
+		// bins
 		for (int bi = 0; bi < g_jemalloc->nbins_total; bi++) {
-			// bins
 			je_bin_t *bin = &arena->bins[bi];
+			// slabs
 			if (bin->stats.curslabs == 0 && bin->stats.nonfull_slabs == 0)
 				continue;
 			CA_PRINT("\tbin[%d]: curslabs=%ld nonfull_slabs=%ld\n",
 				bi, bin->stats.curslabs, bin->stats.nonfull_slabs);
-			//CA_PRINT("\t\tslabcur: reg_size=%ld inuse=%d free=%d\n",
-			//	g_jemalloc->bin_infos[bi].reg_size, bin->slabcur.inuse_cnt, bin->slabcur.free_cnt);
-			if (bin->slabs.size()) {
+			size_t nonfull_cnt = 0;
+			size_t full_cnt = 0;
+			for (auto slab: bin->slabs) {
+				if (slab->slab_owner == ENUM_SLAB_FULL)
+					full_cnt++;
+				else if (slab->slab_owner == ENUM_SLAB_NONFULL)
+					nonfull_cnt++;
+			}
+			if (nonfull_cnt != bin->stats.nonfull_slabs) {
+				CA_PRINT("\tbin[%d]: nonfull_slabs are inconsistent: stats.nonfull_slabs=%ld nonfull_slabs::heap_link=%ld\n",
+					bi, bin->stats.nonfull_slabs, nonfull_cnt);
+			}
+			if (verbose && bin->slabs.size()) {
 				for (auto slab : bin->slabs) {
 					CA_PRINT("\t\t%p %s reg_size=%ld inuse=%d free=%d\n",
-						slab->e_addr, slab->full ? "full":"non_full",
+						slab->e_addr, slab_owner_name(slab),
 						g_jemalloc->bin_infos[bi].reg_size, slab->inuse_cnt, slab->free_cnt);
 				}
 			}
@@ -323,11 +363,13 @@ gdb_symbol_probe(void)
 }
 
 bool
-parse_edata(je_bin_info_t *bininfo, je_edata_t *slab, struct value *edata_v)
+parse_edata(je_bin_info_t *bininfo, je_edata_set& slab_set, struct value *edata_v, ENUM_SLAB_OWNER owner)
 {
 	if (!edata_v)
 		return false;
 
+	std::unique_ptr<je_edata_t> slab = std::make_unique<je_edata_t>();
+	slab->slab_owner = owner;
 	if (!ca_get_field_value(edata_v, "e_bits", &slab->e_bits, false)
 		|| !ca_get_field_value(edata_v, "e_addr", (size_t*)&slab->e_addr, false))
 		return false;
@@ -371,13 +413,74 @@ parse_edata(je_bin_info_t *bininfo, je_edata_t *slab, struct value *edata_v)
 				nfree, slab->free_cnt, slab->inuse_cnt, bininfo->nregs);
 		}
 	}
+
+	// store the new slab
+	auto itr = slab_set.insert(slab.get());
+	if (itr.second == false) {
+		CA_PRINT("Failed to add a new slab(je_edata_t) to the set\n");
+		return false;
+	}
+	slab.release();
+
 	return true;
 }
 
 // Parameters:
-//     val: type = struct edata_heap_t {
+//     node: type = void* (real type = struct edata_t)
+static bool
+parse_edata_heap_node(struct value *node_v, je_bin_info_t *bininfo, je_edata_set& slab_set, struct type *edata_p_type)
+{
+	if (value_as_address(node_v) == 0)
+		return true;
+
+	// parse this node
+	struct value *edata_p_v = value_cast(edata_p_type, node_v);
+	struct value *edata_v = value_ind(edata_p_v);
+	if (!parse_edata(bininfo, slab_set, edata_v, ENUM_SLAB_NONFULL))
+		return false;
+
+	// parse the pairing heap tree under the node
+	struct value *heap_link_v = ca_get_field_gdb_value(edata_v, "heap_link");
+	if (!heap_link_v) {
+		CA_PRINT("Failed to extract member \"heap_link\" of \"edata_t\" object\n");
+		return false;
+	}
+	// struct edata_heap_link_t {
+    //     phn_link_t link;
+	// }
+	struct value *link_v = ca_get_field_gdb_value(heap_link_v, "link");
+	if (!link_v) {
+		CA_PRINT("Failed to extract member \"link\" of \"edata_heap_link_t\" object\n");
+		return false;
+	}
+	// struct phn_link_s {
+	//    void *prev;
+	//    void *next;
+	//    void *lchild;
+	// }
+	// chase "next" and "lchild", ignore "prev" which should be visited already
+	struct value *next_v = ca_get_field_gdb_value(link_v, "next");
+	struct value *lchild_v = ca_get_field_gdb_value(link_v, "lchild");
+	if (!next_v || !lchild_v) {
+		CA_PRINT("Failed to extract member \"next\"/\"lchild\" of \"phn_link_s\" object\n");
+		return false;
+	}
+	bool success = true;
+	// parse next node
+	if (value_as_address(next_v)) {
+		success = parse_edata_heap_node(next_v, bininfo, slab_set, edata_p_type) && success;
+	}
+	// parse child node
+	if (value_as_address(lchild_v)) {
+		success = parse_edata_heap_node(lchild_v, bininfo, slab_set, edata_p_type) && success;
+	}
+	return success;
+}
+
+// Parameters:
+//     heap_v: type = struct edata_heap_t {
 //                     ph_t ph;
-//                 };
+//                    };
 bool
 parse_edata_heap(je_bin_info_t *bininfo, je_edata_set& slab_set, struct value *heap_v, struct type *edata_p_type)
 {
@@ -392,18 +495,58 @@ parse_edata_heap(je_bin_info_t *bininfo, je_edata_set& slab_set, struct value *h
 	if (!heap_v)
 		return false;
 	struct value *root_v = ca_get_field_gdb_value(heap_v, "root");
-	if (value_as_address(root_v) == 0)
+
+	// parse the pairing heap
+	return parse_edata_heap_node(root_v, bininfo, slab_set, edata_p_type);
+}
+
+// Parameters:
+//     list_v: type = struct edata_list_active_t {
+//                        struct {
+//                            edata_t *qlh_first;
+//                        } head;
+//                    }
+bool
+parse_edata_list(je_bin_info_t *bininfo, je_edata_set& slab_set, struct value *list_v, struct type *edata_p_type)
+{
+	if (!list_v)
+		return false;
+
+	struct value *head_v = ca_get_field_gdb_value(list_v, "head");
+	if (!head_v) {
+		CA_PRINT("Failed to extract member \"head\" of \"edata_list_active_t\" object\n");
+		return false;
+	}
+	struct value *qlh_first_v = ca_get_field_gdb_value(head_v, "qlh_first");
+	if (!qlh_first_v) {
+		CA_PRINT("Failed to extract member \"qlh_first\" of \"head\" object\n");
+		return false;
+	}
+
+	CORE_ADDR head_addr = value_as_address(qlh_first_v);
+	if (head_addr == 0)
 		return true;
 
-	// parse root
-	struct value *edata_p_v = value_cast(edata_p_type, root_v);
-	je_edata_t *new_slab = new je_edata_t;
-	new_slab->full = false;
-	if (parse_edata(bininfo, new_slab, value_ind(edata_p_v))) {
-		slab_set.insert(new_slab);
-	} else {
-		delete new_slab;
-	}
+	// traverse the doubly-link list
+	struct value *node = value_ind(qlh_first_v);
+	do {
+		if (!parse_edata(bininfo, slab_set, node, ENUM_SLAB_FULL))
+			return false;
+		// ql_link_active
+		// type = struct { edata_t *qre_next; edata_t *qre_prev; }
+		struct value *linkage_v = ca_get_field_gdb_value(node, "ql_link_active");
+		if (!linkage_v) {
+			CA_PRINT("Failed to extract member \"ql_link_active\" of \"edata_t\" object\n");
+			return false;
+		}
+		// next, which can't never be null because it is a doubly-linked list.
+		struct value *next_v = ca_get_field_gdb_value(linkage_v, "qre_next");
+		if (!next_v) {
+			CA_PRINT("Failed to extract member \"qre_next\" of \"ql_link_active\"\n");
+			return false;
+		}
+		node = value_ind(next_v);
+	} while (value_as_address(node) != head_addr);
 
 	return true;
 }

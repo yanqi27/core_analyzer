@@ -22,6 +22,8 @@ static bool gdb_symbol_probe(void);
 static bool parse_edata(je_bin_info_t *bininfo, je_edata_set& slab_set, struct value *edata_v, ENUM_SLAB_OWNER owner);
 static bool parse_edata_heap(je_bin_info_t *bininfo, je_edata_set& slab_set, struct value *heap_v, struct type *edata_p_type);
 static bool parse_edata_list(je_bin_info_t *bininfo, je_edata_set& slab_set, struct value *list_v, struct type *edata_p_type);
+//static je_edata_t *get_edata(address_t addr);
+static heap_block *get_heap_block(address_t addr);
 
 /******************************************************************************
  * Exposed functions
@@ -32,14 +34,27 @@ heap_version(void)
 	return "jemalloc";
 }
 
+#define CHECK_VALUE(v,name) 	\
+	if (!v) {					\
+		CA_PRINT("Failed to get gdb value of " name "\n");	\
+		return false;			\
+	}
+
+#define CHECK_SYM(s,name)	\
+	if (!s) {				\
+		CA_PRINT("Failed to lookup gv " name "\n");	\
+		return false;		\
+	}
+
 static bool
 init_heap(void)
 {
-	struct symbol *sym;
-	struct type *type;
-	struct value *val;
-	size_t data;
-	LONGEST low_bound, high_bound;
+	struct symbol *sym = nullptr;
+	struct type *type = nullptr;
+	struct value *val = nullptr;
+	size_t data = 0;
+	LONGEST low_bound=0, high_bound=0;
+	struct type *edata_p_type = nullptr;
 
 	if (g_jemalloc)
 		delete g_jemalloc;
@@ -54,10 +69,8 @@ init_heap(void)
 	//     unsigned int repr;
 	// }
 	sym = lookup_symbol("narenas_total", 0, VAR_DOMAIN, 0).symbol;
-	if (sym == nullptr) {
-		CA_PRINT("Failed to lookup gv \"narenas_total\"\n");
-		return false;
-	}
+	CHECK_SYM(sym, "narenas_total");
+
 	val = value_of_variable(sym, 0);
 	if(!ca_get_field_value(val, "repr", &data, false)) {
 		CA_PRINT("Failed to retrieve value of \"narenas_total\"\n");
@@ -68,20 +81,15 @@ init_heap(void)
 	// nbins_total
 	// type = unsigned int
 	sym = lookup_symbol("nbins_total", 0, VAR_DOMAIN, 0).symbol;
-	if (sym == nullptr) {
-		CA_PRINT("Failed to lookup gv \"nbins_total\"\n");
-		return false;
-	}
+	CHECK_SYM(sym, "nbins_total");
+
 	val = value_of_variable(sym, 0);
 	g_jemalloc->nbins_total = value_as_long(val);
 
 	// je_bin_infos
 	// type = bin_info_t [36]
 	sym = lookup_symbol("je_bin_infos", 0, VAR_DOMAIN, 0).symbol;
-	if (sym == nullptr) {
-		CA_PRINT("Failed to lookup gv \"je_bin_infos\"\n");
-		return false;
-	}
+	CHECK_SYM(sym, "je_bin_infos");
 	type = ca_type(sym);
 	if(ca_code(type) != TYPE_CODE_ARRAY) {
 		CA_PRINT("Failed to validate the type of \"je_bin_infos\"\n");
@@ -127,6 +135,44 @@ init_heap(void)
 		CA_PRINT("je_bin_infos length(%ld) != nbins_total(%d)\n",
 			g_jemalloc->bin_infos.size(), g_jemalloc->nbins_total);
 		return false;
+	}
+
+	// slabs from the global radix tree, which is 2-level on x64 arch
+	// rtree_levels
+	// type = const struct rtree_level_s {
+	//     unsigned int bits;
+	//     unsigned int cumbits;
+	// } [2]
+	sym = lookup_symbol("rtree_levels", 0, VAR_DOMAIN, 0).symbol;
+	CHECK_SYM(sym, "rtree_levels");
+	type = ca_type(sym);
+	if(ca_code(type) != TYPE_CODE_ARRAY) {
+		CA_PRINT("Failed to validate the type of \"rtree_levels\"\n");
+		return false;
+	}
+	if (!get_array_bounds(type, &low_bound, &high_bound)) {
+		CA_PRINT("Failed to query array \"rtree_levels\"\n");
+		return false;
+	}
+	size_t total_level = high_bound - low_bound + 1;
+	if (total_level != 2) {
+		CA_PRINT("Expect \"rtree_levels\" is an array of length 2, but got %ld\n", total_level);
+		return false;
+	}
+	val = value_of_variable(sym, 0);
+	for (auto i = 0; i < 2; i++) {
+		struct value *v = value_subscript(val, i);
+		CHECK_VALUE(v, "rtree_levels[i]");
+		if (!ca_get_field_value(v, "bits", &data, false)) {
+			CA_PRINT("Failed to extract members of rtree_levels[i].bits\n");
+			return false;
+		}
+		g_jemalloc->rtree_level[i].bits = (unsigned int) data;
+		if (!ca_get_field_value(v, "cumbits", &data, false)) {
+			CA_PRINT("Failed to extract members of rtree_levels[i].cumbits\n");
+			return false;
+		}
+		g_jemalloc->rtree_level[i].cumbits = (unsigned int) data;
 	}
 
 	// je_arenas
@@ -193,7 +239,8 @@ init_heap(void)
 			ca_get_field_value(stats_v, "nonfull_slabs", &arena->bins[j].stats.nonfull_slabs, false);
 			// je_arenas[i].bins[j].slabcur
 			struct value *slabcur_v = ca_get_field_gdb_value(bin_v, "slabcur");
-			struct type *edata_p_type = value_type(slabcur_v);
+			if (!edata_p_type)
+				edata_p_type = value_type(slabcur_v);
 			if (value_as_address(slabcur_v) != 0) {
 				slabcur_v = value_ind(slabcur_v);
 				if (!parse_edata(binfo, arena->bins[j].slabs, slabcur_v, ENUM_SLAB_CUR)) {
@@ -212,9 +259,102 @@ init_heap(void)
 			// type = struct edata_list_active_t
 			struct value *slabs_full_v = ca_get_field_gdb_value(bin_v, "slabs_full");
 			if (!parse_edata_list(binfo, arena->bins[j].slabs, slabs_full_v, edata_p_type)) {
+				CA_PRINT("Failed to parse je_arenas[%d].bins[%d] data memeber \"slabs_full\"\n", i, j);
+				return false;
 			}
+			// populate the global slab vector
+			for (auto slab : arena->bins[j].slabs)
+				g_jemalloc->slabs_sorted.push_back(slab);
 		}
 		g_jemalloc->je_arenas.push_back(arena);
+	}
+
+	// je_arena_emap_global
+	// type = struct emap_s {
+	//     rtree_t rtree;
+	// }
+	// type = struct rtree_s {
+	//     base_t *base;
+	//     malloc_mutex_t init_lock;
+	//     rtree_node_elm_t root[262144];
+	// }
+	// type = struct rtree_node_elm_s {
+	//     atomic_p_t child;
+	// }
+	// type = struct atomic_p_t {
+	//     void *repr;
+	// }
+	sym = lookup_symbol("je_arena_emap_global", 0, VAR_DOMAIN, 0).symbol;
+	if (sym == nullptr) {
+		CA_PRINT("Failed to lookup gv \"je_arena_emap_global\"\n");
+		return false;
+	}
+	val = value_of_variable(sym, 0);
+	CHECK_VALUE(val, "je_arena_emap_global");
+
+	struct value *rtree_v = ca_get_field_gdb_value(val, "rtree");
+	CHECK_VALUE(rtree_v, "je_arena_emap_global::rtree");
+
+	struct value *root_v = ca_get_field_gdb_value(rtree_v, "root");
+	CHECK_VALUE(root_v, "je_arena_emap_global::rtree::root");
+
+	type = value_type(root_v);
+	if(ca_code(type) != TYPE_CODE_ARRAY) {
+		CA_PRINT("Failed to validate the type of \"je_arena_emap_global::rtree::root\"\n");
+		return false;
+	}
+	if (!get_array_bounds(type, &low_bound, &high_bound)) {
+		CA_PRINT("Failed to query array \"je_arena_emap_global::rtree::root\"\n");
+		return false;
+	}
+	size_t total_nodes = high_bound - low_bound + 1;
+
+	struct type *leaf_type = lookup_transparent_type("rtree_leaf_elm_s");
+	if (leaf_type == nullptr) {
+		CA_PRINT("Failed to lookup type \"rtree_leaf_elm_s\"\n");
+		return false;
+	}
+	leaf_type = lookup_pointer_type(leaf_type);
+
+	for (auto i = 0; i < total_nodes; i++) {
+		// level 0
+		// rtree_node_elm_t root[262144]
+		struct value *v = value_subscript(root_v, i);
+		CHECK_VALUE(v, "je_arena_emap_global::rtree::root[i]");
+		struct value *child_v = ca_get_field_gdb_value(v, "child");
+		CHECK_VALUE(child_v, "rtree_node_elm_s::child");
+		struct value *repr_v = ca_get_field_gdb_value(child_v, "repr");
+		CHECK_VALUE(repr_v, "rtree_node_elm_s::child::repr");
+		if (value_as_address(repr_v) == 0)
+			continue;
+		// level 1
+		// rtree_leaf_elm_t[262144] (2^rtree_level[1].bits)
+		// type = struct rtree_leaf_elm_s {
+		//     atomic_p_t le_bits;
+		// }
+		struct value *leaf_v = value_cast(leaf_type, repr_v);
+		size_t total_leaf = (size_t)1 << g_jemalloc->rtree_level[1].bits;
+		for (auto j = 0; j < total_leaf; j++) {
+			struct value *leaf_elm = value_subscript(leaf_v, j);
+			struct value *bits_v = ca_get_field_gdb_value(leaf_elm, "le_bits");
+			struct value *leaf_repr_v = ca_get_field_gdb_value(bits_v, "repr");
+			uintptr_t bits = value_as_address(leaf_repr_v);
+			if (bits == 0)
+				continue;
+			// decode the bits to edata
+			je_rtree_contents_t contents;
+			contents.metadata.szind = bits >> LG_VADDR;
+			contents.metadata.slab = (bool)(bits & 1);
+			contents.metadata.is_head = (bool)(bits & (1 << 1));
+
+			uintptr_t state_bits = (bits & RTREE_LEAF_STATE_MASK) >> RTREE_LEAF_STATE_SHIFT;
+			contents.metadata.state = ( unsigned int)state_bits;
+
+			uintptr_t low_bit_mask = ~((uintptr_t)EDATA_ALIGNMENT - 1);
+			contents.edata = ((uintptr_t)((intptr_t)(bits << RTREE_NHIB) >> RTREE_NHIB) & low_bit_mask);
+			struct value *edata_v = value_at(edata_p_type, contents.edata);
+			CHECK_VALUE(edata_v, "rtree leaf");
+		}
 	}
  
 	// je_tcache_bin_info
@@ -225,6 +365,32 @@ init_heap(void)
 		return false;
 	}*/
 
+	// sort global slab vector
+	std::sort(g_jemalloc->slabs_sorted.begin(), g_jemalloc->slabs_sorted.end(), je_edata_cmp_func);
+	if (g_jemalloc->slabs_sorted.size() > 1) {
+		// verify there is no overlapping
+		for (int i = 0; i < g_jemalloc->slabs_sorted.size()-1; i++) {
+			je_edata_t *slab = g_jemalloc->slabs_sorted[i];
+			je_edata_t *next = g_jemalloc->slabs_sorted[i+1];
+			if (slab->e_addr + slab->e_size > next->e_addr) {
+				CA_PRINT("slabs are not sorted correctly at index %d-%d\n", i, i+1);
+				break;
+			}
+		}
+	}
+	// sort global blocks
+	std::sort(g_jemalloc->blocks.begin(), g_jemalloc->blocks.end(), heap_block_cmp_func);
+	if (g_jemalloc->blocks.size() > 1) {
+		for (int i = 0; i < g_jemalloc->blocks.size()-1; i++) {
+			heap_block *blk1 = &g_jemalloc->blocks[i];
+			heap_block *blk2 = &g_jemalloc->blocks[i+1];
+			if (blk1->addr + blk1->size > blk2->addr) {
+				CA_PRINT("heap blocks are not sorted correctly at index %d-%d\n", i, i+1);
+				break;
+			}
+		}
+	}
+
 	return true;
 }
 
@@ -232,7 +398,20 @@ init_heap(void)
 static bool
 get_heap_block_info(address_t addr, struct heap_block* blk)
 {
-	return false;
+	if (!g_jemalloc) {
+		CA_PRINT("jemalloc heap was not initialized successfully\n");
+		return false;
+	}
+
+	heap_block *found = get_heap_block(addr);
+	if (!found)
+		return false;
+
+	blk->addr = found->addr;
+	blk->inuse = found->inuse;
+	blk->size = found->size;
+
+	return true;
 }
 
 static bool
@@ -309,7 +488,7 @@ heap_walk(address_t heapaddr, bool verbose)
 			}
 			if (verbose && bin->slabs.size()) {
 				for (auto slab : bin->slabs) {
-					CA_PRINT("\t\t%p %s reg_size=%ld inuse=%d free=%d\n",
+					CA_PRINT("\t\t0x%lx %s reg_size=%ld inuse=%d free=%d\n",
 						slab->e_addr, slab_owner_name(slab),
 						g_jemalloc->bin_infos[bi].reg_size, slab->inuse_cnt, slab->free_cnt);
 				}
@@ -373,6 +552,10 @@ parse_edata(je_bin_info_t *bininfo, je_edata_set& slab_set, struct value *edata_
 	if (!ca_get_field_value(edata_v, "e_bits", &slab->e_bits, false)
 		|| !ca_get_field_value(edata_v, "e_addr", (size_t*)&slab->e_addr, false))
 		return false;
+	struct value *size_v = ca_get_field_gdb_value(edata_v, "e_size_esn");
+	if (!size_v)
+		return false;
+	slab->e_size = value_as_long(size_v) & EDATA_SIZE_MASK;
 
 	if (edata_slab_get(slab->e_bits)) {
 		// small fix-sized blocks
@@ -396,15 +579,20 @@ parse_edata(je_bin_info_t *bininfo, je_edata_set& slab_set, struct value *edata_
 			je_bitmap_t bitmap = value_as_long(v);
 			size_t bit = 1;
 			for (int j = 0; j < 64 && reg_index < bininfo->nregs; j++,reg_index++) {
+				bool inuse;
 				if (bit & bitmap) {
 					// set bit means free region (block)
 					slab->free_cnt++;
+					inuse = false;
 				} else {
 					slab->inuse_cnt++;
+					inuse = true;
 				}
+				// cache the block
+				g_jemalloc->blocks.push_back({addr, blksz, inuse});
+				// next block
 				bit <<= 1;
 				addr += blksz;
-				// cache the block
 			}
 		}
 		// verify
@@ -549,4 +737,36 @@ parse_edata_list(je_bin_info_t *bininfo, je_edata_set& slab_set, struct value *l
 	} while (value_as_address(node) != head_addr);
 
 	return true;
+}
+
+/*
+je_edata_t *
+get_edata(address_t addr)
+{
+	je_edata_t key;
+	key.e_addr = addr;
+	key.e_size = 0;
+
+	auto lower = std::lower_bound(g_jemalloc->slabs_sorted.begin(), g_jemalloc->slabs_sorted.end(),
+		&key, je_edata_cmp_func);
+	if (lower != g_jemalloc->slabs_sorted.end()) {
+		if (addr >= (*lower)->e_addr && addr < (*lower)->e_addr + (*lower)->e_size)
+			return *lower;
+	}
+
+	return nullptr;
+}
+*/
+heap_block *
+get_heap_block(address_t addr)
+{
+	heap_block blk = {addr, 0, false};
+
+	auto lower = std::lower_bound(g_jemalloc->blocks.begin(), g_jemalloc->blocks.end(),
+		blk, heap_block_cmp_func);
+	if (lower != g_jemalloc->blocks.end()) {
+		if (addr >= (*lower).addr && addr < (*lower).addr + (*lower).size)
+			return &(*lower);
+	}
+	return nullptr;
 }

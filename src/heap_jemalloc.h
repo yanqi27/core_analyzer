@@ -11,6 +11,12 @@
 #include <set>
 #include <vector>
 
+#define LG_VADDR 48
+#define RTREE_LEAF_STATE_MASK ((((((uint64_t)0x1U) << (3)) - 1)) << (2))
+#define RTREE_LEAF_STATE_SHIFT 2
+#define EDATA_ALIGNMENT 128
+#define RTREE_NHIB ((1U << (3+3)) - 48)
+
 struct je_bitmap_info_t {
 	size_t nbits = 0;
 	size_t ngroups = 0;
@@ -71,9 +77,14 @@ enum ENUM_SLAB_OWNER {
 	ENUM_SLAB_NONFULL
 };
 
+#define PAGE (1<<12)
+#define EDATA_SIZE_MASK	((size_t)~(PAGE-1))
+
+// slab, aka extent, edata_t.
 struct je_edata_t {
     uint64_t e_bits = 0;
-    void *e_addr = nullptr;
+    uintptr_t e_addr = 0;
+	size_t e_size = 0;
 	/*
     union {
         size_t e_size_esn;
@@ -96,8 +107,17 @@ struct je_edata_t {
 	ENUM_SLAB_OWNER slab_owner = ENUM_SLAB_UNKNOWN;
 };
 
-//auto je_edata_cmp = [](je_edata_t *a, je_edata_t *b) { return a->e_addr < b->e_addr; };
-//typedef std::set<je_edata_t *, decltype(je_edata_cmp)> je_edata_set(je_edata_cmp);
+// heap block comparator
+inline bool heap_block_cmp_func(heap_block a, heap_block b) {
+	return a.addr + a.size <= b.addr + b.size;
+}
+
+// slab comparator
+inline bool je_edata_cmp_func (je_edata_t *a, je_edata_t *b) {
+	return a->e_addr < b->e_addr;
+}
+
+// slab set
 struct je_edata_cmp {
 	bool operator() (je_edata_t *a, je_edata_t *b) const {
 		return a->e_addr < b->e_addr;
@@ -112,7 +132,7 @@ struct je_bin_t {
 			delete itr;
 		}
 	}
-    //malloc_mutex_t lock;
+
     je_bin_stats_t stats;
     //edata_t slabcur;
     //edata_heap_t slabs_nonfull;
@@ -126,30 +146,26 @@ struct je_arena {
 		delete [] bins;
 	}
 
-	/*
-	atomic_u_t nthreads[2];
-	atomic_u_t binshard_next;
-	tsdn_t *last_thd;
-	*/
 	je_arena_stats_t stats;
-	/*
-	struct {
-		tcache_slow_t *qlh_first;
-	} tcache_ql;
-	struct {
-		cache_bin_array_descriptor_t *qlh_first;
-	} cache_bin_array_descriptor_ql;
-	malloc_mutex_t tcache_ql_mtx;
-	atomic_u_t dss_prec;
-	edata_list_active_t large;
-	malloc_mutex_t large_mtx;
-	pa_shard_t pa_shard;
-	unsigned int ind;
-	base_t *base;
-	nstime_t create_time;
-	char name[32];
-	*/
+	// bins is an array of length 'nbins_total'
 	je_bin_t *bins = nullptr;
+};
+
+struct je_rtree_level_t {
+    unsigned int bits;
+    unsigned int cumbits;
+};
+
+struct je_rtree_metadata_t {
+    unsigned int szind;
+    unsigned int state;
+    bool is_head;
+    bool slab;
+};
+
+struct je_rtree_contents_t {
+	uintptr_t edata;	//edata_t*
+	je_rtree_metadata_t metadata;
 };
 
 struct jemalloc {
@@ -163,22 +179,23 @@ struct jemalloc {
 	// arena_s::bins array size
 	unsigned int nbins_total = 0;
 
-	//unsigned long heap_flags;
-	//size_t je_bitmap_max_levels;
+	// total arenas
 	unsigned int narenas_total = 0;
-	//size_t chunk_npages;
-	//unsigned long long chunksize;
-	// target's address of je_arenas[...]
+
+	// parsed arenas
 	std::vector<je_arena *> je_arenas;
 
+	// fixed bin_info indexed by size class
 	std::vector<je_bin_info_t> bin_infos;
-	//size_t n_bin_info;
-	//struct je_tcache_bin_info *tcache_bin_info;
-	//size_t tcache_bin_count; /* aka nhbins */
-	//size_t map_bias;
 
-	/* v3 only */
-	//uint8_t *je_small_size2bin;
+	// sorted slabs for quick search
+	std::vector<je_edata_t*> slabs_sorted;
+
+	// sorted blocks(regions)
+	std::vector<heap_block> blocks;
+
+	// radix tree of the slabs
+	je_rtree_level_t rtree_level[2];
 
 	/* v4 only */
 	//size_t map_misc_offset;

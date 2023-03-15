@@ -105,6 +105,7 @@ struct je_edata_t {
 	unsigned int free_cnt = 0;
 	unsigned int inuse_cnt = 0;
 	ENUM_SLAB_OWNER slab_owner = ENUM_SLAB_UNKNOWN;
+	bool slab = false;
 };
 
 // heap block comparator
@@ -114,7 +115,7 @@ inline bool heap_block_cmp_func(heap_block a, heap_block b) {
 
 // slab comparator
 inline bool je_edata_cmp_func (je_edata_t *a, je_edata_t *b) {
-	return a->e_addr < b->e_addr;
+	return a->e_addr < b->e_addr && a->e_addr + a->e_size < b->e_addr + b->e_size;
 }
 
 // slab set
@@ -189,7 +190,8 @@ struct jemalloc {
 	std::vector<je_bin_info_t> bin_infos;
 
 	// sorted slabs for quick search
-	std::vector<je_edata_t*> slabs_sorted;
+	std::vector<je_edata_t*> edata_sorted;
+	std::set<uintptr_t> edata_addr_set;
 
 	// sorted blocks(regions)
 	std::vector<heap_block> blocks;

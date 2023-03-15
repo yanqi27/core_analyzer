@@ -19,9 +19,9 @@ static jemalloc *g_jemalloc = nullptr;
  * Forward declaration
  */
 static bool gdb_symbol_probe(void);
-static bool parse_edata(je_bin_info_t *bininfo, je_edata_set& slab_set, struct value *edata_v, ENUM_SLAB_OWNER owner);
-static bool parse_edata_heap(je_bin_info_t *bininfo, je_edata_set& slab_set, struct value *heap_v, struct type *edata_p_type);
-static bool parse_edata_list(je_bin_info_t *bininfo, je_edata_set& slab_set, struct value *list_v, struct type *edata_p_type);
+static je_edata_t *parse_edata(je_bin_info_t *bininfo, struct value *edata_v);
+//static bool parse_edata_heap(je_bin_info_t *bininfo, je_edata_set& slab_set, struct value *heap_v, struct type *edata_p_type);
+//static bool parse_edata_list(je_bin_info_t *bininfo, je_edata_set& slab_set, struct value *list_v, struct type *edata_p_type);
 //static je_edata_t *get_edata(address_t addr);
 static heap_block *get_heap_block(address_t addr);
 
@@ -54,7 +54,6 @@ init_heap(void)
 	struct value *val = nullptr;
 	size_t data = 0;
 	LONGEST low_bound=0, high_bound=0;
-	struct type *edata_p_type = nullptr;
 
 	if (g_jemalloc)
 		delete g_jemalloc;
@@ -231,22 +230,26 @@ init_heap(void)
 			return false;
 		}
 		for (int j = 0; j < g_jemalloc->nbins_total; j++) {
-			auto binfo = &g_jemalloc->bin_infos[j];
 			// je_arenas[i].bins[j]
 			struct value *bin_v = value_subscript(bins_v, j);
 			stats_v = ca_get_field_gdb_value(bin_v, "stats");
 			ca_get_field_value(stats_v, "curslabs", &arena->bins[j].stats.curslabs, false);
 			ca_get_field_value(stats_v, "nonfull_slabs", &arena->bins[j].stats.nonfull_slabs, false);
+			/*
 			// je_arenas[i].bins[j].slabcur
+			auto binfo = &g_jemalloc->bin_infos[j];
+			je_edata_t *slab = nullptr;
 			struct value *slabcur_v = ca_get_field_gdb_value(bin_v, "slabcur");
-			if (!edata_p_type)
-				edata_p_type = value_type(slabcur_v);
+			struct type	*edata_p_type = value_type(slabcur_v);
 			if (value_as_address(slabcur_v) != 0) {
 				slabcur_v = value_ind(slabcur_v);
-				if (!parse_edata(binfo, arena->bins[j].slabs, slabcur_v, ENUM_SLAB_CUR)) {
+				slab = parse_edata(binfo, slabcur_v);
+				if (!slab) {
 					CA_PRINT("Failed to parse je_arenas[%d].bins[%d] data memeber \"slabcur\"\n", i, j);
 					return false;
 				}
+				slab->slab_owner = ENUM_SLAB_CUR;
+				arena->bins[j].slabs.insert(slab);
 			}
 			// je_arenas[i].bins[j].slabs_nonfull
 			// type = edata_heap_t
@@ -262,9 +265,7 @@ init_heap(void)
 				CA_PRINT("Failed to parse je_arenas[%d].bins[%d] data memeber \"slabs_full\"\n", i, j);
 				return false;
 			}
-			// populate the global slab vector
-			for (auto slab : arena->bins[j].slabs)
-				g_jemalloc->slabs_sorted.push_back(slab);
+			*/
 		}
 		g_jemalloc->je_arenas.push_back(arena);
 	}
@@ -316,6 +317,11 @@ init_heap(void)
 	}
 	leaf_type = lookup_pointer_type(leaf_type);
 
+	struct type *edata_type = lookup_transparent_type("edata_s");
+	if (!edata_type) {
+		CA_PRINT("Failed to lookup type \"edata_s\"\n");
+		return false;
+	}
 	for (auto i = 0; i < total_nodes; i++) {
 		// level 0
 		// rtree_node_elm_t root[262144]
@@ -352,8 +358,22 @@ init_heap(void)
 
 			uintptr_t low_bit_mask = ~((uintptr_t)EDATA_ALIGNMENT - 1);
 			contents.edata = ((uintptr_t)((intptr_t)(bits << RTREE_NHIB) >> RTREE_NHIB) & low_bit_mask);
-			struct value *edata_v = value_at(edata_p_type, contents.edata);
+			struct value *edata_v = value_at(edata_type, contents.edata);
 			CHECK_VALUE(edata_v, "rtree leaf");
+
+			je_edata_t *edata = parse_edata(&g_jemalloc->bin_infos[contents.metadata.szind], edata_v);
+			if (!edata) {
+				CA_PRINT("Failed to parse rtree leaf\n");
+				return false;
+			}
+			// deduplicate
+			if (g_jemalloc->edata_addr_set.find(edata->e_addr) != g_jemalloc->edata_addr_set.end()) {
+				CA_PRINT("Duplicated rtree leaf at 0x%lx\n", edata->e_addr);
+				delete edata;
+			} else {
+				g_jemalloc->edata_addr_set.insert(edata->e_addr);
+				g_jemalloc->edata_sorted.push_back(edata);
+			}
 		}
 	}
  
@@ -365,19 +385,21 @@ init_heap(void)
 		return false;
 	}*/
 
-	// sort global slab vector
-	std::sort(g_jemalloc->slabs_sorted.begin(), g_jemalloc->slabs_sorted.end(), je_edata_cmp_func);
-	if (g_jemalloc->slabs_sorted.size() > 1) {
+	// sort global edata vector
+	std::sort(g_jemalloc->edata_sorted.begin(), g_jemalloc->edata_sorted.end(), je_edata_cmp_func);
+	if (g_jemalloc->edata_sorted.size() > 1) {
 		// verify there is no overlapping
-		for (int i = 0; i < g_jemalloc->slabs_sorted.size()-1; i++) {
-			je_edata_t *slab = g_jemalloc->slabs_sorted[i];
-			je_edata_t *next = g_jemalloc->slabs_sorted[i+1];
-			if (slab->e_addr + slab->e_size > next->e_addr) {
-				CA_PRINT("slabs are not sorted correctly at index %d-%d\n", i, i+1);
-				break;
+		for (int i = 0; i < g_jemalloc->edata_sorted.size()-1; i++) {
+			je_edata_t *edata = g_jemalloc->edata_sorted[i];
+			je_edata_t *next = g_jemalloc->edata_sorted[i+1];
+			if (edata->e_addr + edata->e_size > next->e_addr) {
+				CA_PRINT("edata are not sorted correctly at index %d-%d\n", i, i+1);
+				//break;
 			}
 		}
 	}
+
+
 	// sort global blocks
 	std::sort(g_jemalloc->blocks.begin(), g_jemalloc->blocks.end(), heap_block_cmp_func);
 	if (g_jemalloc->blocks.size() > 1) {
@@ -427,6 +449,7 @@ is_heap_block(address_t addr)
 	return false;
 }
 
+/*
 static const char *slab_owner_name(je_edata_t *slab)
 {
 	const char *name;
@@ -448,6 +471,7 @@ static const char *slab_owner_name(je_edata_t *slab)
 	}
 	return name;
 }
+*/
 
 /*
  * Traverse all spans unless a non-zero address is given, in which case the
@@ -474,6 +498,7 @@ heap_walk(address_t heapaddr, bool verbose)
 				continue;
 			CA_PRINT("\tbin[%d]: curslabs=%ld nonfull_slabs=%ld\n",
 				bi, bin->stats.curslabs, bin->stats.nonfull_slabs);
+			/*
 			size_t nonfull_cnt = 0;
 			size_t full_cnt = 0;
 			for (auto slab: bin->slabs) {
@@ -493,6 +518,7 @@ heap_walk(address_t heapaddr, bool verbose)
 						g_jemalloc->bin_infos[bi].reg_size, slab->inuse_cnt, slab->free_cnt);
 				}
 			}
+			*/
 		}
 	}
 	return true;
@@ -541,51 +567,55 @@ gdb_symbol_probe(void)
 	return false;
 }
 
-bool
-parse_edata(je_bin_info_t *bininfo, je_edata_set& slab_set, struct value *edata_v, ENUM_SLAB_OWNER owner)
+je_edata_t *
+parse_edata(je_bin_info_t *bininfo, struct value *edata_v)
 {
 	if (!edata_v)
-		return false;
+		return nullptr;
 
-	std::unique_ptr<je_edata_t> slab = std::make_unique<je_edata_t>();
-	slab->slab_owner = owner;
-	if (!ca_get_field_value(edata_v, "e_bits", &slab->e_bits, false)
-		|| !ca_get_field_value(edata_v, "e_addr", (size_t*)&slab->e_addr, false))
-		return false;
+	std::unique_ptr<je_edata_t> edata = std::make_unique<je_edata_t>();
+	if (!ca_get_field_value(edata_v, "e_bits", &edata->e_bits, false)
+		|| !ca_get_field_value(edata_v, "e_addr", (size_t*)&edata->e_addr, false))
+		return nullptr;
 	struct value *size_v = ca_get_field_gdb_value(edata_v, "e_size_esn");
 	if (!size_v)
-		return false;
-	slab->e_size = value_as_long(size_v) & EDATA_SIZE_MASK;
+		return nullptr;
+	edata->e_size = value_as_long(size_v) & EDATA_SIZE_MASK;
 
-	if (edata_slab_get(slab->e_bits)) {
+	struct ca_segment *segment = get_segment(edata->e_addr, edata->e_size);
+	if (segment != nullptr && segment->m_type == ENUM_UNKNOWN)
+		segment->m_type = ENUM_HEAP;
+
+	if (edata_slab_get(edata->e_bits)) {
+		edata->slab = true;
 		// small fix-sized blocks
-		unsigned int nfree = edata_nfree_get(slab->e_bits);
+		unsigned int nfree = edata_nfree_get(edata->e_bits);
 		struct value *slab_data_v = ca_get_field_gdb_value(edata_v, "e_slab_data");
 		if (!slab_data_v)
-			return false;
+			return nullptr;
 		struct value *bitmap_v = ca_get_field_gdb_value(slab_data_v, "bitmap");
 		if (!bitmap_v)
-			return false;
+			return nullptr;
 
-		slab->free_cnt = 0;
-		slab->inuse_cnt = 0;
+		edata->free_cnt = 0;
+		edata->inuse_cnt = 0;
 		uint32_t reg_index = 0;
 		size_t blksz = bininfo->reg_size;
-		address_t addr = (address_t) slab->e_addr;
+		address_t addr = (address_t) edata->e_addr;
 		for (size_t i = 0; i < bininfo->bitmap_info.ngroups && reg_index < bininfo->nregs; i++) {
 			struct value *v = value_subscript(bitmap_v, i);
 			if (!v)
-				return false;
+				return nullptr;
 			je_bitmap_t bitmap = value_as_long(v);
 			size_t bit = 1;
 			for (int j = 0; j < 64 && reg_index < bininfo->nregs; j++,reg_index++) {
 				bool inuse;
 				if (bit & bitmap) {
 					// set bit means free region (block)
-					slab->free_cnt++;
+					edata->free_cnt++;
 					inuse = false;
 				} else {
-					slab->inuse_cnt++;
+					edata->inuse_cnt++;
 					inuse = true;
 				}
 				// cache the block
@@ -596,12 +626,13 @@ parse_edata(je_bin_info_t *bininfo, je_edata_set& slab_set, struct value *edata_
 			}
 		}
 		// verify
-		if (nfree != slab->free_cnt) {
+		if (nfree != edata->free_cnt) {
 			CA_PRINT("slab inconsistent free count: nfree=%d bitmap_free=%d bitmap_inuse=%d bin_info::nregs=%d\n",
-				nfree, slab->free_cnt, slab->inuse_cnt, bininfo->nregs);
+				nfree, edata->free_cnt, edata->inuse_cnt, bininfo->nregs);
 		}
 	}
 
+	/*
 	// store the new slab
 	auto itr = slab_set.insert(slab.get());
 	if (itr.second == false) {
@@ -609,10 +640,12 @@ parse_edata(je_bin_info_t *bininfo, je_edata_set& slab_set, struct value *edata_
 		return false;
 	}
 	slab.release();
+	*/
 
-	return true;
+	return edata.release();
 }
 
+/*
 // Parameters:
 //     node: type = void* (real type = struct edata_t)
 static bool
@@ -624,8 +657,11 @@ parse_edata_heap_node(struct value *node_v, je_bin_info_t *bininfo, je_edata_set
 	// parse this node
 	struct value *edata_p_v = value_cast(edata_p_type, node_v);
 	struct value *edata_v = value_ind(edata_p_v);
-	if (!parse_edata(bininfo, slab_set, edata_v, ENUM_SLAB_NONFULL))
+	je_edata_t *slab = parse_edata(bininfo, edata_v);
+	if (!slab)
 		return false;
+	slab->slab_owner = ENUM_SLAB_NONFULL;
+	slab_set.insert(slab);
 
 	// parse the pairing heap tree under the node
 	struct value *heap_link_v = ca_get_field_gdb_value(edata_v, "heap_link");
@@ -718,8 +754,11 @@ parse_edata_list(je_bin_info_t *bininfo, je_edata_set& slab_set, struct value *l
 	// traverse the doubly-link list
 	struct value *node = value_ind(qlh_first_v);
 	do {
-		if (!parse_edata(bininfo, slab_set, node, ENUM_SLAB_FULL))
+		je_edata_t *slab = parse_edata(bininfo, node);
+		if (!slab)
 			return false;
+		slab->slab_owner = ENUM_SLAB_FULL;
+		slab_set.insert(slab);
 		// ql_link_active
 		// type = struct { edata_t *qre_next; edata_t *qre_prev; }
 		struct value *linkage_v = ca_get_field_gdb_value(node, "ql_link_active");
@@ -739,7 +778,6 @@ parse_edata_list(je_bin_info_t *bininfo, je_edata_set& slab_set, struct value *l
 	return true;
 }
 
-/*
 je_edata_t *
 get_edata(address_t addr)
 {
@@ -747,9 +785,9 @@ get_edata(address_t addr)
 	key.e_addr = addr;
 	key.e_size = 0;
 
-	auto lower = std::lower_bound(g_jemalloc->slabs_sorted.begin(), g_jemalloc->slabs_sorted.end(),
+	auto lower = std::lower_bound(g_jemalloc->edata_sorted.begin(), g_jemalloc->edata_sorted.end(),
 		&key, je_edata_cmp_func);
-	if (lower != g_jemalloc->slabs_sorted.end()) {
+	if (lower != g_jemalloc->edata_sorted.end()) {
 		if (addr >= (*lower)->e_addr && addr < (*lower)->e_addr + (*lower)->e_size)
 			return *lower;
 	}
@@ -757,6 +795,7 @@ get_edata(address_t addr)
 	return nullptr;
 }
 */
+
 heap_block *
 get_heap_block(address_t addr)
 {

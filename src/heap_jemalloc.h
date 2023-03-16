@@ -79,28 +79,41 @@ enum ENUM_SLAB_OWNER {
 
 #define PAGE (1<<12)
 #define EDATA_SIZE_MASK	((size_t)~(PAGE-1))
+#define PAGE_MASK	((size_t)(PAGE - 1))
+#define PAGE_ADDR2BASE(a) (((uintptr_t)(a) & ~PAGE_MASK))
+
+enum je_extent_state_t {
+	extent_state_active   = 0,
+	extent_state_dirty    = 1,
+	extent_state_muzzy    = 2,
+	extent_state_retained = 3,
+	extent_state_transition = 4, /* States below are intermediate. */
+	extent_state_merging = 5,
+	extent_state_max = 5 /* Sanity checking only. */
+};
 
 // slab, aka extent, edata_t.
 struct je_edata_t {
-    uint64_t e_bits = 0;
-    uintptr_t e_addr = 0;
+	uint64_t e_bits = 0;
+	uintptr_t e_addr = 0;
+	uintptr_t base = 0;
 	size_t e_size = 0;
 	/*
-    union {
-        size_t e_size_esn;
-        size_t e_bsize;
-    };
-    hpdata_t *e_ps;
-    uint64_t e_sn;
-    union {
-        struct {...} ql_link_active;
-        union {...};
-    };
-    union {
-        struct {...} ql_link_inactive;
-        slab_data_t e_slab_data;
-        e_prof_info_t e_prof_info;
-    };
+	union {
+		size_t e_size_esn;
+		size_t e_bsize;
+	};
+	hpdata_t *e_ps;
+	uint64_t e_sn;
+	union {
+		struct {...} ql_link_active;
+		union {...};
+	};
+	union {
+		struct {...} ql_link_inactive;
+		slab_data_t e_slab_data;
+		e_prof_info_t e_prof_info;
+	};
 	*/
 	unsigned int free_cnt = 0;
 	unsigned int inuse_cnt = 0;
@@ -191,13 +204,15 @@ struct jemalloc {
 
 	// sorted slabs for quick search
 	std::vector<je_edata_t*> edata_sorted;
-	std::set<uintptr_t> edata_addr_set;
 
 	// sorted blocks(regions)
 	std::vector<heap_block> blocks;
 
 	// radix tree of the slabs
 	je_rtree_level_t rtree_level[2];
+
+	// size table
+	std::vector<size_t> sz_table;
 
 	/* v4 only */
 	//size_t map_misc_offset;
@@ -230,7 +245,6 @@ struct jemalloc {
 /******************************************************************************
  * Helper Functions
  *****************************************************************************/
-
 #define MASK(CURRENT_FIELD_WIDTH, CURRENT_FIELD_SHIFT) ((((((uint64_t)0x1U) << (CURRENT_FIELD_WIDTH)) - 1)) << (CURRENT_FIELD_SHIFT))
 
 #define EDATA_BITS_ARENA_WIDTH  12
@@ -289,4 +303,17 @@ static inline unsigned
 edata_nfree_get(uint64_t e_bits) {
 	return (unsigned)((e_bits & EDATA_BITS_NFREE_MASK) >>
 	    EDATA_BITS_NFREE_SHIFT);
+}
+
+static inline unsigned int
+edata_szind_get(uint64_t e_bits) {
+	unsigned int szind = (unsigned int)((e_bits & EDATA_BITS_SZIND_MASK) >>
+	    EDATA_BITS_SZIND_SHIFT);
+	return szind;
+}
+
+static inline je_extent_state_t
+edata_state_get(uint64_t e_bits) {
+	return (je_extent_state_t)((e_bits & EDATA_BITS_STATE_MASK) >>
+	    EDATA_BITS_STATE_SHIFT);
 }

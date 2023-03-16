@@ -19,7 +19,7 @@ static jemalloc *g_jemalloc = nullptr;
  * Forward declaration
  */
 static bool gdb_symbol_probe(void);
-static je_edata_t *parse_edata(je_bin_info_t *bininfo, struct value *edata_v);
+static je_edata_t *parse_edata(struct value *edata_v, je_rtree_contents_t *contents);
 //static bool parse_edata_heap(je_bin_info_t *bininfo, je_edata_set& slab_set, struct value *heap_v, struct type *edata_p_type);
 //static bool parse_edata_list(je_bin_info_t *bininfo, je_edata_set& slab_set, struct value *list_v, struct type *edata_p_type);
 //static je_edata_t *get_edata(address_t addr);
@@ -134,6 +134,30 @@ init_heap(void)
 		CA_PRINT("je_bin_infos length(%ld) != nbins_total(%d)\n",
 			g_jemalloc->bin_infos.size(), g_jemalloc->nbins_total);
 		return false;
+	}
+
+	// size_t sz_index2size_tab[SC_NSIZES];
+	sym = lookup_symbol("je_sz_index2size_tab", 0, VAR_DOMAIN, 0).symbol;
+	CHECK_SYM(sym, "je_sz_index2size_tab");
+	type = ca_type(sym);
+	if(ca_code(type) != TYPE_CODE_ARRAY) {
+		CA_PRINT("Failed to validate the type of \"je_sz_index2size_tab\"\n");
+		return false;
+	}
+	if (!get_array_bounds(type, &low_bound, &high_bound)) {
+		CA_PRINT("Failed to query array \"je_sz_index2size_tab\"\n");
+		return false;
+	}
+	size_t sz_tab_len = high_bound - low_bound + 1;
+	val = value_of_variable(sym, 0);
+	for (int i = 0; i < sz_tab_len; i++) {
+		// sz_index2size_tab[i]
+		struct value *v = value_subscript(val, i);
+		if (!v) {
+			CA_PRINT("Failed to parse sz_index2size_tab[%d]\n", i);
+			return false;
+		}
+		g_jemalloc->sz_table.push_back(value_as_long(v));
 	}
 
 	// slabs from the global radix tree, which is 2-level on x64 arch
@@ -322,6 +346,8 @@ init_heap(void)
 		CA_PRINT("Failed to lookup type \"edata_s\"\n");
 		return false;
 	}
+	std::set<uintptr_t> edata_addr_set;
+
 	for (auto i = 0; i < total_nodes; i++) {
 		// level 0
 		// rtree_node_elm_t root[262144]
@@ -358,22 +384,23 @@ init_heap(void)
 
 			uintptr_t low_bit_mask = ~((uintptr_t)EDATA_ALIGNMENT - 1);
 			contents.edata = ((uintptr_t)((intptr_t)(bits << RTREE_NHIB) >> RTREE_NHIB) & low_bit_mask);
+
+			// deduplicate
+			if (edata_addr_set.find(contents.edata) != edata_addr_set.end()) {
+				//CA_PRINT("Duplicated rtree leafs 0x%lx and 0x%lx; both have e_addr=0x%lx\n",
+				//	contents.edata, edata_addr_map[edata->e_addr], edata->e_addr);
+				continue;
+			} else
+				edata_addr_set.insert(contents.edata);
+
 			struct value *edata_v = value_at(edata_type, contents.edata);
 			CHECK_VALUE(edata_v, "rtree leaf");
-
-			je_edata_t *edata = parse_edata(&g_jemalloc->bin_infos[contents.metadata.szind], edata_v);
+			je_edata_t *edata = parse_edata(edata_v, &contents);
 			if (!edata) {
 				CA_PRINT("Failed to parse rtree leaf\n");
 				return false;
 			}
-			// deduplicate
-			if (g_jemalloc->edata_addr_set.find(edata->e_addr) != g_jemalloc->edata_addr_set.end()) {
-				CA_PRINT("Duplicated rtree leaf at 0x%lx\n", edata->e_addr);
-				delete edata;
-			} else {
-				g_jemalloc->edata_addr_set.insert(edata->e_addr);
-				g_jemalloc->edata_sorted.push_back(edata);
-			}
+			g_jemalloc->edata_sorted.push_back(edata);
 		}
 	}
  
@@ -392,7 +419,7 @@ init_heap(void)
 		for (int i = 0; i < g_jemalloc->edata_sorted.size()-1; i++) {
 			je_edata_t *edata = g_jemalloc->edata_sorted[i];
 			je_edata_t *next = g_jemalloc->edata_sorted[i+1];
-			if (edata->e_addr + edata->e_size > next->e_addr) {
+			if (edata->base + edata->e_size > next->base) {
 				CA_PRINT("edata are not sorted correctly at index %d-%d\n", i, i+1);
 				//break;
 			}
@@ -568,7 +595,7 @@ gdb_symbol_probe(void)
 }
 
 je_edata_t *
-parse_edata(je_bin_info_t *bininfo, struct value *edata_v)
+parse_edata(struct value *edata_v, je_rtree_contents_t *contents)
 {
 	if (!edata_v)
 		return nullptr;
@@ -586,10 +613,18 @@ parse_edata(je_bin_info_t *bininfo, struct value *edata_v)
 	if (segment != nullptr && segment->m_type == ENUM_UNKNOWN)
 		segment->m_type = ENUM_HEAP;
 
-	if (edata_slab_get(edata->e_bits)) {
+	je_extent_state_t state = edata_state_get(edata->e_bits);
+	if (state == extent_state_dirty || state == extent_state_muzzy) {
+		edata->slab = false;
+		edata->base = PAGE_ADDR2BASE(edata->e_addr);
+		edata->free_cnt = 1;
+		edata->inuse_cnt = 0;
+		// cache the block
+		g_jemalloc->blocks.push_back({edata->base, edata->e_size, false});
+	} else if (edata_slab_get(edata->e_bits)) {
 		edata->slab = true;
+		edata->base = edata->e_addr;
 		// small fix-sized blocks
-		unsigned int nfree = edata_nfree_get(edata->e_bits);
 		struct value *slab_data_v = ca_get_field_gdb_value(edata_v, "e_slab_data");
 		if (!slab_data_v)
 			return nullptr;
@@ -597,6 +632,13 @@ parse_edata(je_bin_info_t *bininfo, struct value *edata_v)
 		if (!bitmap_v)
 			return nullptr;
 
+		unsigned int nfree = edata_nfree_get(edata->e_bits);
+		unsigned int szind = edata_szind_get(edata->e_bits);
+		if (szind >= g_jemalloc->bin_infos.size()) {
+			CA_PRINT("edata szind is out of range\n");
+			return nullptr;
+		}
+		je_bin_info_t *bininfo = &g_jemalloc->bin_infos[szind];
 		edata->free_cnt = 0;
 		edata->inuse_cnt = 0;
 		uint32_t reg_index = 0;
@@ -630,6 +672,17 @@ parse_edata(je_bin_info_t *bininfo, struct value *edata_v)
 			CA_PRINT("slab inconsistent free count: nfree=%d bitmap_free=%d bitmap_inuse=%d bin_info::nregs=%d\n",
 				nfree, edata->free_cnt, edata->inuse_cnt, bininfo->nregs);
 		}
+	} else {
+		// large memory block
+		edata->slab = false;
+		edata->base = PAGE_ADDR2BASE(edata->e_addr);
+		edata->free_cnt = 0;
+		edata->inuse_cnt = 1;
+		size_t blksz = edata->e_size - (edata->e_addr - edata->base);
+		if (contents->metadata.szind < g_jemalloc->sz_table.size())
+			blksz = g_jemalloc->sz_table[contents->metadata.szind];
+		// cache the block
+		g_jemalloc->blocks.push_back({edata->e_addr, blksz, true});
 	}
 
 	/*

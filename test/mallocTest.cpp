@@ -200,11 +200,7 @@ thread_func(void *arg)
 	}
 
 	// Allocate big memory blocks, i.e. > 128KiB
-#ifdef JEMALLOC_TEST
-	const size_t threshold = 2 * 1024 * 1024;
-#else
 	const size_t threshold = 128 * 1024;
-#endif
 	const size_t page_size = 4096;
 	for (i = 0; i < num_big_regions/NUM_THREADS; i++) {
 		index = get_index();

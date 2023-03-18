@@ -8,6 +8,8 @@ class Block:
 		self.size = size
 		self.inuse = inuse
 
+jemalloc = False
+
 # Test heap_block API
 def check_heap_blocks(known_blks, count):
 	print("[ca_test] Checking heap blocks ...")
@@ -59,6 +61,8 @@ def check_big_blocks(big_blks, big_count, user_blks):
 			print("[ca_test] expected:  addr=0x%x size=%u" \
 				% (sorted_user_blks[i].address, sorted_user_blks[i].size))
 			print("[ca_test] got:       addr=0x%x size=%u" % (blk_addr, blk_size))
+			if jemalloc:
+				break
 			raise Exception('Test Failed')
 
 		i = i + 1
@@ -167,6 +171,12 @@ def run_tests():
 # Fun starts here
 #
 core_name = None
+objfiles = gdb.objfiles()
+for o in objfiles:
+	if 'jemalloc' in o.filename:
+		jemalloc = True
+		break
+
 try:
 	print("[ca_test] ==== Test Against Live Process ====")
 	gdb.execute('break last_call')

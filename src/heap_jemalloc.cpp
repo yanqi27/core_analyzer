@@ -24,6 +24,7 @@ static je_edata_t *parse_edata(struct value *edata_v, je_rtree_contents_t *conte
 //static bool parse_edata_list(je_bin_info_t *bininfo, je_edata_set& slab_set, struct value *list_v, struct type *edata_p_type);
 //static je_edata_t *get_edata(address_t addr);
 static heap_block *get_heap_block(address_t addr);
+static bool build_tcache(void);
 
 /******************************************************************************
  * Exposed functions
@@ -54,6 +55,8 @@ init_heap(void)
 	struct value *val = nullptr;
 	size_t data = 0;
 	LONGEST low_bound=0, high_bound=0;
+
+	//CA_PRINT("init heap ...\n");
 
 	if (g_jemalloc)
 		delete g_jemalloc;
@@ -403,14 +406,6 @@ init_heap(void)
 			g_jemalloc->edata_sorted.push_back(edata);
 		}
 	}
- 
-	// je_tcache_bin_info
-	// type = cache_bin_info_t *
-	/*sym = lookup_symbol("je_tcache_bin_info", 0, VAR_DOMAIN, 0).symbol;
-	if (sym == nullptr) {
-		CA_PRINT("Failed to lookup gv \"je_tcache_bin_info\"\n");
-		return false;
-	}*/
 
 	// sort global edata vector
 	std::sort(g_jemalloc->edata_sorted.begin(), g_jemalloc->edata_sorted.end(), je_edata_cmp_func);
@@ -426,7 +421,6 @@ init_heap(void)
 		}
 	}
 
-
 	// sort global blocks
 	std::sort(g_jemalloc->blocks.begin(), g_jemalloc->blocks.end(), heap_block_cmp_func);
 	if (g_jemalloc->blocks.size() > 1) {
@@ -437,6 +431,19 @@ init_heap(void)
 				CA_PRINT("heap blocks are not sorted correctly at index %d-%d\n", i, i+1);
 				break;
 			}
+		}
+	}
+
+	// Extract memory blocks in thread cache and adjust their inuse status from emap
+	if (!build_tcache())
+		return false;
+	//CA_PRINT("There are %ld memory blocks in tcache\n", g_jemalloc->cached_addr.size());
+	for (auto addr : g_jemalloc->cached_addr) {
+		heap_block *found = get_heap_block(addr);
+		if (found)
+			found->inuse = false;
+		else {
+			CA_PRINT("tcache address 0x%lx is not found in emap\n", addr);
 		}
 	}
 
@@ -466,6 +473,29 @@ get_heap_block_info(address_t addr, struct heap_block* blk)
 static bool
 get_next_heap_block(address_t addr, struct heap_block* blk)
 {
+	if (!g_jemalloc) {
+		CA_PRINT("jemalloc heap was not initialized successfully\n");
+		return false;
+	}
+
+	heap_block *next = nullptr;
+	size_t len = g_jemalloc->blocks.size();
+	if (addr == 0) {
+		if (len > 0)
+			next = &g_jemalloc->blocks[0];
+	} else {
+		heap_block *found = get_heap_block(addr);
+		if (found && found < &g_jemalloc->blocks[len-1])
+			next = found + 1;
+	}
+
+	if (next) {
+		blk->addr = next->addr;
+		blk->inuse = next->inuse;
+		blk->size = next->size;
+		return true;
+	}
+
 	return false;
 }
 
@@ -473,32 +503,17 @@ get_next_heap_block(address_t addr, struct heap_block* blk)
 static bool
 is_heap_block(address_t addr)
 {
+	if (!g_jemalloc) {
+		CA_PRINT("jemalloc heap was not initialized successfully\n");
+		return false;
+	}
+
+	heap_block *found = get_heap_block(addr);
+	if (found)
+		return true;
+
 	return false;
 }
-
-/*
-static const char *slab_owner_name(je_edata_t *slab)
-{
-	const char *name;
-	switch (slab->slab_owner)
-	{
-	case ENUM_SLAB_CUR:
-		name = "slab_cur";
-		break;
-	case ENUM_SLAB_FULL:
-		name = "slab_full";
-		break;
-	case ENUM_SLAB_NONFULL:
-		name = "slab_nonfull";
-		break;
-	
-	default:
-		name = "invalid";
-		break;
-	}
-	return name;
-}
-*/
 
 /*
  * Traverse all spans unless a non-zero address is given, in which case the
@@ -554,13 +569,68 @@ heap_walk(address_t heapaddr, bool verbose)
 static bool
 get_biggest_blocks(struct heap_block* blks, unsigned int num)
 {
-	return false;
+	if (!g_jemalloc) {
+		CA_PRINT("jemalloc heap was not initialized successfully\n");
+		return false;
+	}
+
+	// Ensure the output buffer is clean
+	if (num == 0)
+		return true;
+	for (auto i = 0; i < num; i++) {
+		blks[i].addr = 0;
+		blks[i].inuse = false;
+		blks[i].size = 0;
+	}
+
+	struct heap_block* smallest = &blks[num - 1];
+	for (auto blk : g_jemalloc->blocks) {
+		if (blk.size > smallest->size)
+		{
+			for (unsigned int j = 0; j < num; j++)
+			{
+				if (blk.size > blks[j].size)
+				{
+					// Insert blk->blks[i]
+					// Move blks[i]->blks[i+1], .., blks[num-2]->blks[num-1]
+					for (int k = ((int)num) - 2; k >= (int)j; k--)
+						blks[k+1] = blks[k];
+					blks[j] = blk;
+					break;
+				}
+			}
+		}
+	}
+
+	return true;
 }
 
+// there are two use cases
+// [1] just get the total in-use blocks (opBlocks is null)
+// [2] populate opBlocks with all in-use blocks
 static bool
 walk_inuse_blocks(struct inuse_block* opBlocks, unsigned long* opCount)
 {
-	return false;
+	if (!g_jemalloc) {
+		CA_PRINT("jemalloc heap was not initialized successfully\n");
+		return false;
+	}
+
+	*opCount = 0;
+	struct inuse_block* pBlockinfo = opBlocks;
+	for (auto blk : g_jemalloc->blocks) {
+		if (blk.inuse) {
+			(*opCount)++;
+			if (pBlockinfo)
+			{
+				pBlockinfo->addr = blk.addr;
+				pBlockinfo->size = blk.size;
+				pBlockinfo++;
+			}
+		}
+	}
+
+	return true;
 }
 
 CoreAnalyzerHeapInterface sJeMallHeapManager = {
@@ -861,4 +931,125 @@ get_heap_block(address_t addr)
 			return &(*lower);
 	}
 	return nullptr;
+}
+
+// Always return 0 so that all threads are visited
+static int
+thread_tcache (struct thread_info *info, void *data)
+{
+	struct symbol *sym;
+	struct value *val;
+	struct type *type;
+
+	switch_to_thread (info);
+
+	// je_tsd_tls
+	// type = __thread tsd_t je_tsd_tls
+	sym = lookup_symbol("je_tsd_tls", 0, VAR_DOMAIN, 0).symbol;
+	if (!sym) {
+		CA_PRINT("Failed to lookup thread-local variable \"je_tsd_tls\" of thread [%d]\n", info->ptid.pid());
+		return 0;
+	}
+	val = value_of_variable(sym, 0);
+	if (!val) {
+		CA_PRINT("Failed to get the value of \"je_tsd_tls\" of thread [%d]\n", info->ptid.pid());
+		return 0;
+	}
+	struct value *tcache_v = ca_get_field_gdb_value(val, "cant_access_tsd_items_directly_use_a_getter_or_setter_tcache");
+	if (!tcache_v) {
+		CA_PRINT("Failed to extract member \"cant_access_tsd_items_directly_use_a_getter_or_setter_tcache\" of \"je_tsd_tls\" of thread [%d]\n", info->ptid.pid());
+		return 0;
+	}
+
+	// je_tsd_tls.cant_access_tsd_items_directly_use_a_getter_or_setter_tcache
+	// type = struct tcache_s {
+	//     tcache_slow_t *tcache_slow;
+	//     cache_bin_t bins[73];
+	// }
+	struct value *bins_v = ca_get_field_gdb_value(tcache_v, "bins");
+	if (!bins_v) {
+		CA_PRINT("Failed to extract member \"bins\" of \"tcache_t\" of thread [%d]\n", info->ptid.pid());
+		return 0;
+	}
+	type = value_type(bins_v);
+	if(ca_code(type) != TYPE_CODE_ARRAY) {
+		CA_PRINT("Failed to validate the array type of \"tcache_t::bins\"\n");
+		return 0;
+	}
+	LONGEST low_bound=0, high_bound=0;
+	if (!get_array_bounds(type, &low_bound, &high_bound)) {
+		CA_PRINT("Failed to query array bounds of \"tcache_t::bins\"\n");
+		return false;
+	}
+	size_t bins_len = high_bound - low_bound + 1;
+	for (int i = 0; i < bins_len; i++) {
+		// tcache_t::bins[i]
+		// type = struct cache_bin_s {
+		//      void **stack_head;
+		//      cache_bin_stats_t tstats;
+		//      uint16_t low_bits_low_water;
+		//      uint16_t low_bits_full;
+		//      uint16_t low_bits_empty;
+		// }
+		struct value *cache_bin_v = value_subscript(bins_v, i);
+		if (!cache_bin_v) {
+			CA_PRINT("Failed to index array of \"tcache_t::bins\" at [%d]\n", i);
+			return 0;
+		}
+		struct value *head_v = ca_get_field_gdb_value(cache_bin_v, "stack_head");
+		if (!head_v) {
+			CA_PRINT("Failed to extract member \"stack_head\" of \"cache_bin_t\"\n");
+			return 0;
+		}
+		uintptr_t head = value_as_address(head_v);
+		size_t mdata;
+		if (!ca_get_field_value(cache_bin_v, "low_bits_empty", &mdata, false)) {
+			CA_PRINT("Failed to extract member \"low_bits_empty\" of \"cache_bin_t\"\n");
+			return 0;
+		}
+		uint16_t low_bits_empty = (uint16_t)mdata;
+		uint16_t low_bits = (uint16_t)head;
+		if (low_bits > low_bits_empty)	// corruption?
+			continue;
+		uint16_t offset = low_bits_empty - low_bits;
+		if (offset & ((uint16_t)sizeof(void*)-1)) {
+			// offset should be multiple of ptr size
+			continue;
+		}
+		uint16_t cache_cnt = offset / (uint16_t)sizeof(void*);
+		for (uint16_t j = 0; j < cache_cnt; j++) {
+			struct value *ptr_v = value_subscript(head_v, j);
+			if (!ptr_v) {
+				CA_PRINT("Failed to index array of \"cache_bin_t::stack_head\" at [%d]\n", j);
+				return 0;
+			}
+			uintptr_t ptr = value_as_address(ptr_v);
+			if (ptr)
+				g_jemalloc->cached_addr.insert(ptr);
+		}
+	}
+
+	return 0;
+}
+
+// Traverse all threads for thread-local variables
+bool
+build_tcache(void)
+{
+	// je_tcache_bin_info
+	// type = cache_bin_info_t *
+	/*sym = lookup_symbol("je_tcache_bin_info", 0, VAR_DOMAIN, 0).symbol;
+	if (sym == nullptr) {
+		CA_PRINT("Failed to lookup gv \"je_tcache_bin_info\"\n");
+		return false;
+	}*/
+
+	/* remember current thread */
+	struct thread_info* old = inferior_thread();
+	/* switch to all threads */
+	iterate_over_threads(thread_tcache, NULL);
+	/* resume the old thread */
+	switch_to_thread (old);
+
+	return true;
 }

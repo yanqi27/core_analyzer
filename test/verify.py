@@ -147,6 +147,7 @@ def check_misc_commands():
 	gdb.execute('segment')
 
 def run_tests():
+	gdb.execute('heap')
 	# Retrieve global variables defined in mallocTest
 	count = gdb.parse_and_eval("num_regions")
 	known_blks = gdb.parse_and_eval("regions")

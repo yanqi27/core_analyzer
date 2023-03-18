@@ -208,6 +208,9 @@ struct jemalloc {
 	// sorted blocks(regions)
 	std::vector<heap_block> blocks;
 
+	// blocks cached in tcache_t
+	std::set<uintptr_t> cached_addr;
+
 	// radix tree of the slabs
 	je_rtree_level_t rtree_level[2];
 

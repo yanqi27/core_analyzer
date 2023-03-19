@@ -28,9 +28,22 @@ For more information, please see the project's web site http://core-analyzer.sou
 # Tested Platforms
 The latest release passed the build and sanity tests (with a few exceptions) on the following platforms with various versions of heap manager, gdb and OS.
 
-| Heap Manager | gdb | OS | Compiler |
-| ----------- | ----------- | ----------- | ----------- |
-| glibc/ptmalloc 2.17, 2.27, 2.31, 2.35   | 7.1.11, 8.1, 9.2, 12.1| Ubuntu 16.04, 18.04, 20.04, 22.04 | gcc 5, 7, 9, 12 |
-| gperftools/tcmalloc 2.7, 2.8, 2.9 | 1824 (Darwin)     | CentOS 7.6, 8.5 | VS2019 |
-| Windows/mscrt 9, 10, 11           |                       | Windows 9, 10, 11 | 
-| Darwin                            |
+* Heap Manager
+    - glibc/ptmalloc 2.17, 2.27, 2.31, 2.35
+	- gperftools/tcmalloc 2.7, 2.8, 2.9, 2.10
+	- jemalloc 5.3.0
+	- Windows/mscrt 9, 10, 11
+	- Darwin
+
+* gdb
+    - 7.1.11, 8.1, 9.2, 12.1
+	- 1824 (Darwin)
+
+* OS
+    - Ubuntu 16.04, 18.04, 20.04, 22.04
+	- CentOS 7.6, 8.5
+	- Windows 9, 10, 11
+
+* Compiler
+    - gcc 5, 7, 9, 12
+	- VS2019

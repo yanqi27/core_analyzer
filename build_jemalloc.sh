@@ -40,7 +40,8 @@ echo "checkout $release_tag"
 branch_name=jemalloc-$release_tag
 if [ -n "$(git branch --list ${branch_name})" ]
 then
-    echo "Branch name $branch_name already exists."
+    echo "Branch name $branch_name already exists; checkout"
+    git checkout $branch_name
 else
     git checkout tags/$release_tag -b $branch_name
 fi

@@ -705,7 +705,7 @@ CoreAnalyzerHeapInterface sJeMallHeapManager = {
 
 void register_je_malloc() {
 	bool my_heap = gdb_symbol_probe();
-	return register_heap_manager("je", &sJeMallHeapManager, my_heap);
+	return register_heap_manager("je-5.3", &sJeMallHeapManager, my_heap);
 }
 
 
@@ -717,8 +717,10 @@ bool
 gdb_symbol_probe(void)
 {
 	struct symbol *arenas;
+	struct symbol *nbins_total;
 	arenas = lookup_symbol("je_arenas", 0, VAR_DOMAIN, 0).symbol;
-	if (arenas)
+	nbins_total = lookup_symbol("nbins_total", 0, VAR_DOMAIN, 0).symbol;
+	if (arenas && nbins_total)
 		return true;
 	return false;
 }

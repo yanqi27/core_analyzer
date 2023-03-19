@@ -31,36 +31,13 @@ struct je_bin_info_t {
 };
 
 struct je_arena_stats_t {
-	size_t base = 0;
-	size_t resident = 0;
-	/*
-	size_t metadata_thp;
-	size_t mapped;
-	atomic_zu_t internal;
-	size_t allocated_large;
-	uint64_t nmalloc_large;
-	uint64_t ndalloc_large;
-	uint64_t nfills_large;
-	uint64_t nflushes_large;
-	uint64_t nrequests_large;
-	pa_shard_stats_t pa_shard_stats;
-	size_t tcache_bytes;
-	size_t tcache_stashed_bytes;
-	mutex_prof_data_t mutex_prof_data[12];
-	arena_stats_large_t lstats[196];
-	nstime_t uptime;
-	*/
+	unsigned int free_cnt = 0;
+	unsigned int inuse_cnt = 0;
+	size_t free_bytes = 0;
+	size_t inuse_bytes = 0;
 };
 
 struct je_bin_stats_t {
-	//uint64_t nmalloc;
-	//uint64_t ndalloc;
-	//uint64_t nrequests;
-	//size_t curregs;
-	//uint64_t nfills;
-	//uint64_t nflushes;
-	//uint64_t nslabs;
-	//uint64_t reslabs;
 	size_t curslabs;
 	size_t nonfull_slabs;
 };
@@ -68,13 +45,6 @@ struct je_bin_stats_t {
 typedef unsigned long je_bitmap_t;
 struct je_slab_data_t {
 	je_bitmap_t bitmap[8];
-};
-
-enum ENUM_SLAB_OWNER {
-	ENUM_SLAB_UNKNOWN,
-	ENUM_SLAB_CUR,
-	ENUM_SLAB_FULL,
-	ENUM_SLAB_NONFULL
 };
 
 #define PAGE (1<<12)
@@ -92,44 +62,19 @@ enum je_extent_state_t {
 	extent_state_max = 5 /* Sanity checking only. */
 };
 
-// slab, aka extent, edata_t.
+// extent, which is a contiguous chunk
 struct je_edata_t {
 	uint64_t e_bits = 0;
 	uintptr_t e_addr = 0;
 	uintptr_t base = 0;
 	size_t e_size = 0;
-	/*
-	union {
-		size_t e_size_esn;
-		size_t e_bsize;
-	};
-	hpdata_t *e_ps;
-	uint64_t e_sn;
-	union {
-		struct {...} ql_link_active;
-		union {...};
-	};
-	union {
-		struct {...} ql_link_inactive;
-		slab_data_t e_slab_data;
-		e_prof_info_t e_prof_info;
-	};
-	*/
+	unsigned int arena_ind = 0;
 	unsigned int free_cnt = 0;
 	unsigned int inuse_cnt = 0;
-	ENUM_SLAB_OWNER slab_owner = ENUM_SLAB_UNKNOWN;
+	size_t free_bytes = 0;
+	size_t inuse_bytes = 0;
 	bool slab = false;
 };
-
-// heap block comparator
-inline bool heap_block_cmp_func(heap_block a, heap_block b) {
-	return a.addr + a.size <= b.addr + b.size;
-}
-
-// slab comparator
-inline bool je_edata_cmp_func (je_edata_t *a, je_edata_t *b) {
-	return a->e_addr < b->e_addr && a->e_addr + a->e_size < b->e_addr + b->e_size;
-}
 
 // slab set
 struct je_edata_cmp {
@@ -148,9 +93,6 @@ struct je_bin_t {
 	}
 
     je_bin_stats_t stats;
-    //edata_t slabcur;
-    //edata_heap_t slabs_nonfull;
-    //edata_list_active_t slabs_full;
 	je_edata_set slabs;
 };
 
@@ -216,33 +158,6 @@ struct jemalloc {
 
 	// size table
 	std::vector<size_t> sz_table;
-
-	/* v4 only */
-	//size_t map_misc_offset;
-	//size_t ntbins;		/* NTBINS */
-	//size_t tiny_max;	/* LG_TINY_MAXCLASS */
-	//size_t lg_quantum;	/* LG_QUANTUM */
-	//size_t large_maxclass;	/* arena.c:large_maxclass */
-	//bool config_cache_oblivious;	/* JEMALLOC_CACHE_OBLIVIOUS */
-
-	/* v410+ */
-	//unsigned int runs_avail_nclasses;
-
-	/*
-	struct {
-		void *arenas;
-		void *arena_chunk_type;
-		void *arena_run_type;
-		void *arena_run_type_container;
-		void *arena_chunk_map_misc_type;
-		size_t misc_run_offset;
-		size_t sizeof_map_misc_type;
-	} cache;
-
-	struct {
-		bool tcache;
-	} options;
-	*/
 };
 
 /******************************************************************************
@@ -319,4 +234,11 @@ static inline je_extent_state_t
 edata_state_get(uint64_t e_bits) {
 	return (je_extent_state_t)((e_bits & EDATA_BITS_STATE_MASK) >>
 	    EDATA_BITS_STATE_SHIFT);
+}
+
+static inline unsigned int
+edata_arena_ind_get(uint64_t e_bits) {
+	unsigned int arena_ind = (unsigned int)((e_bits &
+	    EDATA_BITS_ARENA_MASK) >> EDATA_BITS_ARENA_SHIFT);
+	return arena_ind;
 }

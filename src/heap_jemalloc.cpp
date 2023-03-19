@@ -22,9 +22,19 @@ static bool gdb_symbol_probe(void);
 static je_edata_t *parse_edata(struct value *edata_v, je_rtree_contents_t *contents);
 //static bool parse_edata_heap(je_bin_info_t *bininfo, je_edata_set& slab_set, struct value *heap_v, struct type *edata_p_type);
 //static bool parse_edata_list(je_bin_info_t *bininfo, je_edata_set& slab_set, struct value *list_v, struct type *edata_p_type);
-//static je_edata_t *get_edata(address_t addr);
+static je_edata_t *get_edata(address_t addr);
 static heap_block *get_heap_block(address_t addr);
 static bool build_tcache(void);
+
+// heap block comparator
+inline bool heap_block_cmp_func(heap_block a, heap_block b) {
+	return a.addr + a.size <= b.addr + b.size;
+}
+
+// edata comparator
+inline bool je_edata_cmp_func (je_edata_t *a, je_edata_t *b) {
+	return a->e_addr < b->e_addr && a->e_addr + a->e_size <= b->e_addr + b->e_size;
+}
 
 /******************************************************************************
  * Exposed functions
@@ -163,7 +173,7 @@ init_heap(void)
 		g_jemalloc->sz_table.push_back(value_as_long(v));
 	}
 
-	// slabs from the global radix tree, which is 2-level on x64 arch
+	// extents from the global radix tree (emap), which is 2-level on x64 arch
 	// rtree_levels
 	// type = const struct rtree_level_s {
 	//     unsigned int bits;
@@ -234,7 +244,7 @@ init_heap(void)
 		struct value *v = value_subscript(val, i);
 		v = ca_get_field_gdb_value(v, "repr");
 		if (value_as_address(v) == 0)
-			continue;   // should we break the loop at the first empty arena?
+			continue;
 		struct value *arena_pv = value_cast(arena_type, v);
 		struct value *arena_v = value_ind(arena_pv);
 		if (!arena_v) {
@@ -248,8 +258,6 @@ init_heap(void)
 			CA_PRINT("Failed to parse je_arenas[%d]'s data memeber \"stats\"\n", i);
 			return false;
 		}
-		ca_get_field_value(stats_v, "base", &arena->stats.base, false);
-		ca_get_field_value(stats_v, "resident", &arena->stats.resident, false);
 		// je_arenas[i].bins
 		struct value *bins_v = ca_get_field_gdb_value(arena_v, "bins");
 		if (!bins_v) {
@@ -409,14 +417,24 @@ init_heap(void)
 
 	// sort global edata vector
 	std::sort(g_jemalloc->edata_sorted.begin(), g_jemalloc->edata_sorted.end(), je_edata_cmp_func);
-	if (g_jemalloc->edata_sorted.size() > 1) {
+	size_t total_edata = g_jemalloc->edata_sorted.size();
+	for (auto i = 0; i < total_edata; i++) {
+		je_edata_t *edata = g_jemalloc->edata_sorted[i];
+		unsigned int arena_ind = edata->arena_ind;
+		// update arena stats
+		if (arena_ind < g_jemalloc->je_arenas.size()) {
+			je_arena *a = g_jemalloc->je_arenas[arena_ind];
+			a->stats.free_cnt += edata->free_cnt;
+			a->stats.inuse_cnt += edata->inuse_cnt;
+			a->stats.free_bytes += edata->free_bytes;
+			a->stats.inuse_bytes += edata->inuse_bytes;
+		}
 		// verify there is no overlapping
-		for (int i = 0; i < g_jemalloc->edata_sorted.size()-1; i++) {
-			je_edata_t *edata = g_jemalloc->edata_sorted[i];
+		if (i + 1 < total_edata) {
 			je_edata_t *next = g_jemalloc->edata_sorted[i+1];
 			if (edata->base + edata->e_size > next->base) {
 				CA_PRINT("edata are not sorted correctly at index %d-%d\n", i, i+1);
-				//break;
+				return false;
 			}
 		}
 	}
@@ -439,11 +457,36 @@ init_heap(void)
 		return false;
 	//CA_PRINT("There are %ld memory blocks in tcache\n", g_jemalloc->cached_addr.size());
 	for (auto addr : g_jemalloc->cached_addr) {
-		heap_block *found = get_heap_block(addr);
-		if (found)
-			found->inuse = false;
-		else {
-			CA_PRINT("tcache address 0x%lx is not found in emap\n", addr);
+		heap_block *blk = get_heap_block(addr);
+		je_edata_t *edata = get_edata(addr);
+		if (blk) {
+			// adjust block
+			blk->inuse = false;
+		} else {
+			CA_PRINT("tcache address 0x%lx is not found in block collection\n", addr);
+		}
+
+		if (edata) {
+			// adjust edata
+			edata->free_cnt++;
+			edata->free_bytes += blk->size;
+			if (edata->inuse_cnt > 0 && edata->inuse_bytes >= blk->size) {
+				edata->inuse_cnt--;
+				edata->inuse_bytes -= blk->size;
+			}
+			// adjust arena
+			unsigned int arena_ind = edata->arena_ind;
+			if (arena_ind < g_jemalloc->je_arenas.size()) {
+				je_arena *a = g_jemalloc->je_arenas[arena_ind];
+				a->stats.free_cnt++;
+				a->stats.free_bytes += blk->size;
+				if (a->stats.inuse_cnt > 0 && a->stats.inuse_bytes >= blk->size) {
+					a->stats.inuse_cnt--;
+					a->stats.inuse_bytes -= blk->size;
+				}
+			}
+		} else {
+			CA_PRINT("tcache address 0x%lx is not found in edata collection\n", addr);
 		}
 	}
 
@@ -527,42 +570,58 @@ heap_walk(address_t heapaddr, bool verbose)
 		return false;
 	}
 
+	size_t totoal_inuse_bytes = 0;
+	size_t totoal_free_bytes = 0;
+	size_t total_inuse_cnt = 0;
+	size_t total_free_cnt = 0;
+
 	int i = 0;
 	// arenas
 	for (auto arena : g_jemalloc->je_arenas) {
-		CA_PRINT("arena[%d]: base=%ld resident=%ld\n",
-			i++, arena->stats.base, arena->stats.resident);
-		// bins
-		for (int bi = 0; bi < g_jemalloc->nbins_total; bi++) {
-			je_bin_t *bin = &arena->bins[bi];
-			// slabs
-			if (bin->stats.curslabs == 0 && bin->stats.nonfull_slabs == 0)
-				continue;
-			CA_PRINT("\tbin[%d]: curslabs=%ld nonfull_slabs=%ld\n",
-				bi, bin->stats.curslabs, bin->stats.nonfull_slabs);
-			/*
-			size_t nonfull_cnt = 0;
-			size_t full_cnt = 0;
-			for (auto slab: bin->slabs) {
-				if (slab->slab_owner == ENUM_SLAB_FULL)
-					full_cnt++;
-				else if (slab->slab_owner == ENUM_SLAB_NONFULL)
-					nonfull_cnt++;
+		total_inuse_cnt += arena->stats.inuse_cnt;
+		total_free_cnt += arena->stats.free_cnt;
+		totoal_inuse_bytes += arena->stats.inuse_bytes;
+		totoal_free_bytes += arena->stats.free_bytes;
+		CA_PRINT("arena[%d]: inuse_blks=%d inuse_bytes=%ld free_blks=%d free_bytes=%ld\n",
+			i++, arena->stats.inuse_cnt, arena->stats.inuse_bytes,
+			arena->stats.free_cnt, arena->stats.free_bytes);
+		if (verbose) {
+			// bins
+			for (int bi = 0; bi < g_jemalloc->nbins_total; bi++) {
+				je_bin_t *bin = &arena->bins[bi];
+				// slabs
+				if (bin->stats.curslabs == 0 && bin->stats.nonfull_slabs == 0)
+					continue;
+				CA_PRINT("\tbin[%d]: curslabs=%ld nonfull_slabs=%ld\n",
+					bi, bin->stats.curslabs, bin->stats.nonfull_slabs);
 			}
-			if (nonfull_cnt != bin->stats.nonfull_slabs) {
-				CA_PRINT("\tbin[%d]: nonfull_slabs are inconsistent: stats.nonfull_slabs=%ld nonfull_slabs::heap_link=%ld\n",
-					bi, bin->stats.nonfull_slabs, nonfull_cnt);
-			}
-			if (verbose && bin->slabs.size()) {
-				for (auto slab : bin->slabs) {
-					CA_PRINT("\t\t0x%lx %s reg_size=%ld inuse=%d free=%d\n",
-						slab->e_addr, slab_owner_name(slab),
-						g_jemalloc->bin_infos[bi].reg_size, slab->inuse_cnt, slab->free_cnt);
-				}
-			}
-			*/
 		}
 	}
+	CA_PRINT("\n");
+
+	// summary
+	CA_PRINT("There are %ld arenas", g_jemalloc->je_arenas.size());
+	CA_PRINT(" Total ");
+	print_size(totoal_inuse_bytes + totoal_free_bytes);
+	CA_PRINT("\n");
+
+	CA_PRINT("Total " PRINT_FORMAT_SIZE " blocks in-use of ", total_inuse_cnt);
+	print_size(totoal_inuse_bytes);
+	CA_PRINT("\n");
+
+	CA_PRINT("Total " PRINT_FORMAT_SIZE " blocks free of ",	total_free_cnt);
+	print_size(totoal_free_bytes);
+	CA_PRINT("\n\n");
+
+	if (verbose) {
+		init_mem_histogram(16);
+		for (auto blk : g_jemalloc->blocks) {
+			add_block_mem_histogram(blk.size, blk.inuse, 1);
+		}
+		display_mem_histogram("");
+		release_mem_histogram();
+	}
+
 	return true;
 }
 
@@ -678,6 +737,7 @@ parse_edata(struct value *edata_v, je_rtree_contents_t *contents)
 	if (!size_v)
 		return nullptr;
 	edata->e_size = value_as_long(size_v) & EDATA_SIZE_MASK;
+	edata->arena_ind = edata_arena_ind_get(edata->e_bits);
 
 	struct ca_segment *segment = get_segment(edata->e_addr, edata->e_size);
 	if (segment != nullptr && segment->m_type == ENUM_UNKNOWN)
@@ -689,12 +749,13 @@ parse_edata(struct value *edata_v, je_rtree_contents_t *contents)
 		edata->base = PAGE_ADDR2BASE(edata->e_addr);
 		edata->free_cnt = 1;
 		edata->inuse_cnt = 0;
-		// cache the block
+		edata->free_bytes = edata->e_size;
+		// this is a single free extent
 		g_jemalloc->blocks.push_back({edata->base, edata->e_size, false});
 	} else if (edata_slab_get(edata->e_bits)) {
+		// slab is an extent for small fix-sized blocks
 		edata->slab = true;
 		edata->base = edata->e_addr;
-		// small fix-sized blocks
 		struct value *slab_data_v = ca_get_field_gdb_value(edata_v, "e_slab_data");
 		if (!slab_data_v)
 			return nullptr;
@@ -725,9 +786,11 @@ parse_edata(struct value *edata_v, je_rtree_contents_t *contents)
 				if (bit & bitmap) {
 					// set bit means free region (block)
 					edata->free_cnt++;
+					edata->free_bytes += blksz;
 					inuse = false;
 				} else {
 					edata->inuse_cnt++;
+					edata->inuse_bytes += blksz;
 					inuse = true;
 				}
 				// cache the block
@@ -751,19 +814,10 @@ parse_edata(struct value *edata_v, je_rtree_contents_t *contents)
 		size_t blksz = edata->e_size - (edata->e_addr - edata->base);
 		if (contents->metadata.szind < g_jemalloc->sz_table.size())
 			blksz = g_jemalloc->sz_table[contents->metadata.szind];
-		// cache the block
+		edata->inuse_bytes = blksz;
+		// the whole extent serves one large block
 		g_jemalloc->blocks.push_back({edata->e_addr, blksz, true});
 	}
-
-	/*
-	// store the new slab
-	auto itr = slab_set.insert(slab.get());
-	if (itr.second == false) {
-		CA_PRINT("Failed to add a new slab(je_edata_t) to the set\n");
-		return false;
-	}
-	slab.release();
-	*/
 
 	return edata.release();
 }
@@ -900,6 +954,7 @@ parse_edata_list(je_bin_info_t *bininfo, je_edata_set& slab_set, struct value *l
 
 	return true;
 }
+*/
 
 je_edata_t *
 get_edata(address_t addr)
@@ -917,7 +972,6 @@ get_edata(address_t addr)
 
 	return nullptr;
 }
-*/
 
 heap_block *
 get_heap_block(address_t addr)
@@ -1036,14 +1090,6 @@ thread_tcache (struct thread_info *info, void *data)
 bool
 build_tcache(void)
 {
-	// je_tcache_bin_info
-	// type = cache_bin_info_t *
-	/*sym = lookup_symbol("je_tcache_bin_info", 0, VAR_DOMAIN, 0).symbol;
-	if (sym == nullptr) {
-		CA_PRINT("Failed to lookup gv \"je_tcache_bin_info\"\n");
-		return false;
-	}*/
-
 	/* remember current thread */
 	struct thread_info* old = inferior_thread();
 	/* switch to all threads */

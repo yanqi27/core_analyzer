@@ -1704,7 +1704,7 @@ identify_direct_objects(struct inuse_block* blocks, unsigned long total_blocks)
 				blk = find_inuse_block(ptr, blocks, total_blocks);
 				if (blk)
 				{
-					unsigned long index = blk - blocks;
+					//unsigned long index = blk - blocks;
 					//set_queued_and_visited(qv_bitmap, index);
 				}
 				next += ptr_sz;
@@ -2796,4 +2796,113 @@ address_t
 ca_eval_address(const char* expr)
 {
 	return parse_and_eval_address(expr);
+}
+
+// return true if an unamed union has a data member of given name
+static bool
+union_has_field_name(struct type *type, const char *field_name)
+{
+	type = check_typedef (type);
+	if (type->code() != TYPE_CODE_UNION)
+		return false;
+	for (int i = 0; i < type->num_fields(); i++) {
+		const char *name = type->field(i).name();
+		if (name && *name != '\0') {
+			if (strcmp (field_name, name) == 0)
+				return true;
+		} else if (union_has_field_name(type->field(i).type(), field_name)) {
+			return true;
+		}
+	}
+	return false;
+}
+
+static int
+type_field_name2no(struct type *type, const char *field_name)
+{
+	if (type == NULL)
+		return -1;
+
+	type = check_typedef (type);
+
+	for (int n = 0; n < type->num_fields(); n++) {
+		const char* name = type->field(n).name();
+		if (name && *name != '\0') {
+			if (strcmp (field_name, name) == 0)
+				return n;
+		} else if (union_has_field_name(type->field(n).type(), field_name)) {
+			return n;
+		}
+	}
+	return -1;
+}
+
+bool
+ca_get_field_value(struct value *val, const char *fieldname,
+				size_t *data, bool optional)
+{
+	struct value *field_val;
+
+	*data = ULONG_MAX;
+	int fieldno = type_field_name2no(value_type(val), fieldname);
+	if (fieldno < 0) {
+		if (optional) {
+			return true;
+		} else {
+			CA_PRINT("Failed to find member \"%s\"\n", fieldname);
+			return false;
+		}
+	}
+	field_val = value_field(val, fieldno);
+	*data = value_as_long(field_val);
+	return true;
+}
+
+bool
+ca_memcpy_field_value(struct value *val, const char *fieldname, char *buf,
+    size_t bufsz)
+{
+	struct value *field_val;
+	size_t fieldsz;
+
+	int fieldno = type_field_name2no(value_type(val), fieldname);
+	if (fieldno < 0) {
+		return false;
+	}
+	field_val = value_field(val, fieldno);
+	fieldsz = TYPE_LENGTH(value_type(field_val));
+	if (bufsz < fieldsz) {
+		CA_PRINT("Internal error: buffer of member \"%s\" is too small\n",
+		    fieldname);
+		return false;
+	}
+	if (!read_memory_wrapper(NULL, value_address(field_val), buf, fieldsz)) {
+		CA_PRINT("Failed to read member \"%s\"\n", fieldname);
+		return false;
+	}
+	return true;
+}
+
+struct value *
+ca_get_field_gdb_value(struct value *val, const char *field_name)
+{
+	struct type *type = value_type(val);
+	type = check_typedef (type);
+
+	int fieldno = type_field_name2no(type, field_name);
+	if (fieldno < 0) {
+		CA_PRINT("failed to find member \"%s\"\n", field_name);
+		return NULL;
+	}
+
+	const char *name = type->field(fieldno).name();
+	if (name && *name != '\0')
+		return value_field(val, fieldno);
+	else {
+		struct type *ftype = type->field(fieldno).type();
+		if (ftype->code() == TYPE_CODE_UNION) {
+			return ca_get_field_gdb_value(value_field(val, fieldno), field_name);
+		}
+	}
+	return NULL;
 }

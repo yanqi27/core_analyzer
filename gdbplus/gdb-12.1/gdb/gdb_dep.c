@@ -8,6 +8,7 @@
 #include "heap.h"
 #include "search.h"
 #include "decode.h"
+#include <optional>
 
 #ifdef linux
 #include <elf.h>
@@ -2817,11 +2818,11 @@ union_has_field_name(struct type *type, const char *field_name)
 	return false;
 }
 
-static int
+static std::optional<int>
 type_field_name2no(struct type *type, const char *field_name)
 {
 	if (type == NULL)
-		return -1;
+		return {};
 
 	type = check_typedef (type);
 
@@ -2834,19 +2835,18 @@ type_field_name2no(struct type *type, const char *field_name)
 			return n;
 		}
 	}
-	return -1;
+	return {};
 }
 
 bool
 ca_get_field_value(struct value *val, const char *fieldname,
 				size_t *data, bool optional)
 {
-	int fieldno;
 	struct value *field_val;
 
 	*data = ULONG_MAX;
-	fieldno = type_field_name2no(value_type(val), fieldname);
-	if (fieldno < 0) {
+	auto fieldno = type_field_name2no(value_type(val), fieldname);
+	if (!fieldno) {
 		if (optional) {
 			return true;
 		} else {
@@ -2854,7 +2854,7 @@ ca_get_field_value(struct value *val, const char *fieldname,
 			return false;
 		}
 	}
-	field_val = value_field(val, fieldno);
+	field_val = value_field(val, *fieldno);
 	*data = value_as_long(field_val);
 	return true;
 }
@@ -2863,15 +2863,14 @@ bool
 ca_memcpy_field_value(struct value *val, const char *fieldname, char *buf,
     size_t bufsz)
 {
-	int fieldno;
 	struct value *field_val;
 	size_t fieldsz;
 
-	fieldno = type_field_name2no(value_type(val), fieldname);
-	if (fieldno < 0) {
+	auto fieldno = type_field_name2no(value_type(val), fieldname);
+	if (!fieldno) {
 		return false;
 	}
-	field_val = value_field(val, fieldno);
+	field_val = value_field(val, *fieldno);
 	fieldsz = TYPE_LENGTH(value_type(field_val));
 	if (bufsz < fieldsz) {
 		CA_PRINT("Internal error: buffer of member \"%s\" is too small\n",
@@ -2891,19 +2890,19 @@ ca_get_field_gdb_value(struct value *val, const char *field_name)
 	struct type *type = value_type(val);
 	type = check_typedef (type);
 
-	int fieldno = type_field_name2no(type, field_name);
-	if (fieldno < 0) {
+	auto fieldno = type_field_name2no(type, field_name);
+	if (!fieldno) {
 		CA_PRINT("failed to find member \"%s\"\n", field_name);
 		return NULL;
 	}
 
-	const char *name = type->field(fieldno).name();
+	const char *name = type->field(*fieldno).name();
 	if (name && *name != '\0')
-		return value_field(val, fieldno);
+		return value_field(val, *fieldno);
 	else {
-		struct type *ftype = type->field(fieldno).type();
+		struct type *ftype = type->field(*fieldno).type();
 		if (ftype->code() == TYPE_CODE_UNION) {
-			return ca_get_field_gdb_value(value_field(val, fieldno), field_name);
+			return ca_get_field_gdb_value(value_field(val, *fieldno), field_name);
 		}
 	}
 	return NULL;

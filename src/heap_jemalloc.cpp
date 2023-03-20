@@ -552,10 +552,8 @@ is_heap_block(address_t addr)
 	}
 
 	heap_block *found = get_heap_block(addr);
-	if (found)
-		return true;
 
-	return false;
+	return found;
 }
 
 /*
@@ -720,9 +718,7 @@ gdb_symbol_probe(void)
 	struct symbol *nbins_total;
 	arenas = lookup_symbol("je_arenas", 0, VAR_DOMAIN, 0).symbol;
 	nbins_total = lookup_symbol("nbins_total", 0, VAR_DOMAIN, 0).symbol;
-	if (arenas && nbins_total)
-		return true;
-	return false;
+	return arenas && nbins_total;
 }
 
 je_edata_t *

@@ -218,10 +218,6 @@ static bool fill_heap_block(struct ca_heap*, address_t, struct heap_block*);
 
 static bool in_cache(mchunkptr, size_t);
 
-static bool get_field_value(struct value *, const char *, size_t *, bool);
-
-static bool memcpy_field_value(struct value *, const char *, char *, size_t);
-
 /***************************************************************************
 * Exposed functions
 ***************************************************************************/
@@ -1046,48 +1042,48 @@ read_malloc_state_by_symbol(address_t arena_vaddr, struct ca_malloc_state *mstat
 	/*
 	 * Extract data members of the arena metadata (struct malloc_state)
 	 */
-	if(!get_field_value(val, "flags", &data, false))
+	if(!ca_get_field_value(val, "flags", &data, false))
 		return false;
 	mstate->flags = data;
-	if(!get_field_value(val, "nfastbins", &data, true))
+	if(!ca_get_field_value(val, "nfastbins", &data, true))
 		return false;
 	if (data != ULONG_MAX)
 		mstate->nfastbins = data;
 	else
 		mstate->nfastbins = sizeof(mstate->fastbins) / sizeof(mstate->fastbins[0]);
 	// "fastbins" or "fastbinsY"?
-	if (!memcpy_field_value(val, "fastbins", (char *)&mstate->fastbins[0],
+	if (!ca_memcpy_field_value(val, "fastbins", (char *)&mstate->fastbins[0],
 	    sizeof(mstate->fastbins)) &&
-		!memcpy_field_value(val, "fastbinsY", (char *)&mstate->fastbins[0],
+		!ca_memcpy_field_value(val, "fastbinsY", (char *)&mstate->fastbins[0],
 	    sizeof(mstate->fastbins))) {
 		return false;
 	}
-	if(!get_field_value(val, "top", &data, false))
+	if(!ca_get_field_value(val, "top", &data, false))
 		return false;
 	mstate->top = (mchunkptr)data;
-	if(!get_field_value(val, "last_remainder", &data, false))
+	if(!ca_get_field_value(val, "last_remainder", &data, false))
 		return false;
 	mstate->last_remainder = (mchunkptr)data;
 	//bins
-	if (!memcpy_field_value(val, "bins", (char *)&mstate->bins[0],
+	if (!ca_memcpy_field_value(val, "bins", (char *)&mstate->bins[0],
 	    sizeof(mstate->bins))) {
 		return false;
 	}
 	//binmap
-	if (!memcpy_field_value(val, "binmap", (char *)&mstate->binmap[0],
+	if (!ca_memcpy_field_value(val, "binmap", (char *)&mstate->binmap[0],
 	    sizeof(mstate->binmap))) {
 		return false;
 	}
-	if(!get_field_value(val, "next", &data, false))
+	if(!ca_get_field_value(val, "next", &data, false))
 		return false;
 	mstate->next = (void *)data;
-	if(!get_field_value(val, "next_free", &data, true))
+	if(!ca_get_field_value(val, "next_free", &data, true))
 		return false;
 	if (data == ULONG_MAX)
 		mstate->next_free = NULL;
 	else
 		mstate->next_free = (void *)data;
-	if(!get_field_value(val, "system_mem", &data, false))
+	if(!ca_get_field_value(val, "system_mem", &data, false))
 		return false;
 	mstate->system_mem = data;
 
@@ -1447,41 +1443,41 @@ read_mp_by_symbol(void)
 		return false;
 	}
 	val = value_of_variable(sym, 0);
-	if(!get_field_value(val, "mmap_threshold", &data, false))
+	if(!ca_get_field_value(val, "mmap_threshold", &data, false))
 		return false;
 	mparams.mmap_threshold = data;
-	if (!get_field_value(val, "n_mmaps", &data, false))
+	if (!ca_get_field_value(val, "n_mmaps", &data, false))
 		return false;
 	mparams.n_mmaps = data;
-	if (!get_field_value(val, "n_mmaps_max", &data, false))
+	if (!ca_get_field_value(val, "n_mmaps_max", &data, false))
 		return false;
 	mparams.n_mmaps_max = data;
-	if (!get_field_value(val, "max_n_mmaps", &data, false))
+	if (!ca_get_field_value(val, "max_n_mmaps", &data, false))
 		return false;
 	mparams.max_n_mmaps = data;
 	/* pagesize is removed in glibc 2.27 */
-	if (!get_field_value(val, "pagesize", &data, true))
+	if (!ca_get_field_value(val, "pagesize", &data, true))
 		return false;
 	if (data == ULONG_MAX)
 		mparams.pagesize = 0x1000ul;
 	else
 		mparams.pagesize = data;
-	if (!get_field_value(val, "mmapped_mem", &data, false))
+	if (!ca_get_field_value(val, "mmapped_mem", &data, false))
 		return false;
 	mparams.mmapped_mem = data;
-	if (!get_field_value(val, "sbrk_base", &data, false))
+	if (!ca_get_field_value(val, "sbrk_base", &data, false))
 		return false;
 	mparams.sbrk_base = (char *)data;
 	/* per-thread cache since glibc 2.26 */
-	if (!get_field_value(val, "tcache_bins", &data, true))
+	if (!ca_get_field_value(val, "tcache_bins", &data, true))
 		return false;
 	if (data != ULONG_MAX)
 		mparams.tcache_bins = data;
-	if (!get_field_value(val, "tcache_max_bytes", &data, true))
+	if (!ca_get_field_value(val, "tcache_max_bytes", &data, true))
 		return false;
 	if (data != ULONG_MAX)
 		mparams.tcache_max_bytes = request2size(data);
-	if (!get_field_value(val, "tcache_count", &data, true))
+	if (!ca_get_field_value(val, "tcache_count", &data, true))
 		return false;
 	if (data != ULONG_MAX)
 		mparams.tcache_count = data;
@@ -2118,74 +2114,5 @@ static bool traverse_heap_blocks(struct ca_heap* heap,
 		*opNumFree = num_free;
 	}
 
-	return true;
-}
-
-/*
- * Helper functions
- *
- */
-static int
-type_field_name2no(struct type *type, const char *field_name)
-{
-	int n;
-
-	if (type == NULL)
-		return -1;
-
-	type = check_typedef (type);
-
-	for (n = 0; n < ca_num_fields(type); n++) {
-		if (strcmp (field_name, ca_field_name(type, n)) == 0)
-			return n;
-	}
-	return -1;
-}
-
-static bool
-get_field_value(struct value *val, const char *fieldname,
-				size_t *data, bool optional)
-{
-	int fieldno;
-	struct value *field_val;
-
-	*data = ULONG_MAX;
-	fieldno = type_field_name2no(value_type(val), fieldname);
-	if (fieldno < 0) {
-		if (optional) {
-			return true;
-		} else {
-			CA_PRINT("Failed to find member \"%s\"\n", fieldname);
-			return false;
-		}
-	}
-	field_val = value_field(val, fieldno);
-	*data = value_as_long(field_val);
-	return true;
-}
-
-static bool
-memcpy_field_value(struct value *val, const char *fieldname, char *buf,
-    size_t bufsz)
-{
-	int fieldno;
-	struct value *field_val;
-	size_t fieldsz;
-
-	fieldno = type_field_name2no(value_type(val), fieldname);
-	if (fieldno < 0) {
-		return false;
-	}
-	field_val = value_field(val, fieldno);
-	fieldsz = TYPE_LENGTH(value_type(field_val));
-	if (bufsz < fieldsz) {
-		CA_PRINT("Internal error: buffer of member \"%s\" is too small\n",
-		    fieldname);
-		return false;
-	}
-	if (!read_memory_wrapper(NULL, value_address(field_val), buf, fieldsz)) {
-		CA_PRINT("Failed to read member \"%s\"\n", fieldname);
-		return false;
-	}
 	return true;
 }

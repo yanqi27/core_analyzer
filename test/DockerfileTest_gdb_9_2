@@ -1,0 +1,49 @@
+# ==============================================================================================
+# FILENAME	:	DockerfileTest
+# AUTHOR	:	yanqi27
+# CREATION	:	2023-03-22
+# Dockerfile to test core analyzer against ptmalloc/tcmalloc/jemalloc
+# ==============================================================================================
+
+ARG VARIANT="ubuntu:20.04"
+FROM ${VARIANT}
+
+# [Optional] Uncomment this section to install additional packages.
+RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
+    && apt install -y texinfo \
+    && apt install -y libgmp-dev \
+    && apt install -y build-essential \
+    && apt install -y wget \
+    && apt install -y python3-dev \
+    && apt install -y dh-autoreconf \
+    && apt install -y git \
+    && apt install -y sudo \
+    && apt install -y libc6-dbg
+
+RUN ln -s /usr/bin/python3 /usr/bin/python
+RUN echo 'set pagination off' > /root/.gdbinit
+
+WORKDIR /workspaces/core_analyzer/
+COPY . .
+
+WORKDIR /workspaces/core_analyzer/
+RUN ./build_gdb.sh 9.2
+RUN ./build_tcmalloc.sh 2.7
+WORKDIR test
+RUN make check
+RUN make check-tcmalloc
+
+WORKDIR /workspaces/core_analyzer/
+RUN ./build_tcmalloc.sh 2.8
+WORKDIR test
+RUN make check-tcmalloc
+
+WORKDIR /workspaces/core_analyzer/
+RUN ./build_tcmalloc.sh 2.9
+WORKDIR test
+RUN make check-tcmalloc
+
+WORKDIR /workspaces/core_analyzer/
+RUN ./build_tcmalloc.sh 2.10
+WORKDIR test
+RUN make check-tcmalloc

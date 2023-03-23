@@ -40,6 +40,12 @@ fi
 cp -rLvp $PROJECT_FOLDER/gdbplus/gdb-$gdb_version/gdb $build_folder/gdb-$gdb_version/
 
 cd $gdb_to_install
+
+if [ $gdb_version == "9.2" ]; then
+    sed -i '20d' ./gdb/nat/amd64-linux-siginfo.c
+    sed -i '21i #include <signal.h>' ./gdb/nat/amd64-linux-siginfo.c
+fi
+
 mkdir -p build
 cd build
 

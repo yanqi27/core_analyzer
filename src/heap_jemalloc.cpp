@@ -396,6 +396,9 @@ init_heap(void)
 			uintptr_t low_bit_mask = ~((uintptr_t)EDATA_ALIGNMENT - 1);
 			contents.edata = ((uintptr_t)((intptr_t)(bits << RTREE_NHIB) >> RTREE_NHIB) & low_bit_mask);
 
+			if (contents.edata == 0)
+				continue;
+
 			// deduplicate
 			if (edata_addr_set.find(contents.edata) != edata_addr_set.end()) {
 				//CA_PRINT("Duplicated rtree leafs 0x%lx and 0x%lx; both have e_addr=0x%lx\n",
@@ -742,7 +745,7 @@ parse_edata(struct value *edata_v, je_rtree_contents_t *contents)
 		segment->m_type = ENUM_HEAP;
 
 	je_extent_state_t state = edata_state_get(edata->e_bits);
-	if (state == extent_state_dirty || state == extent_state_muzzy) {
+	if (state == extent_state_dirty || state == extent_state_muzzy || state == extent_state_retained) {
 		edata->slab = false;
 		edata->base = PAGE_ADDR2BASE(edata->e_addr);
 		edata->free_cnt = 1;
@@ -764,7 +767,8 @@ parse_edata(struct value *edata_v, je_rtree_contents_t *contents)
 		unsigned int nfree = edata_nfree_get(edata->e_bits);
 		unsigned int szind = edata_szind_get(edata->e_bits);
 		if (szind >= g_jemalloc->bin_infos.size()) {
-			CA_PRINT("edata szind is out of range\n");
+			CA_PRINT("edata szind=%d is out of range (%ld) addr=0x%lx size=%ld nfree=%d state=%d arena_ind=%d\n",
+				szind, g_jemalloc->bin_infos.size(), edata->e_addr, edata->e_size, nfree, state, edata->arena_ind);
 			return nullptr;
 		}
 		je_bin_info_t *bininfo = &g_jemalloc->bin_infos[szind];
@@ -1059,16 +1063,26 @@ thread_tcache (struct thread_info *info, void *data)
 			CA_PRINT("Failed to extract member \"low_bits_empty\" of \"cache_bin_t\"\n");
 			return 0;
 		}
+		// cache_bin_t::stack_head (type = void **) points to an array of cached memory block addresses.
+		// the end of the array is specified by cache_bin_t::low_bits_empty, which has only lowest 16bit
+		// Note, the array may across the 64KiB address boundary. Hence we can't simply assume 
+		// (uint16_t)stack_head <= (uint16_t)low_bits_empty
 		uint16_t low_bits_empty = (uint16_t)mdata;
-		uint16_t low_bits = (uint16_t)head;
-		if (low_bits > low_bits_empty)	// corruption?
-			continue;
-		uint16_t offset = low_bits_empty - low_bits;
-		if (offset & ((uint16_t)sizeof(void*)-1)) {
-			// offset should be multiple of ptr size
+		uint16_t cur_low_bits = (uint16_t)head;
+		const uint16_t mask = (uint16_t)sizeof(void*) - 1;
+		if ((low_bits_empty & mask) || (cur_low_bits & mask)) {
+			// alignment of ptr size is expected
+			CA_PRINT("members \"stack_head/low_bits_empty\" of \"cache_bin_t\" are not properly aligned\n");
 			continue;
 		}
-		uint16_t cache_cnt = offset / (uint16_t)sizeof(void*);
+		uint16_t cache_cnt = 0;
+		if (cur_low_bits == low_bits_empty)	// no cache
+			continue;
+		else if (cur_low_bits < low_bits_empty)
+			cache_cnt = (low_bits_empty - cur_low_bits) / (uint16_t)sizeof(void*);
+		else {
+			cache_cnt = ((uint16_t)((uint32_t)0x10000 - cur_low_bits) + low_bits_empty) / (uint16_t)sizeof(void*);
+		}
 		for (uint16_t j = 0; j < cache_cnt; j++) {
 			struct value *ptr_v = value_subscript(head_v, j);
 			if (!ptr_v) {

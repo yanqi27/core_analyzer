@@ -20,3 +20,10 @@ By default, ptmalloc is tested. For tcmalloc
 ```
 make check-tcmalloc
 ```
+
+### Containerized Test
+It is more convinient to run the regression test in a container. The following command is run from the root source directory.
+```
+docker build -t ca_test -f test/DockerfileTest_gdb_12_2  .
+docker build -t ca_test -f test/DockerfileTest_gdb_9_2  .
+```

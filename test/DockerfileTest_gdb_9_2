@@ -5,6 +5,7 @@
 # Dockerfile to test core analyzer against ptmalloc/tcmalloc/jemalloc
 # ==============================================================================================
 
+#ARG VARIANT="ubuntu:18.04"
 ARG VARIANT="ubuntu:20.04"
 FROM ${VARIANT}
 

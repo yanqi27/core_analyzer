@@ -5,7 +5,7 @@
 # Dockerfile to test core analyzer against ptmalloc/tcmalloc/jemalloc
 # ==============================================================================================
 
-#ARG VARIANT="mcr.microsoft.com/vscode/devcontainers/cpp:0-bullseye"
+#ARG VARIANT="debian:bullseye"
 ARG VARIANT="ubuntu:22.04"
 FROM ${VARIANT}
 

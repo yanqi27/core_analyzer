@@ -1,7 +1,7 @@
 
 CXX = g++
 
-COMP_OPT = -g -m64
+COMP_OPT = -g -m64 -std=c++11
 
 LIBS = -lpthread 
 

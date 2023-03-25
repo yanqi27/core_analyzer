@@ -1,0 +1,66 @@
+# ==============================================================================================
+# FILENAME	:	DockerfileTest
+# AUTHOR	:	yanqi27
+# CREATION	:	2023-03-22
+# Dockerfile to test core analyzer against ptmalloc/tcmalloc/jemalloc
+# ==============================================================================================
+
+ARG VARIANT="redhat/ubi8"
+FROM ${VARIANT}
+
+RUN set -euxo pipefail && \
+    yum install -y wget procps-ng git autoconf gettext \
+        gcc gcc-c++ make automake zlib-devel libtool diffutils \
+        libcurl-devel sqlite-devel xz \
+        python3-devel sudo yum-utils
+RUN ln -s /usr/bin/python3 /usr/bin/python
+RUN debuginfo-install -y glibc
+RUN echo 'set pagination off' > /root/.gdbinit
+
+RUN cd /opt && \
+    wget https://ftp.gnu.org/pub/gnu/gettext/gettext-0.21.tar.gz && \
+    tar xvf gettext-0.21.tar.gz && \
+    cd gettext-0.21 && \
+    ./configure && make -j 4 && make install
+
+RUN cd /opt && \
+    wget https://www.libarchive.org/downloads/libarchive-3.6.1.tar.gz && \
+    tar xvf libarchive-3.6.1.tar.gz && \
+    cd libarchive-3.6.1 && \
+    ./configure --prefix=/usr && make -j 4 && make install
+
+RUN cd /opt && \
+    wget https://ftp.gnu.org/gnu/texinfo/texinfo-6.8.tar.gz && \
+    tar xvf texinfo-6.8.tar.gz && \
+    cd texinfo-6.8 && \
+    ./configure && make -j 4 && make install
+
+RUN cd /opt && \
+    wget https://ftp.gnu.org/gnu/gmp/gmp-6.2.1.tar.xz && \
+    tar xvf gmp-6.2.1.tar.xz && \
+    cd gmp-6.2.1 && \
+    ./configure && make -j 4 && make install
+
+WORKDIR /workspaces/core_analyzer/
+COPY . .
+
+RUN ./build_gdb.sh 12.1
+RUN ./build_tcmalloc.sh 2.7
+WORKDIR test
+RUN make check
+RUN make check-tcmalloc
+
+WORKDIR /workspaces/core_analyzer/
+RUN ./build_tcmalloc.sh 2.8
+WORKDIR test
+RUN make check-tcmalloc
+
+WORKDIR /workspaces/core_analyzer/
+RUN ./build_tcmalloc.sh 2.9
+WORKDIR test
+RUN make check-tcmalloc
+
+WORKDIR /workspaces/core_analyzer/
+RUN ./build_tcmalloc.sh 2.10
+WORKDIR test
+RUN make check-tcmalloc

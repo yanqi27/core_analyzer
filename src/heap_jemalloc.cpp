@@ -225,13 +225,8 @@ init_heap(void)
 		CA_PRINT("Failed to validate the type of \"je_arenas\"\n");
 		return false;
 	}
-	if (!get_array_bounds(type, &low_bound, &high_bound)) {
-		CA_PRINT("Failed to query array \"je_arenas\"\n");
-		return false;
-	}
 	val = value_of_variable(sym, 0);
 
-	size_t alen = high_bound - low_bound + 1;
 	struct type *arena_type = lookup_transparent_type("arena_s");
 	if (arena_type == nullptr) {
 		CA_PRINT("Failed to lookup type \"arena_s\"\n");
@@ -239,7 +234,7 @@ init_heap(void)
 	}
 	arena_type = lookup_pointer_type(arena_type);
 
-	for (int i = 0; i < alen; i++) {
+	for (int i = 0; i < g_jemalloc->narenas_total; i++) {
 		// je_arenas[i]
 		struct value *v = value_subscript(val, i);
 		v = ca_get_field_gdb_value(v, "repr");

@@ -1,0 +1,52 @@
+# ==============================================================================================
+# FILENAME	:	DockerfileTest
+# AUTHOR	:	yanqi27
+# CREATION	:	2023-03-22
+# Dockerfile to test core analyzer against ptmalloc/tcmalloc/jemalloc
+# ==============================================================================================
+
+# opensuse/tumbleweed
+#   ptmalloc: fail due to new version of glibc/ptmalloc (2.37)
+#   tcmalloc: fail due to c++ object search
+#   jemalloc: fail due to core dump c++ object search
+# opensuse/leap
+#   ptmalloc: fail because glibc-debuginfo doesn't match
+
+ARG VARIANT="opensuse/leap"
+#ARG VARIANT="opensuse/tumbleweed"
+FROM ${VARIANT}
+
+# [Optional] Uncomment this section to install additional packages.
+RUN zypper install -y gcc gcc-c++ && \
+    zypper install -y wget sudo texinfo && \
+    zypper install -y tar gzip xz && \
+    zypper install -y git make makeinfo m4 automake libtool python3-devel
+
+RUN cd /opt && \
+    wget https://ftp.gnu.org/gnu/gmp/gmp-6.2.1.tar.xz && \
+    tar xvf gmp-6.2.1.tar.xz && \
+    cd gmp-6.2.1 && \
+    ./configure && make -j 4 && make install
+
+RUN cd /opt && \
+    wget https://www.mpfr.org/mpfr-current/mpfr-4.2.0.tar.xz && \
+    tar xvf mpfr-4.2.0.tar.xz && \
+    cd mpfr-4.2.0 && \
+    ./configure && make -j 4 && make install
+
+RUN zypper mr -ea && \
+    zypper install -y glibc-debuginfo
+
+RUN ln -s /usr/bin/python3 /usr/bin/python
+RUN echo 'set pagination off' > /root/.gdbinit
+
+WORKDIR /workspaces/core_analyzer/
+COPY . .
+
+RUN ./build_gdb.sh 12.1
+RUN ./build_jemalloc.sh 5.3.0
+RUN ./build_tcmalloc.sh 2.10
+WORKDIR test
+#RUN make check
+RUN make check-tcmalloc
+RUN make check-jemalloc

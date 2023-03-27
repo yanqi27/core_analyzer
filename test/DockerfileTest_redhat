@@ -5,6 +5,10 @@
 # Dockerfile to test core analyzer against ptmalloc/tcmalloc/jemalloc
 # ==============================================================================================
 
+# redhat/ubi9
+#     texinfo: fail to compile
+
+#ARG VARIANT="redhat/ubi9"
 ARG VARIANT="redhat/ubi8"
 FROM ${VARIANT}
 
@@ -45,9 +49,16 @@ WORKDIR /workspaces/core_analyzer/
 COPY . .
 
 RUN ./build_gdb.sh 12.1
-RUN ./build_tcmalloc.sh 2.7
+RUN ./build_tcmalloc.sh 2.10
+RUN ./build_jemalloc.sh 5.3.0
 WORKDIR test
 RUN make check
+RUN make check-tcmalloc
+RUN make check-jemalloc
+
+WORKDIR /workspaces/core_analyzer/
+RUN ./build_tcmalloc.sh 2.9
+WORKDIR test
 RUN make check-tcmalloc
 
 WORKDIR /workspaces/core_analyzer/
@@ -56,11 +67,6 @@ WORKDIR test
 RUN make check-tcmalloc
 
 WORKDIR /workspaces/core_analyzer/
-RUN ./build_tcmalloc.sh 2.9
-WORKDIR test
-RUN make check-tcmalloc
-
-WORKDIR /workspaces/core_analyzer/
-RUN ./build_tcmalloc.sh 2.10
+RUN ./build_tcmalloc.sh 2.7
 WORKDIR test
 RUN make check-tcmalloc

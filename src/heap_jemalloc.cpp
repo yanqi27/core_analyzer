@@ -282,7 +282,7 @@ init_heap(void)
 				stats_v = ca_get_field_gdb_value(bin_shards_v, "stats");
 				CHECK_VALUE(stats_v, "bin_t::stats");
 				ca_get_field_value(stats_v, "curslabs", &arena->bins[j].stats.curslabs, false);
-				ca_get_field_value(stats_v, "nonfull_slabs", &arena->bins[j].stats.nonfull_slabs, false);
+				ca_get_field_value(stats_v, "nonfull_slabs", &arena->bins[j].stats.nonfull_slabs, true);
 			}
 			/*
 			// je_arenas[i].bins[j].slabcur

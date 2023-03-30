@@ -141,6 +141,9 @@ struct jemalloc {
 		}
 	}
 
+	// flag
+	bool initialized = false;
+
 	// arena_s::bins array size
 	unsigned int nbins_total = 0;
 

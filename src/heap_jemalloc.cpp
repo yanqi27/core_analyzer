@@ -44,7 +44,17 @@ inline bool je_edata_cmp_func (je_edata_t *a, je_edata_t *b) {
 static const char *
 heap_version(void)
 {
-	return "jemalloc";
+	static std::string version;
+
+	if (version.empty()) {
+		if (g_version == enum_je_release::JEMALLOC_5_3_0)
+			version = "jemalloc 5.3.0";
+		else if (g_version == enum_je_release::JEMALLOC_5_2_1)
+			version = "jemalloc 5.2.0/5.2.1";
+		else
+			version = "jemalloc unsupported version";
+	}
+	return version.c_str();
 }
 
 #define CHECK_VALUE(v,name) 	\
@@ -531,6 +541,7 @@ init_heap(void)
 		}
 	}
 
+	g_jemalloc->initialized = true;
 	return true;
 }
 
@@ -538,7 +549,7 @@ init_heap(void)
 static bool
 get_heap_block_info(address_t addr, struct heap_block* blk)
 {
-	if (!g_jemalloc) {
+	if (!g_jemalloc || !g_jemalloc->initialized) {
 		CA_PRINT("jemalloc heap was not initialized successfully\n");
 		return false;
 	}
@@ -557,7 +568,7 @@ get_heap_block_info(address_t addr, struct heap_block* blk)
 static bool
 get_next_heap_block(address_t addr, struct heap_block* blk)
 {
-	if (!g_jemalloc) {
+	if (!g_jemalloc || !g_jemalloc->initialized) {
 		CA_PRINT("jemalloc heap was not initialized successfully\n");
 		return false;
 	}
@@ -587,7 +598,7 @@ get_next_heap_block(address_t addr, struct heap_block* blk)
 static bool
 is_heap_block(address_t addr)
 {
-	if (!g_jemalloc) {
+	if (!g_jemalloc || !g_jemalloc->initialized) {
 		CA_PRINT("jemalloc heap was not initialized successfully\n");
 		return false;
 	}
@@ -604,8 +615,17 @@ is_heap_block(address_t addr)
 static bool
 heap_walk(address_t heapaddr, bool verbose)
 {
-	if (!g_jemalloc) {
+	if (!g_jemalloc || !g_jemalloc->initialized) {
 		CA_PRINT("jemalloc heap parser is not initialized\n");
+		return false;
+	}
+
+	if (g_version == enum_je_release::JEMALLOC_5_3_0) {
+		CA_PRINT("jemalloc 5.3.0\n");
+	} else if (g_version == enum_je_release::JEMALLOC_5_2_1) {
+		CA_PRINT("jemalloc 5.2.0/5.2.1\n");
+	} else {
+		CA_PRINT("jemalloc unsupported version\n");
 		return false;
 	}
 
@@ -667,7 +687,7 @@ heap_walk(address_t heapaddr, bool verbose)
 static bool
 get_biggest_blocks(struct heap_block* blks, unsigned int num)
 {
-	if (!g_jemalloc) {
+	if (!g_jemalloc || !g_jemalloc->initialized) {
 		CA_PRINT("jemalloc heap was not initialized successfully\n");
 		return false;
 	}
@@ -709,7 +729,7 @@ get_biggest_blocks(struct heap_block* blks, unsigned int num)
 static bool
 walk_inuse_blocks(struct inuse_block* opBlocks, unsigned long* opCount)
 {
-	if (!g_jemalloc) {
+	if (!g_jemalloc || !g_jemalloc->initialized) {
 		CA_PRINT("jemalloc heap was not initialized successfully\n");
 		return false;
 	}
@@ -744,7 +764,7 @@ CoreAnalyzerHeapInterface sJeMallHeapManager = {
 
 void register_je_malloc() {
 	bool my_heap = gdb_symbol_probe();
-	return register_heap_manager("je-5.3", &sJeMallHeapManager, my_heap);
+	return register_heap_manager("jemalloc", &sJeMallHeapManager, my_heap);
 }
 
 

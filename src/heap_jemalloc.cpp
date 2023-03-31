@@ -16,6 +16,12 @@
 static jemalloc *g_jemalloc = nullptr;
 static enum_je_release g_version = enum_je_release::JEMALLOC_UNSUPPORTED_VERSION;
 
+static std::map<enum_je_release, std::string> g_version_names = {
+	{ enum_je_release::JEMALLOC_5_3_0, "jemalloc 5.3.0" },
+	{ enum_je_release::JEMALLOC_5_2_1, "jemalloc 5.2.0/5.2.1" },
+	{ enum_je_release::JEMALLOC_UNSUPPORTED_VERSION, "jemalloc unsupported version" }
+};
+
 /*
  * Forward declaration
  */
@@ -44,17 +50,7 @@ inline bool je_edata_cmp_func (je_edata_t *a, je_edata_t *b) {
 static const char *
 heap_version(void)
 {
-	static std::string version;
-
-	if (version.empty()) {
-		if (g_version == enum_je_release::JEMALLOC_5_3_0)
-			version = "jemalloc 5.3.0";
-		else if (g_version == enum_je_release::JEMALLOC_5_2_1)
-			version = "jemalloc 5.2.0/5.2.1";
-		else
-			version = "jemalloc unsupported version";
-	}
-	return version.c_str();
+	return g_version_names[g_version].c_str();
 }
 
 #define CHECK_VALUE(v,name) 	\
@@ -620,14 +616,7 @@ heap_walk(address_t heapaddr, bool verbose)
 		return false;
 	}
 
-	if (g_version == enum_je_release::JEMALLOC_5_3_0) {
-		CA_PRINT("jemalloc 5.3.0\n");
-	} else if (g_version == enum_je_release::JEMALLOC_5_2_1) {
-		CA_PRINT("jemalloc 5.2.0/5.2.1\n");
-	} else {
-		CA_PRINT("jemalloc unsupported version\n");
-		return false;
-	}
+	CA_PRINT("%s\n", g_version_names[g_version].c_str());
 
 	size_t totoal_inuse_bytes = 0;
 	size_t totoal_free_bytes = 0;

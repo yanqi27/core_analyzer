@@ -32,7 +32,16 @@
 #include <iostream>
 #include <mutex>
 
-#define NUM_THREADS 2
+const int NUM_THREADS = 4;
+
+const unsigned int num_small_regions = 4096 * NUM_THREADS;
+const unsigned int num_big_regions = 16 * NUM_THREADS;
+const unsigned int num_regions = num_small_regions + num_big_regions + 1;
+
+const size_t max_small_sz = 1032;
+const size_t threshold = 128 * 1024;
+const size_t page_size = 4096;
+
 /*
  * Since glibc 2.26, ptmalloc introduces per-thread cache.
  * In order for core_analyzer to parse all heap data, the application
@@ -93,9 +102,6 @@ private:
 	float speed;
 };
 
-const unsigned int num_small_regions = 4096 * NUM_THREADS;
-const unsigned int num_big_regions = 8 * NUM_THREADS;
-const unsigned int num_regions = num_small_regions + num_big_regions + 1;
 region * regions;
 
 const unsigned int num_derived = 4;
@@ -103,9 +109,9 @@ Base *derived_objects[num_derived * 2];
 uintptr_t hidden_object;
 
 static size_t
-rand_size()
+rand_small_size()
 {
-	return rand() % 1032;
+	return rand() % max_small_sz;
 }
 
 static void
@@ -191,7 +197,7 @@ thread_func(void *arg)
 	// Allocate small memory blocks in random sizes
 	for (i = 0; i < num_small_regions/NUM_THREADS; i++) {
 		index = get_index();
-		regions[index].size = rand_size();
+		regions[index].size = rand_small_size();
 		regions[index].inuse = true;
 		regions[index].p = malloc(regions[index].size);
 		if (regions[index].p == NULL)
@@ -200,8 +206,6 @@ thread_func(void *arg)
 	}
 
 	// Allocate big memory blocks, i.e. > 128KiB
-	const size_t threshold = 128 * 1024;
-	const size_t page_size = 4096;
 	for (i = 0; i < num_big_regions/NUM_THREADS; i++) {
 		index = get_index();
 		regions[index].size = threshold + (rand() % 16) * page_size;

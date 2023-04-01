@@ -37,6 +37,16 @@ RUN make check-tcmalloc
 RUN make check-jemalloc
 
 WORKDIR /workspaces/core_analyzer/
+RUN ./build_jemalloc.sh 5.2.1
+WORKDIR test
+RUN make check-jemalloc
+
+WORKDIR /workspaces/core_analyzer/
+RUN ./build_jemalloc.sh 5.2.0
+WORKDIR test
+RUN make check-jemalloc
+
+WORKDIR /workspaces/core_analyzer/
 RUN ./build_tcmalloc.sh 2.9
 WORKDIR test
 RUN make check-tcmalloc

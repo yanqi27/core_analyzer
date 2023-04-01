@@ -31,7 +31,7 @@ The latest release passed the build and sanity tests (with a few exceptions) on 
 * Heap Manager
     - glibc/ptmalloc 2.17, 2.27, 2.31, 2.35
 	- gperftools/tcmalloc 2.7, 2.8, 2.9, 2.10
-	- jemalloc 5.3.0
+	- jemalloc 5.3.0, 5.2.1, 5.2.0
 	- Windows/mscrt 9, 10, 11
 	- Darwin
 
@@ -41,7 +41,10 @@ The latest release passed the build and sanity tests (with a few exceptions) on 
 
 * OS
     - Ubuntu 16.04, 18.04, 20.04, 22.04
+	- Debian 11
+	- Redhat 8
 	- CentOS 7.6, 8.5
+	- Suse 15
 	- Windows 9, 10, 11
 
 * Compiler

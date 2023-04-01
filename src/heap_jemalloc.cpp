@@ -14,12 +14,20 @@
  * Global variables
  */
 static jemalloc *g_jemalloc = nullptr;
+static enum_je_release g_version = enum_je_release::JEMALLOC_UNSUPPORTED_VERSION;
+
+static std::map<enum_je_release, std::string> g_version_names = {
+	{ enum_je_release::JEMALLOC_5_3_0, "jemalloc 5.3.0" },
+	{ enum_je_release::JEMALLOC_5_2_1, "jemalloc 5.2.0/5.2.1" },
+	{ enum_je_release::JEMALLOC_UNSUPPORTED_VERSION, "jemalloc unsupported version" }
+};
 
 /*
  * Forward declaration
  */
 static bool gdb_symbol_probe(void);
 static je_edata_t *parse_edata(struct value *edata_v, je_rtree_contents_t *contents);
+static je_edata_t *parse_extent(struct value *edata_v, je_rtree_contents_t *contents);
 //static bool parse_edata_heap(je_bin_info_t *bininfo, je_edata_set& slab_set, struct value *heap_v, struct type *edata_p_type);
 //static bool parse_edata_list(je_bin_info_t *bininfo, je_edata_set& slab_set, struct value *list_v, struct type *edata_p_type);
 static je_edata_t *get_edata(address_t addr);
@@ -42,7 +50,7 @@ inline bool je_edata_cmp_func (je_edata_t *a, je_edata_t *b) {
 static const char *
 heap_version(void)
 {
-	return "jemalloc";
+	return g_version_names[g_version].c_str();
 }
 
 #define CHECK_VALUE(v,name) 	\
@@ -92,11 +100,13 @@ init_heap(void)
 
 	// nbins_total
 	// type = unsigned int
-	sym = lookup_symbol("nbins_total", 0, VAR_DOMAIN, 0).symbol;
-	CHECK_SYM(sym, "nbins_total");
+	if (g_version == enum_je_release::JEMALLOC_5_3_0) {
+		sym = lookup_symbol("nbins_total", 0, VAR_DOMAIN, 0).symbol;
+		CHECK_SYM(sym, "nbins_total");
 
-	val = value_of_variable(sym, 0);
-	g_jemalloc->nbins_total = value_as_long(val);
+		val = value_of_variable(sym, 0);
+		g_jemalloc->nbins_total = value_as_long(val);
+	}
 
 	// je_bin_infos
 	// type = bin_info_t [36]
@@ -143,10 +153,14 @@ init_heap(void)
 		}
 		g_jemalloc->bin_infos.push_back(binfo);
 	}
-	if (g_jemalloc->bin_infos.size() != g_jemalloc->nbins_total) {
-		CA_PRINT("je_bin_infos length(%ld) != nbins_total(%d)\n",
-			g_jemalloc->bin_infos.size(), g_jemalloc->nbins_total);
-		return false;
+	if (g_version == enum_je_release::JEMALLOC_5_3_0) {
+		if (g_jemalloc->bin_infos.size() != g_jemalloc->nbins_total) {
+			CA_PRINT("je_bin_infos length(%ld) != nbins_total(%d)\n",
+				g_jemalloc->bin_infos.size(), g_jemalloc->nbins_total);
+			return false;
+		}
+	} else {
+		g_jemalloc->nbins_total = g_jemalloc->bin_infos.size();
 	}
 
 	// size_t sz_index2size_tab[SC_NSIZES];
@@ -262,9 +276,20 @@ init_heap(void)
 		for (int j = 0; j < g_jemalloc->nbins_total; j++) {
 			// je_arenas[i].bins[j]
 			struct value *bin_v = value_subscript(bins_v, j);
-			stats_v = ca_get_field_gdb_value(bin_v, "stats");
-			ca_get_field_value(stats_v, "curslabs", &arena->bins[j].stats.curslabs, false);
-			ca_get_field_value(stats_v, "nonfull_slabs", &arena->bins[j].stats.nonfull_slabs, false);
+			if (g_version == enum_je_release::JEMALLOC_5_3_0) {
+				stats_v = ca_get_field_gdb_value(bin_v, "stats");
+				CHECK_VALUE(stats_v, "bin_t::stats");
+				ca_get_field_value(stats_v, "curslabs", &arena->bins[j].stats.curslabs, false);
+				ca_get_field_value(stats_v, "nonfull_slabs", &arena->bins[j].stats.nonfull_slabs, false);
+			} else {
+				struct value *bin_shards_v = ca_get_field_gdb_value(bin_v, "bin_shards");
+				CHECK_VALUE(bin_shards_v, "bins_t::bin_shards");
+				bin_shards_v = value_ind(bin_shards_v);
+				stats_v = ca_get_field_gdb_value(bin_shards_v, "stats");
+				CHECK_VALUE(stats_v, "bin_t::stats");
+				ca_get_field_value(stats_v, "curslabs", &arena->bins[j].stats.curslabs, false);
+				ca_get_field_value(stats_v, "nonfull_slabs", &arena->bins[j].stats.nonfull_slabs, true);
+			}
 			/*
 			// je_arenas[i].bins[j].slabcur
 			auto binfo = &g_jemalloc->bin_infos[j];
@@ -315,16 +340,27 @@ init_heap(void)
 	// type = struct atomic_p_t {
 	//     void *repr;
 	// }
-	sym = lookup_symbol("je_arena_emap_global", 0, VAR_DOMAIN, 0).symbol;
-	if (sym == nullptr) {
-		CA_PRINT("Failed to lookup gv \"je_arena_emap_global\"\n");
-		return false;
-	}
-	val = value_of_variable(sym, 0);
-	CHECK_VALUE(val, "je_arena_emap_global");
+	struct value *rtree_v;
+	if (g_version == enum_je_release::JEMALLOC_5_3_0) {
+		sym = lookup_symbol("je_arena_emap_global", 0, VAR_DOMAIN, 0).symbol;
+		if (sym == nullptr) {
+			CA_PRINT("Failed to lookup gv \"je_arena_emap_global\"\n");
+			return false;
+		}
+		val = value_of_variable(sym, 0);
+		CHECK_VALUE(val, "je_arena_emap_global");
 
-	struct value *rtree_v = ca_get_field_gdb_value(val, "rtree");
-	CHECK_VALUE(rtree_v, "je_arena_emap_global::rtree");
+		rtree_v = ca_get_field_gdb_value(val, "rtree");
+		CHECK_VALUE(rtree_v, "je_arena_emap_global::rtree");
+	} else {
+		sym = lookup_symbol("je_extents_rtree", 0, VAR_DOMAIN, 0).symbol;
+		if (sym == nullptr) {
+			CA_PRINT("Failed to lookup gv \"je_extents_rtree\"\n");
+			return false;
+		}
+		rtree_v = value_of_variable(sym, 0);
+		CHECK_VALUE(rtree_v, "je_extents_rtree");
+	}
 
 	struct value *root_v = ca_get_field_gdb_value(rtree_v, "root");
 	CHECK_VALUE(root_v, "je_arena_emap_global::rtree::root");
@@ -347,9 +383,16 @@ init_heap(void)
 	}
 	leaf_type = lookup_pointer_type(leaf_type);
 
-	struct type *edata_type = lookup_transparent_type("edata_s");
+	struct type *edata_type;
+	const char *ext_type_name;
+	if (g_version == enum_je_release::JEMALLOC_5_3_0) {
+		ext_type_name = "edata_s";
+	} else {
+		ext_type_name = "extent_s";
+	}
+	edata_type = lookup_transparent_type(ext_type_name);
 	if (!edata_type) {
-		CA_PRINT("Failed to lookup type \"edata_s\"\n");
+		CA_PRINT("Failed to lookup type \"edata_s\" or \"extent_s\" \n");
 		return false;
 	}
 	std::set<uintptr_t> edata_addr_set;
@@ -383,13 +426,15 @@ init_heap(void)
 			je_rtree_contents_t contents;
 			contents.metadata.szind = bits >> LG_VADDR;
 			contents.metadata.slab = (bool)(bits & 1);
-			contents.metadata.is_head = (bool)(bits & (1 << 1));
-
-			uintptr_t state_bits = (bits & RTREE_LEAF_STATE_MASK) >> RTREE_LEAF_STATE_SHIFT;
-			contents.metadata.state = ( unsigned int)state_bits;
-
-			uintptr_t low_bit_mask = ~((uintptr_t)EDATA_ALIGNMENT - 1);
-			contents.edata = ((uintptr_t)((intptr_t)(bits << RTREE_NHIB) >> RTREE_NHIB) & low_bit_mask);
+			if (g_version == enum_je_release::JEMALLOC_5_3_0) {
+				contents.metadata.is_head = (bool)(bits & (1 << 1));
+				uintptr_t state_bits = (bits & RTREE_LEAF_STATE_MASK) >> RTREE_LEAF_STATE_SHIFT;
+				contents.metadata.state = ( unsigned int)state_bits;
+				uintptr_t low_bit_mask = ~((uintptr_t)EDATA_ALIGNMENT - 1);
+				contents.edata = ((uintptr_t)((intptr_t)(bits << RTREE_NHIB) >> RTREE_NHIB) & low_bit_mask);
+			} else {
+				contents.edata = ((uintptr_t)((intptr_t)(bits << RTREE_NHIB) >> RTREE_NHIB) & ~((uintptr_t)0x1));
+			}
 
 			if (contents.edata == 0)
 				continue;
@@ -404,7 +449,11 @@ init_heap(void)
 
 			struct value *edata_v = value_at(edata_type, contents.edata);
 			CHECK_VALUE(edata_v, "rtree leaf");
-			je_edata_t *edata = parse_edata(edata_v, &contents);
+			je_edata_t *edata;
+			if (g_version == enum_je_release::JEMALLOC_5_3_0)
+				edata = parse_edata(edata_v, &contents);
+			else
+				edata = parse_extent(edata_v, &contents);
 			if (!edata) {
 				CA_PRINT("Failed to parse rtree leaf\n");
 				return false;
@@ -488,6 +537,7 @@ init_heap(void)
 		}
 	}
 
+	g_jemalloc->initialized = true;
 	return true;
 }
 
@@ -495,7 +545,7 @@ init_heap(void)
 static bool
 get_heap_block_info(address_t addr, struct heap_block* blk)
 {
-	if (!g_jemalloc) {
+	if (!g_jemalloc || !g_jemalloc->initialized) {
 		CA_PRINT("jemalloc heap was not initialized successfully\n");
 		return false;
 	}
@@ -514,7 +564,7 @@ get_heap_block_info(address_t addr, struct heap_block* blk)
 static bool
 get_next_heap_block(address_t addr, struct heap_block* blk)
 {
-	if (!g_jemalloc) {
+	if (!g_jemalloc || !g_jemalloc->initialized) {
 		CA_PRINT("jemalloc heap was not initialized successfully\n");
 		return false;
 	}
@@ -544,7 +594,7 @@ get_next_heap_block(address_t addr, struct heap_block* blk)
 static bool
 is_heap_block(address_t addr)
 {
-	if (!g_jemalloc) {
+	if (!g_jemalloc || !g_jemalloc->initialized) {
 		CA_PRINT("jemalloc heap was not initialized successfully\n");
 		return false;
 	}
@@ -561,10 +611,12 @@ is_heap_block(address_t addr)
 static bool
 heap_walk(address_t heapaddr, bool verbose)
 {
-	if (!g_jemalloc) {
+	if (!g_jemalloc || !g_jemalloc->initialized) {
 		CA_PRINT("jemalloc heap parser is not initialized\n");
 		return false;
 	}
+
+	CA_PRINT("%s\n", g_version_names[g_version].c_str());
 
 	size_t totoal_inuse_bytes = 0;
 	size_t totoal_free_bytes = 0;
@@ -624,7 +676,7 @@ heap_walk(address_t heapaddr, bool verbose)
 static bool
 get_biggest_blocks(struct heap_block* blks, unsigned int num)
 {
-	if (!g_jemalloc) {
+	if (!g_jemalloc || !g_jemalloc->initialized) {
 		CA_PRINT("jemalloc heap was not initialized successfully\n");
 		return false;
 	}
@@ -666,7 +718,7 @@ get_biggest_blocks(struct heap_block* blks, unsigned int num)
 static bool
 walk_inuse_blocks(struct inuse_block* opBlocks, unsigned long* opCount)
 {
-	if (!g_jemalloc) {
+	if (!g_jemalloc || !g_jemalloc->initialized) {
 		CA_PRINT("jemalloc heap was not initialized successfully\n");
 		return false;
 	}
@@ -701,7 +753,7 @@ CoreAnalyzerHeapInterface sJeMallHeapManager = {
 
 void register_je_malloc() {
 	bool my_heap = gdb_symbol_probe();
-	return register_heap_manager("je-5.3", &sJeMallHeapManager, my_heap);
+	return register_heap_manager("jemalloc", &sJeMallHeapManager, my_heap);
 }
 
 
@@ -715,10 +767,17 @@ gdb_symbol_probe(void)
 	struct symbol *arenas;
 	struct symbol *nbins_total;
 	arenas = lookup_symbol("je_arenas", 0, VAR_DOMAIN, 0).symbol;
+	if (!arenas)
+		return false;
 	nbins_total = lookup_symbol("nbins_total", 0, VAR_DOMAIN, 0).symbol;
-	return arenas && nbins_total;
+	if (nbins_total)
+		g_version = enum_je_release::JEMALLOC_5_3_0;
+	else
+		g_version = enum_je_release::JEMALLOC_5_2_1;
+	return true;
 }
 
+// For jemalloc 5.3.0
 je_edata_t *
 parse_edata(struct value *edata_v, je_rtree_contents_t *contents)
 {
@@ -763,6 +822,107 @@ parse_edata(struct value *edata_v, je_rtree_contents_t *contents)
 		unsigned int szind = edata_szind_get(edata->e_bits);
 		if (szind >= g_jemalloc->bin_infos.size()) {
 			CA_PRINT("edata szind=%d is out of range (%ld) addr=0x%lx size=%ld nfree=%d state=%d arena_ind=%d\n",
+				szind, g_jemalloc->bin_infos.size(), edata->e_addr, edata->e_size, nfree, state, edata->arena_ind);
+			return nullptr;
+		}
+		je_bin_info_t *bininfo = &g_jemalloc->bin_infos[szind];
+		edata->free_cnt = 0;
+		edata->inuse_cnt = 0;
+		uint32_t reg_index = 0;
+		size_t blksz = bininfo->reg_size;
+		address_t addr = (address_t) edata->e_addr;
+		for (size_t i = 0; i < bininfo->bitmap_info.ngroups && reg_index < bininfo->nregs; i++) {
+			struct value *v = value_subscript(bitmap_v, i);
+			if (!v)
+				return nullptr;
+			je_bitmap_t bitmap = value_as_long(v);
+			size_t bit = 1;
+			for (int j = 0; j < 64 && reg_index < bininfo->nregs; j++,reg_index++) {
+				bool inuse;
+				if (bit & bitmap) {
+					// set bit means free region (block)
+					edata->free_cnt++;
+					edata->free_bytes += blksz;
+					inuse = false;
+				} else {
+					edata->inuse_cnt++;
+					edata->inuse_bytes += blksz;
+					inuse = true;
+				}
+				// cache the block
+				g_jemalloc->blocks.push_back({addr, blksz, inuse});
+				// next block
+				bit <<= 1;
+				addr += blksz;
+			}
+		}
+		// verify
+		if (nfree != edata->free_cnt) {
+			CA_PRINT("slab inconsistent free count: nfree=%d bitmap_free=%d bitmap_inuse=%d bin_info::nregs=%d\n",
+				nfree, edata->free_cnt, edata->inuse_cnt, bininfo->nregs);
+		}
+	} else {
+		// large memory block
+		edata->slab = false;
+		edata->base = PAGE_ADDR2BASE(edata->e_addr);
+		edata->free_cnt = 0;
+		edata->inuse_cnt = 1;
+		size_t blksz = edata->e_size - (edata->e_addr - edata->base);
+		if (contents->metadata.szind < g_jemalloc->sz_table.size())
+			blksz = g_jemalloc->sz_table[contents->metadata.szind];
+		edata->inuse_bytes = blksz;
+		// the whole extent serves one large block
+		g_jemalloc->blocks.push_back({edata->e_addr, blksz, true});
+	}
+
+	return edata.release();
+}
+
+// For jemalloc 5.2.1
+je_edata_t *
+parse_extent(struct value *extent_v, je_rtree_contents_t *contents)
+{
+	if (!extent_v)
+		return nullptr;
+
+	std::unique_ptr<je_edata_t> edata = std::make_unique<je_edata_t>();
+	if (!ca_get_field_value(extent_v, "e_bits", &edata->e_bits, false)
+		|| !ca_get_field_value(extent_v, "e_addr", (size_t*)&edata->e_addr, false))
+		return nullptr;
+	struct value *size_v = ca_get_field_gdb_value(extent_v, "e_size_esn");
+	if (!size_v)
+		return nullptr;
+	edata->e_size = value_as_long(size_v) & EXTENT_SIZE_MASK;
+	edata->arena_ind = extent_arena_ind_get(edata->e_bits);
+
+	struct ca_segment *segment = get_segment(edata->e_addr, edata->e_size);
+	if (segment != nullptr && segment->m_type == ENUM_UNKNOWN)
+		segment->m_type = ENUM_HEAP;
+
+	je_extent_state_t state = extent_state_get(edata->e_bits);
+	if (state == extent_state_dirty || state == extent_state_muzzy || state == extent_state_retained) {
+		edata->slab = false;
+		edata->base = PAGE_ADDR2BASE(edata->e_addr);
+		edata->free_cnt = 1;
+		edata->inuse_cnt = 0;
+		edata->free_bytes = edata->e_size;
+		// this is a single free extent
+		g_jemalloc->blocks.push_back({edata->base, edata->e_size, false});
+	} else if (extent_slab_get(edata->e_bits)) {
+		// slab is an extent for small fix-sized blocks
+		edata->slab = true;
+		edata->base = edata->e_addr;
+		struct value *slab_data_v = ca_get_field_gdb_value(extent_v, "e_slab_data");
+		if (!slab_data_v)
+			return nullptr;
+		struct value *bitmap_v = ca_get_field_gdb_value(slab_data_v, "bitmap");
+		if (!bitmap_v)
+			return nullptr;
+
+		unsigned int nfree = extent_nfree_get(edata->e_bits);
+		unsigned int szind = extent_szind_get(edata->e_bits);
+		if (szind >= g_jemalloc->bin_infos.size()) {
+			CA_PRINT("extent szind=%d is out of range (%ld) addr=0x%lx size=%ld nfree=%d state=%d arena_ind=%d\n",
 				szind, g_jemalloc->bin_infos.size(), edata->e_addr, edata->e_size, nfree, state, edata->arena_ind);
 			return nullptr;
 		}
@@ -1017,76 +1177,133 @@ thread_tcache (struct thread_info *info, void *data)
 	//     tcache_slow_t *tcache_slow;
 	//     cache_bin_t bins[73];
 	// }
-	struct value *bins_v = ca_get_field_gdb_value(tcache_v, "bins");
-	if (!bins_v) {
-		CA_PRINT("Failed to extract member \"bins\" of \"tcache_t\" of thread [%d]\n", info->ptid.pid());
-		return 0;
-	}
-	type = value_type(bins_v);
-	if(ca_code(type) != TYPE_CODE_ARRAY) {
-		CA_PRINT("Failed to validate the array type of \"tcache_t::bins\"\n");
-		return 0;
-	}
-	LONGEST low_bound=0, high_bound=0;
-	if (!get_array_bounds(type, &low_bound, &high_bound)) {
-		CA_PRINT("Failed to query array bounds of \"tcache_t::bins\"\n");
-		return false;
-	}
-	size_t bins_len = high_bound - low_bound + 1;
-	for (int i = 0; i < bins_len; i++) {
-		// tcache_t::bins[i]
-		// type = struct cache_bin_s {
-		//      void **stack_head;
-		//      cache_bin_stats_t tstats;
-		//      uint16_t low_bits_low_water;
-		//      uint16_t low_bits_full;
-		//      uint16_t low_bits_empty;
-		// }
-		struct value *cache_bin_v = value_subscript(bins_v, i);
-		if (!cache_bin_v) {
-			CA_PRINT("Failed to index array of \"tcache_t::bins\" at [%d]\n", i);
+	if (g_version == enum_je_release::JEMALLOC_5_3_0) {
+		struct value *bins_v = ca_get_field_gdb_value(tcache_v, "bins");
+		if (!bins_v) {
+			CA_PRINT("Failed to extract member \"bins\" of \"tcache_t\" of thread [%d]\n", info->ptid.pid());
 			return 0;
 		}
-		struct value *head_v = ca_get_field_gdb_value(cache_bin_v, "stack_head");
-		if (!head_v) {
-			CA_PRINT("Failed to extract member \"stack_head\" of \"cache_bin_t\"\n");
+		type = value_type(bins_v);
+		if(ca_code(type) != TYPE_CODE_ARRAY) {
+			CA_PRINT("Failed to validate the array type of \"tcache_t::bins\"\n");
 			return 0;
 		}
-		uintptr_t head = value_as_address(head_v);
-		size_t mdata;
-		if (!ca_get_field_value(cache_bin_v, "low_bits_empty", &mdata, false)) {
-			CA_PRINT("Failed to extract member \"low_bits_empty\" of \"cache_bin_t\"\n");
+		LONGEST low_bound=0, high_bound=0;
+		if (!get_array_bounds(type, &low_bound, &high_bound)) {
+			CA_PRINT("Failed to query array bounds of \"tcache_t::bins\"\n");
 			return 0;
 		}
-		// cache_bin_t::stack_head (type = void **) points to an array of cached memory block addresses.
-		// the end of the array is specified by cache_bin_t::low_bits_empty, which has only lowest 16bit
-		// Note, the array may across the 64KiB address boundary. Hence we can't simply assume 
-		// (uint16_t)stack_head <= (uint16_t)low_bits_empty
-		uint16_t low_bits_empty = (uint16_t)mdata;
-		uint16_t cur_low_bits = (uint16_t)head;
-		const uint16_t mask = (uint16_t)sizeof(void*) - 1;
-		if ((low_bits_empty & mask) || (cur_low_bits & mask)) {
-			// alignment of ptr size is expected
-			CA_PRINT("members \"stack_head/low_bits_empty\" of \"cache_bin_t\" are not properly aligned\n");
-			continue;
-		}
-		uint16_t cache_cnt = 0;
-		if (cur_low_bits == low_bits_empty)	// no cache
-			continue;
-		else if (cur_low_bits < low_bits_empty)
-			cache_cnt = (low_bits_empty - cur_low_bits) / (uint16_t)sizeof(void*);
-		else {
-			cache_cnt = ((uint16_t)((uint32_t)0x10000 - cur_low_bits) + low_bits_empty) / (uint16_t)sizeof(void*);
-		}
-		for (uint16_t j = 0; j < cache_cnt; j++) {
-			struct value *ptr_v = value_subscript(head_v, j);
-			if (!ptr_v) {
-				CA_PRINT("Failed to index array of \"cache_bin_t::stack_head\" at [%d]\n", j);
+		size_t bins_len = high_bound - low_bound + 1;
+		for (int i = 0; i < bins_len; i++) {
+			// tcache_t::bins[i]
+			// type = struct cache_bin_s {
+			//      void **stack_head;
+			//      cache_bin_stats_t tstats;
+			//      uint16_t low_bits_low_water;
+			//      uint16_t low_bits_full;
+			//      uint16_t low_bits_empty;
+			// }
+			struct value *cache_bin_v = value_subscript(bins_v, i);
+			if (!cache_bin_v) {
+				CA_PRINT("Failed to index array of \"tcache_t::bins\" at [%d]\n", i);
 				return 0;
 			}
-			uintptr_t ptr = value_as_address(ptr_v);
-			if (ptr)
-				g_jemalloc->cached_addr.insert(ptr);
+			struct value *head_v = ca_get_field_gdb_value(cache_bin_v, "stack_head");
+			if (!head_v) {
+				CA_PRINT("Failed to extract member \"stack_head\" of \"cache_bin_t\"\n");
+				return 0;
+			}
+			uintptr_t head = value_as_address(head_v);
+			size_t mdata;
+			if (!ca_get_field_value(cache_bin_v, "low_bits_empty", &mdata, false)) {
+				CA_PRINT("Failed to extract member \"low_bits_empty\" of \"cache_bin_t\"\n");
+				return 0;
+			}
+			// cache_bin_t::stack_head (type = void **) points to an array of cached memory block addresses.
+			// the end of the array is specified by cache_bin_t::low_bits_empty, which has only lowest 16bit
+			// Note, the array may across the 64KiB address boundary. Hence we can't simply assume 
+			// (uint16_t)stack_head <= (uint16_t)low_bits_empty
+			uint16_t low_bits_empty = (uint16_t)mdata;
+			uint16_t cur_low_bits = (uint16_t)head;
+			const uint16_t mask = (uint16_t)sizeof(void*) - 1;
+			if ((low_bits_empty & mask) || (cur_low_bits & mask)) {
+				// alignment of ptr size is expected
+				CA_PRINT("members \"stack_head/low_bits_empty\" of \"cache_bin_t\" are not properly aligned\n");
+				continue;
+			}
+			uint16_t cache_cnt = 0;
+			if (cur_low_bits == low_bits_empty)	// no cache
+				continue;
+			else if (cur_low_bits < low_bits_empty)
+				cache_cnt = (low_bits_empty - cur_low_bits) / (uint16_t)sizeof(void*);
+			else {
+				cache_cnt = ((uint16_t)((uint32_t)0x10000 - cur_low_bits) + low_bits_empty) / (uint16_t)sizeof(void*);
+			}
+			for (uint16_t j = 0; j < cache_cnt; j++) {
+				struct value *ptr_v = value_subscript(head_v, j);
+				if (!ptr_v) {
+					CA_PRINT("Failed to index array of \"cache_bin_t::stack_head\" at [%d]\n", j);
+					return 0;
+				}
+				uintptr_t ptr = value_as_address(ptr_v);
+				if (ptr)
+					g_jemalloc->cached_addr.insert(ptr);
+			}
+		}
+	} else {
+		struct value *bins_small_v = ca_get_field_gdb_value(tcache_v, "bins_small");
+		if (!bins_small_v) {
+			CA_PRINT("Failed to extract member \"bins_small\" of \"tcache_t\" of thread [%d]\n", info->ptid.pid());
+			return 0;
+		}
+		type = value_type(bins_small_v);
+		if(ca_code(type) != TYPE_CODE_ARRAY) {
+			CA_PRINT("Failed to validate the array type of \"tcache_t::bins_small\"\n");
+			return 0;
+		}
+		LONGEST low_bound=0, high_bound=0;
+		if (!get_array_bounds(type, &low_bound, &high_bound)) {
+			CA_PRINT("Failed to query array bounds of \"tcache_t::bins_small\"\n");
+			return 0;
+		}
+		size_t bins_len = high_bound - low_bound + 1;
+		for (int i = 0; i < bins_len; i++) {
+			// tcache_t::bins_small[i]
+			// type = struct cache_bin_s {
+			//     cache_bin_sz_t low_water;
+			//     cache_bin_sz_t ncached;
+			//     cache_bin_stats_t tstats;
+			//     void **avail;
+			// }
+			struct value *cache_bin_v = value_subscript(bins_small_v, i);
+			if (!cache_bin_v) {
+				CA_PRINT("Failed to index array of \"tcache_t::bins_small\" at [%d]\n", i);
+				return 0;
+			}
+			struct value *avail_v = ca_get_field_gdb_value(cache_bin_v, "avail");
+			if (!avail_v) {
+				CA_PRINT("Failed to extract member \"avail\" of \"cache_bin_t\"\n");
+				return 0;
+			}
+			long cdata;
+			if (!ca_get_field_value(cache_bin_v, "ncached", (size_t*)&cdata, false)) {
+				CA_PRINT("Failed to extract member \"ncached\" of \"cache_bin_t\"\n");
+				return 0;
+			}
+			int ncached = (int) cdata;
+			// cache_bin_t::avail (type = void **) points to an array of cached memory block addresses.
+			// avail points just above the available space, which means that avail[-ncached, ... -1] are
+			// available items and the lowest item will be allocated first.
+			for (int j = 1; j <= ncached; j++) {
+				struct value *ptr_v = value_subscript(avail_v, -j);
+				if (!ptr_v) {
+					CA_PRINT("Failed to index array of \"cache_bin_t::avail\" at [%d]\n", -j);
+					return 0;
+				}
+				uintptr_t ptr = value_as_address(ptr_v);
+				if (ptr)
+					g_jemalloc->cached_addr.insert(ptr);
+			}
 		}
 	}
 

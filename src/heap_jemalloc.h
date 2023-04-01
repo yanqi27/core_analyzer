@@ -48,9 +48,12 @@ struct je_slab_data_t {
 };
 
 #define PAGE (1<<12)
-#define EDATA_SIZE_MASK	((size_t)~(PAGE-1))
 #define PAGE_MASK	((size_t)(PAGE - 1))
 #define PAGE_ADDR2BASE(a) (((uintptr_t)(a) & ~PAGE_MASK))
+// jemalloc-5.3.0
+#define EDATA_SIZE_MASK	((size_t)~(PAGE-1))
+// jemalloc-5.2.1
+#define EXTENT_SIZE_MASK ((size_t)~(PAGE-1))
 
 enum je_extent_state_t {
 	extent_state_active   = 0,
@@ -124,6 +127,12 @@ struct je_rtree_contents_t {
 	je_rtree_metadata_t metadata;
 };
 
+enum class enum_je_release {
+	JEMALLOC_5_3_0,
+	JEMALLOC_5_2_1,
+	JEMALLOC_UNSUPPORTED_VERSION
+};
+
 struct jemalloc {
 	jemalloc() {}
 	~jemalloc() {
@@ -131,6 +140,9 @@ struct jemalloc {
 			delete arena;
 		}
 	}
+
+	// flag
+	bool initialized = false;
 
 	// arena_s::bins array size
 	unsigned int nbins_total = 0;
@@ -165,6 +177,7 @@ struct jemalloc {
  *****************************************************************************/
 #define MASK(CURRENT_FIELD_WIDTH, CURRENT_FIELD_SHIFT) ((((((uint64_t)0x1U) << (CURRENT_FIELD_WIDTH)) - 1)) << (CURRENT_FIELD_SHIFT))
 
+// jemalloc-5.3.0
 #define EDATA_BITS_ARENA_WIDTH  12
 #define EDATA_BITS_ARENA_SHIFT  0
 #define EDATA_BITS_ARENA_MASK  MASK(EDATA_BITS_ARENA_WIDTH, EDATA_BITS_ARENA_SHIFT)
@@ -242,3 +255,81 @@ edata_arena_ind_get(uint64_t e_bits) {
 	    EDATA_BITS_ARENA_MASK) >> EDATA_BITS_ARENA_SHIFT);
 	return arena_ind;
 }
+
+// jemalloc-5.2.1
+#define EXTENT_BITS_ARENA_WIDTH  12
+#define EXTENT_BITS_ARENA_SHIFT  0
+#define EXTENT_BITS_ARENA_MASK  MASK(EXTENT_BITS_ARENA_WIDTH, EXTENT_BITS_ARENA_SHIFT)
+
+#define EXTENT_BITS_SLAB_WIDTH  1
+#define EXTENT_BITS_SLAB_SHIFT  (EXTENT_BITS_ARENA_WIDTH + EXTENT_BITS_ARENA_SHIFT)
+#define EXTENT_BITS_SLAB_MASK  MASK(EXTENT_BITS_SLAB_WIDTH, EXTENT_BITS_SLAB_SHIFT)
+
+#define EXTENT_BITS_COMMITTED_WIDTH  1
+#define EXTENT_BITS_COMMITTED_SHIFT  (EXTENT_BITS_SLAB_WIDTH + EXTENT_BITS_SLAB_SHIFT)
+#define EXTENT_BITS_COMMITTED_MASK  MASK(EXTENT_BITS_COMMITTED_WIDTH, EXTENT_BITS_COMMITTED_SHIFT)
+
+#define EXTENT_BITS_DUMPABLE_WIDTH  1
+#define EXTENT_BITS_DUMPABLE_SHIFT  (EXTENT_BITS_COMMITTED_WIDTH + EXTENT_BITS_COMMITTED_SHIFT)
+#define EXTENT_BITS_DUMPABLE_MASK  MASK(EXTENT_BITS_DUMPABLE_WIDTH, EXTENT_BITS_DUMPABLE_SHIFT)
+
+#define EXTENT_BITS_ZEROED_WIDTH  1
+#define EXTENT_BITS_ZEROED_SHIFT  (EXTENT_BITS_DUMPABLE_WIDTH + EXTENT_BITS_DUMPABLE_SHIFT)
+#define EXTENT_BITS_ZEROED_MASK  MASK(EXTENT_BITS_ZEROED_WIDTH, EXTENT_BITS_ZEROED_SHIFT)
+
+#define EXTENT_BITS_STATE_WIDTH  2
+#define EXTENT_BITS_STATE_SHIFT  (EXTENT_BITS_ZEROED_WIDTH + EXTENT_BITS_ZEROED_SHIFT)
+#define EXTENT_BITS_STATE_MASK  MASK(EXTENT_BITS_STATE_WIDTH, EXTENT_BITS_STATE_SHIFT)
+
+#define EXTENT_BITS_SZIND_WIDTH  8
+#define EXTENT_BITS_SZIND_SHIFT  (EXTENT_BITS_STATE_WIDTH + EXTENT_BITS_STATE_SHIFT)
+#define EXTENT_BITS_SZIND_MASK  MASK(EXTENT_BITS_SZIND_WIDTH, EXTENT_BITS_SZIND_SHIFT)
+
+#define LG_SLAB_MAXREGS 9
+#define EXTENT_BITS_NFREE_WIDTH  (LG_SLAB_MAXREGS + 1)
+#define EXTENT_BITS_NFREE_SHIFT  (EXTENT_BITS_SZIND_WIDTH + EXTENT_BITS_SZIND_SHIFT)
+#define EXTENT_BITS_NFREE_MASK  MASK(EXTENT_BITS_NFREE_WIDTH, EXTENT_BITS_NFREE_SHIFT)
+
+#define EXTENT_BITS_BINSHARD_WIDTH  6
+#define EXTENT_BITS_BINSHARD_SHIFT  (EXTENT_BITS_NFREE_WIDTH + EXTENT_BITS_NFREE_SHIFT)
+#define EXTENT_BITS_BINSHARD_MASK  MASK(EXTENT_BITS_BINSHARD_WIDTH, EXTENT_BITS_BINSHARD_SHIFT)
+
+#define EXTENT_BITS_IS_HEAD_WIDTH 1
+#define EXTENT_BITS_IS_HEAD_SHIFT  (EXTENT_BITS_BINSHARD_WIDTH + EXTENT_BITS_BINSHARD_SHIFT)
+#define EXTENT_BITS_IS_HEAD_MASK  MASK(EXTENT_BITS_IS_HEAD_WIDTH, EXTENT_BITS_IS_HEAD_SHIFT)
+
+#define EXTENT_BITS_SN_SHIFT   (EXTENT_BITS_IS_HEAD_WIDTH + EXTENT_BITS_IS_HEAD_SHIFT)
+#define EXTENT_BITS_SN_MASK  (UINT64_MAX << EXTENT_BITS_SN_SHIFT)
+
+static inline unsigned int
+extent_arena_ind_get(uint64_t e_bits) {
+	unsigned int arena_ind = (unsigned int)((e_bits &
+		EXTENT_BITS_ARENA_MASK) >> EXTENT_BITS_ARENA_SHIFT);
+	return arena_ind;
+}
+
+static inline je_extent_state_t
+extent_state_get(uint64_t e_bits) {
+	return (je_extent_state_t)((e_bits & EXTENT_BITS_STATE_MASK) >>
+		EXTENT_BITS_STATE_SHIFT);
+}
+
+static inline bool
+extent_slab_get(uint64_t e_bits) {
+	return (bool)((e_bits & EXTENT_BITS_SLAB_MASK) >>
+		EXTENT_BITS_SLAB_SHIFT);
+}
+
+static inline unsigned
+extent_nfree_get(uint64_t e_bits) {
+	return (unsigned)((e_bits & EXTENT_BITS_NFREE_MASK) >>
+		EXTENT_BITS_NFREE_SHIFT);
+}
+
+static inline unsigned int
+extent_szind_get(uint64_t e_bits) {
+	unsigned int szind = (unsigned int)((e_bits & EXTENT_BITS_SZIND_MASK) >>
+		EXTENT_BITS_SZIND_SHIFT);
+	return szind;
+}
+

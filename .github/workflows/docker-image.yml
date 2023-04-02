@@ -16,7 +16,7 @@ jobs:
     - uses: actions/checkout@v3
     - name: Build the Docker image
       run: docker build . --file Dockerfile --tag core_analyzer:$(date +%s)
-    - name: Run test 12
+    - name: Run test ubuntu
       run: docker build . --file test/DockerfileTest_ubuntu --tag core_analyzer:ubuntu$(date +%s)
     - name: Run test 9
       run: docker build . --file test/DockerfileTest_gdb_9_2 --tag core_analyzer:9_2$(date +%s)

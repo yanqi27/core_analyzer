@@ -17,7 +17,7 @@ jobs:
     - name: Build the Docker image
       run: docker build . --file Dockerfile --tag core_analyzer:$(date +%s)
     - name: Run test 12
-      run: docker build . --file test/DockerfileTest_gdb_12_1 --tag core_analyzer:12_1$(date +%s)
+      run: docker build . --file test/DockerfileTest_ubuntu --tag core_analyzer:ubuntu$(date +%s)
     - name: Run test 9
       run: docker build . --file test/DockerfileTest_gdb_9_2 --tag core_analyzer:9_2$(date +%s)
     - name: Run test redhat

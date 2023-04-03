@@ -5,10 +5,7 @@
 # Dockerfile to test core analyzer against ptmalloc/tcmalloc/jemalloc
 # ==============================================================================================
 
-# opensuse/leap
-#   ptmalloc: fail because glibc-debuginfo doesn't match
-
-#ARG VARIANT="opensuse/leap"
+#ARG VARIANT="opensuse/leap:15.3"
 ARG VARIANT="opensuse/tumbleweed"
 FROM ${VARIANT}
 

@@ -11,8 +11,8 @@ set -ex
 #   12.1, 9.2
 #
 # ptmalloc
-#   2.37      ubuntu:23.04
-#   2.36      debian:bookworm
+#   2.37      ubuntu:23.04, opensuse/tumbleweed
+#   2.36      debian:bookworm, fedora:37
 #   2.35      ubuntu:22.04
 #   2.31      debian:bullseye, ubuntu:20.04
 #   2.28      redhat/ubi8
@@ -41,6 +41,12 @@ docker build --build-arg VARIANT="debian:bookworm" -t ca_test -q -f test/Dockerf
 
 docker system prune -af > /dev/null
 docker build --build-arg VARIANT="redhat/ubi8" -t ca_test -q -f test/DockerfileTest_redhat .
+
+docker system prune -af > /dev/null
+docker build --build-arg VARIANT="fedora:37" -t ca_test -q -f test/DockerfileTest_redhat .
+
+docker system prune -af > /dev/null
+docker build -t ca_test --build-arg VARIANT="opensuse/tumbleweed" -f test/DockerfileTest_suse .
 
 docker system prune -af > /dev/null
 docker build --build-arg VARIANT="ubuntu:18.04" -t ca_test -q -f test/DockerfileTest_gdb_9_2 .

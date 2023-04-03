@@ -7,8 +7,6 @@
 
 # redhat/ubi9
 #     ptmalloc(2.34) fails because of dynamic arena error.
-# fedora:37
-#     ptmalloc fails c++-object-search because gcore file misses global data segment
 
 #ARG VARIANT="redhat/ubi9"
 #ARG VARIANT="fedora:37"

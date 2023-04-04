@@ -46,10 +46,10 @@ docker system prune -af > /dev/null
 docker build --build-arg VARIANT="fedora:37" -t ca_test -q -f test/DockerfileTest_redhat .
 
 docker system prune -af > /dev/null
-docker build -t ca_test --build-arg VARIANT="opensuse/tumbleweed" -f test/DockerfileTest_suse .
+docker build --build-arg VARIANT="opensuse/tumbleweed" -t ca_test -q -f test/DockerfileTest_suse .
 
 docker system prune -af > /dev/null
-docker build -t ca_test --build-arg VARIANT="opensuse/leap:15.3" -f test/DockerfileTest_suse .
+docker build --build-arg VARIANT="opensuse/leap:15.3" -t ca_test -q -f test/DockerfileTest_suse .
 
 docker system prune -af > /dev/null
 docker build --build-arg VARIANT="ubuntu:18.04" -t ca_test -q -f test/DockerfileTest_gdb_9_2 .

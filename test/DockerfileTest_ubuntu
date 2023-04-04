@@ -6,8 +6,10 @@
 # ==============================================================================================
 
 #ARG VARIANT="debian:bullseye"
+#ARG VARIANT="debian:bookworm"
 #ARG VARIANT="ubuntu:20.04"
 ARG VARIANT="ubuntu:22.04"
+#ARG VARIANT="ubuntu:23.04"
 FROM ${VARIANT}
 
 # [Optional] Uncomment this section to install additional packages.

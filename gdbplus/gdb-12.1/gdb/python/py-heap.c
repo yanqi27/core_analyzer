@@ -12,6 +12,14 @@
 #include "python-internal.h"
 #include "heap.h"
 
+#define ENSURE_CA_HEAP()							\
+	do {											\
+		if (!CA_HEAP) {								\
+			PyErr_SetString (PyExc_MemoryError, _("No heap manager is detedted or selected.\n"));	\
+			return NULL;							\
+		}											\
+	} while (0)
+
 extern PyTypeObject heap_block_object_type
     CPYCHECKER_TYPE_OBJECT_FOR_TYPEDEF ("heap_block_object");
 
@@ -68,6 +76,7 @@ heap_block_new (PyTypeObject *type, PyObject *args, PyObject *keywords)
 		return NULL;
 	}
 
+	ENSURE_CA_HEAP();
 	if (addr && CA_HEAP->get_heap_block_info(addr, &blk) )
 	{
 		self = (heap_block_object *)type->tp_alloc(type, 1);
@@ -237,6 +246,7 @@ PyObject *gdbpy_heap_block (PyObject *self, PyObject *args)
 		return NULL;
 	}
 
+	ENSURE_CA_HEAP();
 	if (CA_HEAP->get_heap_block_info(addr, &blk))
 	{
 		heap_block_object* blk_object;
@@ -305,6 +315,7 @@ PyObject *gdbpy_heap_walk (PyObject *self, PyObject *args)
 		return NULL;
 	}
 
+	ENSURE_CA_HEAP();
 	if (CA_HEAP->get_next_heap_block (addr, &blk))
 	{
 		heap_block_object* blk_object;
@@ -374,6 +385,8 @@ PyObject *gdbpy_big_blocks (PyObject *self, PyObject *args)
 		PyErr_SetString (PyExc_MemoryError, _("Failed to read and initialize process's heap segments."));
 		return NULL;
 	}
+
+	ENSURE_CA_HEAP();
 
 	// now ask heap manager
 	blocks = (struct heap_block*) malloc (sizeof(struct heap_block) * n);

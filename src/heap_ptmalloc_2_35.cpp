@@ -684,10 +684,10 @@ static CoreAnalyzerHeapInterface sPtMallHeapManager = {
 void register_pt_malloc_2_35() {
     bool my_heap = false;
     if (pt::get_glibc_version(&glibc_ver_major, &glibc_ver_minor)) {
-        if (glibc_ver_major == 2 && glibc_ver_minor >= 32 && glibc_ver_minor <= 35)
+        if (glibc_ver_major == 2 && glibc_ver_minor >= 32 && glibc_ver_minor <= 37)
             my_heap = true;
     }
-    return register_heap_manager("pt 2.32-2.35", &sPtMallHeapManager, my_heap);
+    return register_heap_manager("pt 2.32-2.37", &sPtMallHeapManager, my_heap);
 }
 /***************************************************************************
 * Ptmalloc Helper Functions

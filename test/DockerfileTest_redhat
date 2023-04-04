@@ -6,9 +6,10 @@
 # ==============================================================================================
 
 # redhat/ubi9
-#     texinfo: fail to compile
+#     ptmalloc(2.34) fails because of dynamic arena error.
 
 #ARG VARIANT="redhat/ubi9"
+#ARG VARIANT="fedora:37"
 ARG VARIANT="redhat/ubi8"
 FROM ${VARIANT}
 
@@ -16,7 +17,7 @@ RUN set -euxo pipefail && \
     yum install -y wget procps-ng git autoconf gettext \
         gcc gcc-c++ make automake zlib-devel libtool diffutils \
         libcurl-devel sqlite-devel xz \
-        python3-devel sudo yum-utils
+        python3-devel sudo yum-utils cpan
 RUN ln -s /usr/bin/python3 /usr/bin/python
 RUN debuginfo-install -y glibc
 RUN echo 'set pagination off' > /root/.gdbinit
@@ -34,9 +35,9 @@ RUN cd /opt && \
     ./configure --prefix=/usr && make -j 4 && make install
 
 RUN cd /opt && \
-    wget https://ftp.gnu.org/gnu/texinfo/texinfo-6.8.tar.gz && \
-    tar xvf texinfo-6.8.tar.gz && \
-    cd texinfo-6.8 && \
+    wget https://ftp.gnu.org/gnu/texinfo/texinfo-7.0.3.tar.gz && \
+    tar xvf texinfo-7.0.3.tar.gz && \
+    cd texinfo-7.0.3 && \
     ./configure && make -j 4 && make install
 
 RUN cd /opt && \

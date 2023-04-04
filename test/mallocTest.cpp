@@ -22,6 +22,7 @@
 #endif
 
 #include <pthread.h>
+#include <fstream>
 #endif // _WIN32
 
 #include <stdint.h>
@@ -245,6 +246,23 @@ main(int argc, char** argv)
 {
 	int i;
 
+#ifdef __linux__
+	// Force core file include file-backed private/shared mappings
+	const char* coredump_filter_path = "/proc/self/coredump_filter";
+	unsigned int filter_value = 0x33;
+	std::ifstream ifile_stream(coredump_filter_path);
+	if (ifile_stream.is_open()) {
+		ifile_stream >> std::hex >> filter_value;
+		ifile_stream.close();
+		// Add bit 2 (file-backed private mapping) and 3 (file-backed shared mapping)
+		filter_value |= 0xc;
+		std::ofstream ofile_stream(coredump_filter_path);
+		if (ofile_stream.is_open()) {
+			ofile_stream << filter_value;
+			ofile_stream.close();
+		}
+	}
+#endif
 	// Initialize random number generator
 	srand ((unsigned int)time(NULL));
 	regions = (region *) calloc(num_regions, sizeof *regions);

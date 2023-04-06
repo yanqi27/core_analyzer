@@ -14,6 +14,7 @@ set -ex
 #   2.37      ubuntu:23.04, opensuse/tumbleweed
 #   2.36      debian:bookworm, fedora:37
 #   2.35      ubuntu:22.04, fedora:36
+#   2.34      redhat/ubi9
 #   2.31      debian:bullseye, ubuntu:20.04, opensuse/leap
 #   2.28      redhat/ubi8
 #   2.27      ubuntu:18.04
@@ -38,6 +39,9 @@ docker build --build-arg VARIANT="debian:bullseye" -t ca_test -q -f test/Dockerf
 
 docker system prune -af > /dev/null
 docker build --build-arg VARIANT="debian:bookworm" -t ca_test -q -f test/DockerfileTest_ubuntu .
+
+docker system prune -af > /dev/null
+docker build --build-arg VARIANT="redhat/ubi9" -t ca_test -q -f test/DockerfileTest_redhat .
 
 docker system prune -af > /dev/null
 docker build --build-arg VARIANT="redhat/ubi8" -t ca_test -q -f test/DockerfileTest_redhat .

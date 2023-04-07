@@ -26,3 +26,9 @@ It is more convinient to run the regression test in a container. The following c
 ```
 docker build -t ca_test -f test/DockerfileTest_...  .
 ```
+
+### Regression Test
+The full test suite is run by this script.
+```
+./test/regression.sh
+```

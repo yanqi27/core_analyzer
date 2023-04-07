@@ -5,9 +5,6 @@
 # Dockerfile to test core analyzer against ptmalloc/tcmalloc/jemalloc
 # ==============================================================================================
 
-# redhat/ubi9
-#     ptmalloc(2.34) fails because of dynamic arena error.
-
 #ARG VARIANT="fedora:37"
 #ARG VARIANT="fedora:36"
 #ARG VARIANT="redhat/ubi9"

@@ -186,7 +186,7 @@ static int glibc_ver_major = 0;
 static int glibc_ver_minor = 0;
 
 static struct ca_malloc_par mparams;
-
+static size_t g_heap_info_sz = sizeof(struct heap_info);
 static bool g_heap_ready = false;
 static struct ca_arena* g_arenas = NULL;
 static unsigned int g_arena_cnt = 0;
@@ -1320,7 +1320,7 @@ static struct ca_arena* build_arena(address_t arena_vaddr, enum HEAP_TYPE type)
 		{
 			address_t first_chunk;
 			struct heap_info hinfo;
-			size_t hinfo_sz = sizeof(struct heap_info);
+			size_t hinfo_sz = g_heap_info_sz;
 
 			segment = get_segment(h_vaddr, hinfo_sz);
 			if (!segment || !read_memory_wrapper(segment, h_vaddr, &hinfo, hinfo_sz))
@@ -1502,6 +1502,22 @@ read_mp_by_symbol(void)
 	return true;
 }
 
+static bool
+read_heap_info_by_symbol(void)
+{
+	/*
+	 * struct heap_info
+	 */
+	struct type *type = lookup_transparent_type("_heap_info");
+	if (type) {
+		type = check_typedef(type);
+		g_heap_info_sz = TYPE_LENGTH(type);
+		return true;
+	}
+	CA_PRINT("failed to lookup type \"heap_info\"\n");
+	return false;
+}
+
 static bool build_heaps_internal(address_t main_arena_vaddr, address_t mparams_vaddr)
 {
 	address_t arena_vaddr;
@@ -1536,6 +1552,10 @@ static bool build_heaps_internal(address_t main_arena_vaddr, address_t mparams_v
 		version_warning();
 		return false;
 	}
+
+	// Read type "struct heap_info"
+	rc = read_heap_info_by_symbol();
+	(void) rc;
 
 	/* Collect per-thread caches */
 	if (mparams.tcache_bins > 0) {

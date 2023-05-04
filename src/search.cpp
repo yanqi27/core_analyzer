@@ -184,29 +184,18 @@ search_value_internal(const std::list<struct object_range*>& targets,
 		std::list<struct object_reference*>& refs)
 {
 	bool lbFound = false;
-	unsigned int i;
-	unsigned int num_targets = targets.size();
 	std::vector<struct object_range*> target_array;
 
-	if (num_targets == 0)
+	if (targets.size() == 0)
 		return false;
-	else
-	{
-		// use an array terminated with NULL, for performance sake
-		target_array.reserve(num_targets + 1);
-		i = 0;
-		for (auto target : targets)
-			target_array.push_back(target);
-		target_array.push_back(nullptr);
-		if (i != num_targets + 1)
-		{
-			CA_PRINT("Internal error: corrupted target list\n");
-			return false;
-		}
-	}
+
+	// use an array terminated with NULL, for performance sake
+	for (auto target : targets)
+		target_array.push_back(target);
+	target_array.push_back(nullptr);
 
 	// search all threads' registers/stacks
-	for (i=0; i<g_segment_count; i++)
+	for (unsigned int i=0; i<g_segment_count; i++)
 	{
 		struct ca_segment* segment = &g_segments[i];
 

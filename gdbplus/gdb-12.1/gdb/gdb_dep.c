@@ -1233,6 +1233,17 @@ get_heap_object_type(const struct object_reference* ref)
 }
 
 bool
+global_text_ref(const struct object_reference* ref)
+{
+	if (ref->storage_type == ENUM_MODULE_TEXT) {
+		struct minimal_symbol* msym = get_global_minimal_sym(ref, nullptr, nullptr);
+		if (msym && (msym->type == mst_text || msym->type == mst_file_text))
+			return true;
+	}
+	return false;
+}
+
+bool
 known_global_sym(const struct object_reference* ref,
 		 address_t* sym_addr, size_t* sym_sz)
 {
@@ -1248,7 +1259,7 @@ known_stack_sym(const struct object_reference* ref,
 	return (sym != NULL);
 }
 
-static bool
+bool
 known_heap_block(const struct object_reference* ref)
 {
 	struct type* type = get_heap_object_type(ref);

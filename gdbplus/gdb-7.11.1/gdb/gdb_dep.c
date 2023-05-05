@@ -1197,7 +1197,7 @@ bool
 global_text_ref(const struct object_reference* ref)
 {
 	if (ref->storage_type == ENUM_MODULE_TEXT) {
-		struct minimal_symbol* msym = get_global_minimal_sym(ref, nullptr, nullptr);
+		struct minimal_symbol* msym = get_global_minimal_sym(ref, NULL, NULL);
 		if (msym && (msym->type == mst_text || msym->type == mst_file_text))
 			return true;
 	}

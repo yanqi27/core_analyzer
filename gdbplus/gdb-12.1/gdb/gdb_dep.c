@@ -397,7 +397,7 @@ build_segments(void)
 
 		if (strcmp (name, ".data") == 0 || strcmp (name, ".bss") == 0) {
 			type = ENUM_MODULE_DATA;
-		} else if (strcmp (name, ".text") == 0 || strcmp (name, ".rodata") == 0) {
+		} else if (strcmp (name, ".text") == 0 || strcmp (name, ".rodata") == 0 || strcmp (name, ".data.rel.ro") == 0) {
 			/* .rodata and .text sections are in the same segment */
 			type = ENUM_MODULE_TEXT;
 		}
@@ -975,12 +975,13 @@ print_struct_field(const struct object_reference* ref,
 			struct type* field_type = type->field(i).type();
 			size_t pos, field_size;
 
-			check_typedef(field_type);
-			pos = type->field(i).loc_bitpos() / 8;
-			field_size = field_type->length;
 			/* static member */
 			if (type->field(i).loc_kind() != FIELD_LOC_KIND_BITPOS)
 				continue;
+
+			check_typedef(field_type);
+			pos = type->field(i).loc_bitpos() / 8;
+			field_size = field_type->length;
 			if ( i+1 < num_fields
 				&& field_size == 1
 				&& (type->field(i+1).loc_bitpos() / 8) == pos )
@@ -1232,6 +1233,17 @@ get_heap_object_type(const struct object_reference* ref)
 }
 
 bool
+global_text_ref(const struct object_reference* ref)
+{
+	if (ref->storage_type == ENUM_MODULE_TEXT) {
+		struct minimal_symbol* msym = get_global_minimal_sym(ref, nullptr, nullptr);
+		if (msym && (msym->type == mst_text || msym->type == mst_file_text))
+			return true;
+	}
+	return false;
+}
+
+bool
 known_global_sym(const struct object_reference* ref,
 		 address_t* sym_addr, size_t* sym_sz)
 {
@@ -1247,7 +1259,7 @@ known_stack_sym(const struct object_reference* ref,
 	return (sym != NULL);
 }
 
-static bool
+bool
 known_heap_block(const struct object_reference* ref)
 {
 	struct type* type = get_heap_object_type(ref);

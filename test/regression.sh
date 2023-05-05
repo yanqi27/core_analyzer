@@ -64,4 +64,10 @@ docker build --build-arg VARIANT="ubuntu:18.04" -t ca_test -q -f test/Dockerfile
 docker system prune -af > /dev/null
 docker build --build-arg VARIANT="ubuntu:20.04" -t ca_test -q -f test/DockerfileTest_gdb_9_2 .
 
+docker system prune -af > /dev/null
+docker build --build-arg VARIANT="ubuntu:16.04" -t ca_test -q -f test/DockerfileTest_gdb_8_1 .
+
+docker system prune -af > /dev/null
+docker build --build-arg VARIANT="ubuntu:16.04" -t ca_test -q -f test/DockerfileTest_gdb_7_11_1 .
+
 echo "Success!"

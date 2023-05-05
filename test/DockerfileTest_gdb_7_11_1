@@ -1,0 +1,31 @@
+# ==============================================================================================
+# FILENAME	:	DockerfileTest
+# AUTHOR	:	yanqi27
+# CREATION	:	2023-05-04
+# Dockerfile to test core analyzer against ptmalloc/tcmalloc/jemalloc
+# ==============================================================================================
+
+ARG VARIANT="ubuntu:16.04"
+FROM ${VARIANT}
+
+# [Optional] Uncomment this section to install additional packages.
+RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
+    && apt install -y texinfo \
+    && apt install -y libgmp-dev \
+    && apt install -y build-essential \
+    && apt install -y wget \
+    && apt install -y python-dev \
+    && apt install -y dh-autoreconf \
+    && apt install -y git \
+    && apt install -y sudo \
+    && apt install -y libc6-dbg
+
+RUN echo 'set pagination off' > /root/.gdbinit
+
+WORKDIR /workspaces/core_analyzer/
+COPY . .
+
+WORKDIR /workspaces/core_analyzer/
+RUN ./build_gdb.sh 7.11.1
+WORKDIR test
+RUN make check

@@ -49,6 +49,8 @@ extern void print_heap_ref(const struct object_reference* ref);
 
 extern bool known_global_sym(const struct object_reference* ref, address_t* sym_addr, size_t* sym_sz);
 extern bool known_stack_sym(const struct object_reference* ref, address_t* sym_addr, size_t* sym_sz);
+extern bool known_heap_block(const struct object_reference* ref);
+extern bool global_text_ref(const struct object_reference* ref);
 
 extern address_t get_var_addr_by_name(const char*, bool);
 

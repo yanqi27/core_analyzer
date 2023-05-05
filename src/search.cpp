@@ -33,11 +33,11 @@ unsigned int g_max_indirection_level = 16;
 static unsigned int g_shrobj_level = 1;
 static const unsigned int MAX_SHROBJ_LEVEL = 16;
 
-static void* gp_mem_buf = NULL;
+static char* gp_mem_buf = nullptr;
 static size_t g_mem_buf_sz = 0;
 
 static int g_nregs = 0;
-static struct reg_value* g_regs_buf = NULL;
+static struct reg_value* g_regs_buf = nullptr;
 
 static const int min_chars = 4;
 
@@ -123,15 +123,7 @@ search_value_by_range(struct ca_segment* segment,
 					const char* next_ref = segment->m_faddr + offset;
 					address_t val;
 					if (ptr_sz == 8)
-					{
-#ifdef sun
-						// sparcv9 core aligns on 4-byte only. sigh..
-						if ((address_t)next_ref & 0x7ul)
-							memcpy(&val, next_ref, 8);
-						else
-#endif
-							val = *(address_t*)next_ref;
-					}
+						val = *(address_t*)next_ref;
 					else
 						val = *(unsigned int*)next_ref;
 
@@ -158,15 +150,7 @@ search_value_by_range(struct ca_segment* segment,
 			{
 				address_t val;
 				if (ptr_sz == 8)
-				{
-#ifdef sun
-					// sparcv9 core aligns on 4-byte only. sigh..
-					if ((address_t)next & 0x7ul)
-						memcpy(&val, next, 8);
-					else
-#endif
-						val = *(address_t*)next;
-				}
+					val = *(address_t*)next;
 				else
 					val = *(unsigned int*)next;
 
@@ -200,30 +184,18 @@ search_value_internal(const std::list<struct object_range*>& targets,
 		std::list<struct object_reference*>& refs)
 {
 	bool lbFound = false;
-	unsigned int i;
-	unsigned int num_targets = targets.size();
-	struct object_range** target_array = NULL;
+	std::vector<struct object_range*> target_array;
 
-	if (num_targets == 0)
+	if (targets.size() == 0)
 		return false;
-	else
-	{
-		// use an array terminated with NULL, for performance sake
-		target_array = (struct object_range**) malloc (sizeof(struct object_range*) * (num_targets+1));
-		i = 0;
-		for (auto target : targets)
-			target_array[i++] = target;
-		target_array[i++] = NULL;
-		if (i != num_targets + 1)
-		{
-			CA_PRINT("Internal error: corrupted target list\n");
-			free(target_array);
-			return false;
-		}
-	}
+
+	// use an array terminated with NULL, for performance sake
+	for (auto target : targets)
+		target_array.push_back(target);
+	target_array.push_back(nullptr);
 
 	// search all threads' registers/stacks
-	for (i=0; i<g_segment_count; i++)
+	for (unsigned int i=0; i<g_segment_count; i++)
 	{
 		struct ca_segment* segment = &g_segments[i];
 
@@ -256,8 +228,8 @@ search_value_internal(const std::list<struct object_range*>& targets,
 				if (segment->m_fsize > g_mem_buf_sz)
 				{
 					if (gp_mem_buf)
-						free(gp_mem_buf);
-					gp_mem_buf = malloc(segment->m_fsize);
+						delete gp_mem_buf;
+					gp_mem_buf = new char[segment->m_fsize];
 					g_mem_buf_sz = segment->m_fsize;
 				}
 				if (!read_memory_wrapper(segment, segment->m_vaddr, gp_mem_buf, segment->m_fsize) )
@@ -266,7 +238,7 @@ search_value_internal(const std::list<struct object_range*>& targets,
 					continue;
 				}
 				else
-					segment->m_faddr = (char*) gp_mem_buf;
+					segment->m_faddr = gp_mem_buf;
 			}
 			// begin to scan memory, pointed by segment->m_faddr
 			while (1)
@@ -274,11 +246,11 @@ search_value_internal(const std::list<struct object_range*>& targets,
 				address_t val   = 0xdeadbeef;
 				address_t vaddr = 0xdeadbeef;
 
-				if(search_value_by_range(segment, &next_bit_index, target_array, target_is_ptr, &val, &vaddr))
+				if(search_value_by_range(segment, &next_bit_index, &target_array[0], target_is_ptr, &val, &vaddr))
 				{
 					// find a match in this segment
 					bool valid_ref = false;
-					struct object_reference* ref = (struct object_reference*) malloc(sizeof(struct object_reference));
+					struct object_reference* ref = new struct object_reference;
 					ref->storage_type = segment->m_type;
 					ref->vaddr        = vaddr;
 					ref->value        = val;
@@ -323,14 +295,9 @@ search_value_internal(const std::list<struct object_range*>& targets,
 					{
 						refs.push_front(ref);
 						lbFound = true;
-						#if 0
-						// avoid exceedingly too many refs for any human being to read
-						if (refs.size() > 16 * 1024)
-							break;
-						#endif
 					}
 					else
-						free(ref);
+						delete ref;
 					next_bit_index++;
 				}
 				else
@@ -341,10 +308,6 @@ search_value_internal(const std::list<struct object_range*>& targets,
 				segment->m_faddr = NULL;
 		}
 	}
-
-	// cleanup
-	if (target_array)
-		free(target_array);
 
 	return lbFound;
 }
@@ -497,7 +460,7 @@ bool find_object_refs_on_threads(address_t obj_vaddr, size_t obj_sz, unsigned in
 	if (g_nregs == 0)
 	{
 		g_nregs = read_registers (NULL, NULL, 0);
-		g_regs_buf = (struct reg_value*) malloc(g_nregs * sizeof(struct reg_value));
+		g_regs_buf = new struct reg_value[g_nregs];
 	}
 
 	g_output_count = 0;
@@ -634,26 +597,23 @@ bool find_object_refs(address_t obj_vaddr, size_t obj_sz, unsigned int iLevel)
 	std::list<struct object_reference*> ref_list;
 
 	// references are placed in an array
-	unsigned int ref_cnt = 0;
-	unsigned int ref_buf_sz = 64;
-	struct object_reference** refs = (struct object_reference**) malloc(sizeof(struct object_reference*)*ref_buf_sz);
+	std::vector<struct object_reference*> refs;
 
 	// the 1st element is the searched target
-	refs[0] = (struct object_reference*) malloc(sizeof(struct object_reference));
-	ref = refs[0];
+	ref = new struct object_reference;
 	ref->level = 0;
 	ref->target_index = -1;
 	ref->storage_type = ENUM_UNKNOWN;
 	ref->vaddr        = obj_vaddr;
 	ref->value        = 0;
 	ref->where.target.size = obj_sz;
-	ref_cnt++;
+	refs.push_back(ref);
 	//fill_ref_location(ref);
 
 	// search references and put in the vector flat out
 	for (n=0; n<iLevel; n++)
 	{
-		unsigned int vec_sz = ref_cnt;
+		unsigned int vec_sz = refs.size();
 		for (i=0; i<vec_sz; i++)
 		{
 			ref = refs[i];
@@ -686,8 +646,7 @@ bool find_object_refs(address_t obj_vaddr, size_t obj_sz, unsigned int iLevel)
 						int dup_heap_block = false;
 						if (aref->storage_type == ENUM_HEAP)
 						{
-							int k;
-							for (k=ref_cnt-1; k>=0; k--)
+							for (int k=refs.size()-1; k>=0; k--)
 							{
 								const struct object_reference* cursor = refs[k];
 								if (cursor->storage_type == ENUM_HEAP && cursor->where.heap.addr == aref->where.heap.addr)
@@ -702,16 +661,10 @@ bool find_object_refs(address_t obj_vaddr, size_t obj_sz, unsigned int iLevel)
 							// append the newly found reference
 							aref->level = n + 1;
 							aref->target_index = i;
-							if (ref_cnt >= ref_buf_sz)
-							{
-								refs = (struct object_reference**) realloc(refs, ref_buf_sz*2*sizeof(struct object_reference*));
-								ref_buf_sz *= 2;
-							}
-							refs[ref_cnt] = aref;
-							ref_cnt++;
+							refs.push_back(aref);
 						}
 						else
-							free(aref);
+							delete aref;
 					}
 					ref_list.clear();
 				}
@@ -721,9 +674,9 @@ bool find_object_refs(address_t obj_vaddr, size_t obj_sz, unsigned int iLevel)
 	ref_list.clear();
 
 	// display the result
-	if (ref_cnt > 1)
+	if (refs.size() > 1)
 	{
-		int ref_cursor = ref_cnt - 1;
+		int ref_cursor = refs.size() - 1;
 		int cur_level = iLevel;
 		int indent = 0;
 		int prev_target = refs[ref_cursor]->target_index;
@@ -770,11 +723,10 @@ bool find_object_refs(address_t obj_vaddr, size_t obj_sz, unsigned int iLevel)
 	}
 
 	// clean up
-	for (i=0; i<ref_cnt; i++)
-		free(refs[i]);
-	free(refs);
+	for (auto aref : refs)
+		delete aref;
 
-	if (ref_cnt > 1)
+	if (refs.size() > 1)
 		return true;
 	return false;
 }
@@ -793,10 +745,7 @@ bool find_object_type(address_t obj_vaddr)
 	std::list<struct object_reference*> ref_list;
 
 	// references are placed in an array
-	unsigned int k;
-	unsigned int ref_cnt = 0;
-	unsigned int ref_buf_sz = 64;
-	struct object_reference** refs;
+	std::vector<struct object_reference*> refs;
 
 	// sanity check
 	if (!get_segment(obj_vaddr, 1))
@@ -805,17 +754,15 @@ bool find_object_type(address_t obj_vaddr)
 		return false;
 	}
 
-	refs = (struct object_reference**) malloc(sizeof(struct object_reference*)*ref_buf_sz);
 	// the 1st element is the searched target
-	refs[0] = (struct object_reference*) malloc(sizeof(struct object_reference));
-	ref = refs[0];
+	ref = new struct object_reference;
 	ref->level = 0;
 	ref->target_index = -1;
 	ref->storage_type = ENUM_UNKNOWN;
 	ref->vaddr        = obj_vaddr;
 	ref->value        = 0;
 	ref->where.target.size = 1;
-	ref_cnt++;
+	refs.push_back(ref);
 
 	fill_ref_location(ref);
 	if (ref->storage_type == ENUM_HEAP)
@@ -846,7 +793,7 @@ bool find_object_type(address_t obj_vaddr)
 		// Deep search of heap objects
 		for (n=0; !lbFound && n<g_max_indirection_level; n++)
 		{
-			int vec_sz = ref_cnt;
+			int vec_sz = refs.size();
 			if (refs[vec_sz-1]->level != n)	// no more candidate to search
 				break;
 
@@ -874,50 +821,53 @@ bool find_object_type(address_t obj_vaddr)
 				// invoke full-core memory search
 				if (search_value_internal(targets, target_is_ptr, ENUM_ALL, ref_list) )
 				{
-					// first scan for success, global/stack/heap w/o _vptr
-					for (auto aref : ref_list)
-					{
-						int remove_heap_block = false;
+					// first scan for known symbol
+					std::set<struct object_reference*> validRefs;
+					for (auto aref : ref_list) {
 						if ( (aref->storage_type == ENUM_STACK && aref->where.stack.frame >= 0)
 							|| aref->storage_type == ENUM_REGISTER
 							|| aref->storage_type == ENUM_MODULE_DATA
-							|| (aref->storage_type==ENUM_HEAP && aref->where.heap.inuse && is_heap_object_with_vptr(aref, NULL, 0)) )
+							|| (aref->storage_type==ENUM_HEAP && aref->where.heap.inuse && known_heap_block(aref)) )
 						{
+							// find a known symbol that references the target address
 							lbFound = true;
+							validRefs.insert(aref);
 						}
-						// remove self-reference or free heap block
-						if (!lbFound && aref->storage_type == ENUM_HEAP)
-						{
-							if (aref->where.heap.inuse)
-							{
-								int refidx;
-								for (refidx=ref_cnt-1; refidx>=0; refidx--)
+					}
+					if (!lbFound) {
+						// second scan if none of the refs is good
+						// select proper refs as the next-level search targets
+						for (auto aref : ref_list) {
+							// only consider in-use heap block
+							if (aref->storage_type == ENUM_HEAP && aref->where.heap.inuse) {
+								// remove self-reference
+								bool selfRef = false;
+								for (int refidx=refs.size()-1; refidx>=0; refidx--)
 								{
 									const struct object_reference* cursor = refs[refidx];
 									if (cursor->storage_type == ENUM_HEAP && cursor->where.heap.addr == aref->where.heap.addr)
 									{
-										remove_heap_block = true;
+										selfRef = true;
 										break;
 									}
 								}
+								if (!selfRef)
+									validRefs.insert(aref);
+							} else if (aref->storage_type == ENUM_MODULE_TEXT) {
+								if (!global_text_ref(aref))
+									validRefs.insert(aref);
 							}
-							else
-								remove_heap_block = true;
 						}
-						if (remove_heap_block)
-							free(aref);
-						else
-						{
-							// append the newly found reference
+					}
+					for (auto aref : ref_list) {
+						// append the valid refs as either result or targets of the next-level search
+						if (validRefs.find(aref) != validRefs.end()) {
 							aref->level = n + 1;
 							aref->target_index = i;
-							if (ref_cnt >= ref_buf_sz)
-							{
-								refs = (struct object_reference**) realloc(refs, ref_buf_sz*2*sizeof(struct object_reference*));
-								ref_buf_sz *= 2;
-							}
-							refs[ref_cnt] = aref;
-							ref_cnt++;
+							refs.push_back(aref);
+						} else {
+							// free others
+							delete aref;
 						}
 					}
 				}
@@ -935,8 +885,8 @@ bool find_object_type(address_t obj_vaddr)
 	if (lbFound)
 	{
 		int count;
-		n = refs[ref_cnt-1]->level;
-		for (i=ref_cnt-1, count=1; i>=0 && refs[i]->level==n; i--)
+		n = refs.back()->level;
+		for (i=refs.size()-1, count=1; i>=0 && refs[i]->level==n; i--)
 		{
 			ref = refs[i];
 			if ( (ref->storage_type == ENUM_STACK && ref->where.stack.frame >= 0)
@@ -964,9 +914,8 @@ bool find_object_type(address_t obj_vaddr)
 	clear_addr_type_map();
 
 	// clean up
-	for (k=0; k<ref_cnt; k++)
-		free(refs[k]);
-	free(refs);
+	for (auto aref : refs)
+		delete aref;
 
 	return lbFound;
 }
@@ -1120,46 +1069,12 @@ bool search_cplusplus_objects_and_references(const char* exp, bool search_ref, b
 					// print out object
     				ref->value = 0;
 					print_ref(ref, 1, false, false);
-					#if 0
-					// put object as the target for the search of its reference
-					target = (struct object_range*) malloc (sizeof(struct object_range));
-					target->low = ref->vaddr;
-					target->high = target->low + type_sz;
-					if (ref->storage_type == ENUM_HEAP
-							&& target->high > ref->where.heap.addr + ref->where.heap.size)
-						target->high = ref->where.heap.addr + ref->where.heap.size;
-					ref_targets.push_front(target);
-					#endif
     			}
     			// release this found item and move on to the next
     			free (ref);
     		}
 			CA_PRINT("Total objects found: " PRINT_FORMAT_SIZE "\n", obj_count);
     		ref_list.clear();
-
-			#if 0	// This seems nice-to-have but unnecessary, it sometimes takes forever to finish
-    		if (search_ref && !ref_targets.empty())
-    		{
-				// Search the references to found objects
-				CA_PRINT ("\nSearching references to above objects\n");
-				if (search_value_internal(ref_targets, true, ENUM_ALL, ref_list))
-				{
-					for (ref : ref_list)
-					{
-						// print out reference
-						print_ref(ref, 1, false, true);
-						// release this reference
-						free (ref);
-					}
-		    		ref_list.clear();
-				}
-				// clean up
-				for (target : ref_targets)
-				{
-					free (target);
-				}
-    		}
-			#endif
     	}
     	else
     		CA_PRINT ("No objects are found\n");
@@ -1191,7 +1106,7 @@ find_shared_objects_one_thread(struct ca_segment* segment, bool ignore_new_shrob
 	if (g_nregs == 0)
 	{
 		g_nregs = read_registers (NULL, NULL, 0);
-		g_regs_buf = (struct reg_value*) malloc(g_nregs * sizeof(struct reg_value));
+		g_regs_buf = new struct reg_value[g_nregs];
 	}
 
 	// read register values of this thread context
@@ -1203,7 +1118,7 @@ find_shared_objects_one_thread(struct ca_segment* segment, bool ignore_new_shrob
 			shrobj = add_one_shared_object(g_regs_buf[k].value, ignore_new_shrobj, 1);
 			if (shrobj)
 			{
-				aref = (struct object_reference*) malloc(sizeof(struct object_reference));
+				aref = new struct object_reference;
 				memset(aref, 0, sizeof(struct object_reference));
 				aref->value = g_regs_buf[k].value;
 				aref->storage_type = ENUM_REGISTER;
@@ -1232,7 +1147,7 @@ find_shared_objects_one_thread(struct ca_segment* segment, bool ignore_new_shrob
 				address_t var_addr = 0;
 				size_t    var_size = 0;
 
-				aref = (struct object_reference*) malloc(sizeof(struct object_reference));
+				aref = new struct object_reference;
 				memset(aref, 0, sizeof(struct object_reference));
 				aref->storage_type = ENUM_STACK;
 				aref->vaddr = cursor;
@@ -1351,26 +1266,6 @@ static bool shared_objects_internal(std::list<int>& threads, bool verbose)
 			find_shared_objects_one_thread (segment, false);
 	}
 
-#if 0
-	// Second search all other threads' registers/stacks,
-	// ignore all new shared objects, and append owner for previously found shared objects
-
-	// It is a bit confusing to include threads that are not selected
-	for (i=0; i<g_segment_count; i++)
-	{
-		if (user_request_break())
-		{
-			if (verbose)
-				CA_PRINT("Abort searching shared objects\n");
-			break;
-		}
-
-		segment = &g_segments[i];
-		if (segment->m_type == ENUM_STACK && !input_tid_map[segment->m_thread.tid])
-			find_shared_objects_one_thread (segment, true);
-	}
-#endif
-
 	// clean up
 	delete[] input_tid_map;
 
@@ -1396,7 +1291,7 @@ std::list<struct object_reference*> search_shared_objects_by_threads(std::list<i
 				continue;
 			else if (has_multiple_thread_owners(shrobj))
 			{
-				struct object_reference* ref = (struct object_reference*) malloc(sizeof(struct object_reference));
+				struct object_reference* ref = new struct object_reference;
 				ref->vaddr = shrobj->start;
 				ref->value = 0;
 				ref->target_index = -1;
@@ -1801,7 +1696,7 @@ static void empty_shared_objects(void)
 		auto shrobj = *itr;
 		// cleanup owners
 		for (auto ref : shrobj->thread_owners)
-			free(ref);
+			delete ref;
 		shrobj->thread_owners.clear();
 		shrobj->parent_shrobjs.clear();
 		// free shared object itself

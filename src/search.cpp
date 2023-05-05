@@ -250,7 +250,7 @@ search_value_internal(const std::list<struct object_range*>& targets,
 				{
 					// find a match in this segment
 					bool valid_ref = false;
-					struct object_reference* ref = (struct object_reference*) malloc(sizeof(struct object_reference));
+					struct object_reference* ref = new struct object_reference;
 					ref->storage_type = segment->m_type;
 					ref->vaddr        = vaddr;
 					ref->value        = val;
@@ -297,7 +297,7 @@ search_value_internal(const std::list<struct object_range*>& targets,
 						lbFound = true;
 					}
 					else
-						free(ref);
+						delete ref;
 					next_bit_index++;
 				}
 				else
@@ -600,7 +600,7 @@ bool find_object_refs(address_t obj_vaddr, size_t obj_sz, unsigned int iLevel)
 	std::vector<struct object_reference*> refs;
 
 	// the 1st element is the searched target
-	ref = (struct object_reference*) malloc(sizeof(struct object_reference));
+	ref = new struct object_reference;
 	ref->level = 0;
 	ref->target_index = -1;
 	ref->storage_type = ENUM_UNKNOWN;
@@ -664,7 +664,7 @@ bool find_object_refs(address_t obj_vaddr, size_t obj_sz, unsigned int iLevel)
 							refs.push_back(aref);
 						}
 						else
-							free(aref);
+							delete aref;
 					}
 					ref_list.clear();
 				}
@@ -724,7 +724,7 @@ bool find_object_refs(address_t obj_vaddr, size_t obj_sz, unsigned int iLevel)
 
 	// clean up
 	for (auto aref : refs)
-		free(aref);
+		delete aref;
 
 	if (refs.size() > 1)
 		return true;
@@ -755,7 +755,7 @@ bool find_object_type(address_t obj_vaddr)
 	}
 
 	// the 1st element is the searched target
-	ref = (struct object_reference*) malloc(sizeof(struct object_reference));
+	ref = new struct object_reference;
 	ref->level = 0;
 	ref->target_index = -1;
 	ref->storage_type = ENUM_UNKNOWN;
@@ -867,7 +867,7 @@ bool find_object_type(address_t obj_vaddr)
 							refs.push_back(aref);
 						} else {
 							// free others
-							free(aref);
+							delete aref;
 						}
 					}
 				}
@@ -915,7 +915,7 @@ bool find_object_type(address_t obj_vaddr)
 
 	// clean up
 	for (auto aref : refs)
-		free(aref);
+		delete aref;
 
 	return lbFound;
 }
@@ -1118,7 +1118,7 @@ find_shared_objects_one_thread(struct ca_segment* segment, bool ignore_new_shrob
 			shrobj = add_one_shared_object(g_regs_buf[k].value, ignore_new_shrobj, 1);
 			if (shrobj)
 			{
-				aref = (struct object_reference*) malloc(sizeof(struct object_reference));
+				aref = new struct object_reference;
 				memset(aref, 0, sizeof(struct object_reference));
 				aref->value = g_regs_buf[k].value;
 				aref->storage_type = ENUM_REGISTER;
@@ -1147,7 +1147,7 @@ find_shared_objects_one_thread(struct ca_segment* segment, bool ignore_new_shrob
 				address_t var_addr = 0;
 				size_t    var_size = 0;
 
-				aref = (struct object_reference*) malloc(sizeof(struct object_reference));
+				aref = new struct object_reference;
 				memset(aref, 0, sizeof(struct object_reference));
 				aref->storage_type = ENUM_STACK;
 				aref->vaddr = cursor;
@@ -1291,7 +1291,7 @@ std::list<struct object_reference*> search_shared_objects_by_threads(std::list<i
 				continue;
 			else if (has_multiple_thread_owners(shrobj))
 			{
-				struct object_reference* ref = (struct object_reference*) malloc(sizeof(struct object_reference));
+				struct object_reference* ref = new struct object_reference;
 				ref->vaddr = shrobj->start;
 				ref->value = 0;
 				ref->target_index = -1;
@@ -1696,7 +1696,7 @@ static void empty_shared_objects(void)
 		auto shrobj = *itr;
 		// cleanup owners
 		for (auto ref : shrobj->thread_owners)
-			free(ref);
+			delete ref;
 		shrobj->thread_owners.clear();
 		shrobj->parent_shrobjs.clear();
 		// free shared object itself

@@ -28,6 +28,10 @@ echo "Current project folder is $PROJECT_FOLDER"
 build_folder=$PROJECT_FOLDER/build
 mkdir -p $build_folder
 cd $build_folder
+
+# workaround the problem of multi builds from the same source folder, for example, 2.15 and 2.14
+rm -rf ./gperftools
+
 scr_dir="gperftools"
 if [ ! -d $scr_dir ]
 then

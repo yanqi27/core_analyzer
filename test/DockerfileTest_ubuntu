@@ -32,7 +32,7 @@ COPY . .
 
 RUN ./build_gdb.sh 12.1
 RUN ./build_jemalloc.sh 5.3.0
-RUN ./build_tcmalloc.sh 2.10
+RUN ./build_tcmalloc.sh 2.15
 WORKDIR test
 RUN make check
 RUN make check-tcmalloc
@@ -47,6 +47,31 @@ WORKDIR /workspaces/core_analyzer/
 RUN ./build_jemalloc.sh 5.2.0
 WORKDIR test
 RUN make check-jemalloc
+
+WORKDIR /workspaces/core_analyzer/
+RUN ./build_tcmalloc.sh 2.14
+WORKDIR test
+RUN make check-tcmalloc
+
+WORKDIR /workspaces/core_analyzer/
+RUN ./build_tcmalloc.sh 2.13
+WORKDIR test
+RUN make check-tcmalloc
+
+WORKDIR /workspaces/core_analyzer/
+RUN ./build_tcmalloc.sh 2.12
+WORKDIR test
+RUN make check-tcmalloc
+
+WORKDIR /workspaces/core_analyzer/
+RUN ./build_tcmalloc.sh 2.11
+WORKDIR test
+RUN make check-tcmalloc
+
+WORKDIR /workspaces/core_analyzer/
+RUN ./build_tcmalloc.sh 2.10
+WORKDIR test
+RUN make check-tcmalloc
 
 WORKDIR /workspaces/core_analyzer/
 RUN ./build_tcmalloc.sh 2.9

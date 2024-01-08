@@ -7,8 +7,8 @@
 
 #ARG VARIANT="fedora:37"
 #ARG VARIANT="fedora:36"
-#ARG VARIANT="redhat/ubi9"
-ARG VARIANT="redhat/ubi8"
+ARG VARIANT="redhat/ubi9"
+#ARG VARIANT="redhat/ubi8"
 FROM ${VARIANT}
 
 RUN set -euxo pipefail && \

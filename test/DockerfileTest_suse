@@ -22,10 +22,9 @@ RUN cd /opt && \
     ./configure && make -j 4 && make install
 
 RUN cd /opt && \
-    wget --no-check-certificate https://www.mpfr.org/mpfr-current/mpfr-4.2.0.tar.xz && \
-    tar xvf mpfr-4.2.0.tar.xz && \
-    cd mpfr-4.2.0 && \
-    ./configure && make -j 4 && make install
+    git clone https://gitlab.inria.fr/mpfr/mpfr.git && \
+    cd mpfr && \
+    ./autogen.sh && ./configure && make -j 4 && make install
 
 RUN zypper mr -ea && \
     zypper install -y glibc-debuginfo

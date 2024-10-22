@@ -10,6 +10,7 @@
 #ARG VARIANT="ubuntu:20.04"
 ARG VARIANT="ubuntu:22.04"
 #ARG VARIANT="ubuntu:23.04"
+#ARG VARIANT="ubuntu:24.04"
 FROM ${VARIANT}
 
 # [Optional] Uncomment this section to install additional packages.
@@ -19,11 +20,13 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     && apt install -y build-essential \
     && apt install -y wget \
     && apt install -y python3-dev \
+    && apt install -y python3-pip \
     && apt install -y dh-autoreconf \
     && apt install -y git \
     && apt install -y sudo \
     && apt install -y libc6-dbg
 
+RUN if [[ $VARIANT == "ubuntu:24.04" ]] ; then pip install setuptools ; fi
 RUN ln -s /usr/bin/python3 /usr/bin/python
 RUN echo 'set pagination off' > /root/.gdbinit
 

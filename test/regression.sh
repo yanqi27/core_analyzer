@@ -33,9 +33,6 @@ docker system prune -af > /dev/null
 docker build --build-arg VARIANT="ubuntu:22.04" -t ca_test -q -f test/DockerfileTest_ubuntu .
 
 docker system prune -af > /dev/null
-docker build --build-arg VARIANT="ubuntu:23.04" -t ca_test -q -f test/DockerfileTest_ubuntu .
-
-docker system prune -af > /dev/null
 docker build --build-arg VARIANT="ubuntu:24.04" -t ca_test -q -f test/DockerfileTest_ubuntu .
 
 docker system prune -af > /dev/null

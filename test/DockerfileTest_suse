@@ -37,7 +37,8 @@ RUN echo 'set pagination off' > /root/.gdbinit
 WORKDIR /workspaces/core_analyzer/
 COPY . .
 
-RUN zypper install -y gdb && \
+RUN zypper install -y gdb python3-pip && \
+    pip install distro && \
     python test/extra_setup.py
 
 RUN ./build_gdb.sh 12.1

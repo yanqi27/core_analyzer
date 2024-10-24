@@ -11,29 +11,27 @@ set -ex
 #   12.1, 9.2
 #
 # ptmalloc
-#   2.38      ubuntu:24.04, fedora:39
-#   2.37      ubuntu:23.04, opensuse/tumbleweed, fedora:38
-#   2.36      debian:bookworm, fedora:37
-#   2.35      ubuntu:22.04, fedora:36
-#   2.34      redhat/ubi9
-#   2.31      debian:bullseye, ubuntu:20.04, opensuse/leap
-#   2.28      redhat/ubi8 (failed because tcache_entry is mangled presumably for security reasons)
-#   2.27      ubuntu:18.04
+#   2.40 - 2.27
 #
 # tcmalloc
 #   2.15 - 2.7
 #
 # jemalloc
 #   5.3.0, 5.2.1, 5.2.0
+#
+# distros
+#   ubuntu:24.04, ubuntu:22.04, ubuntu:20.04
+#   debian:bookworm(12), debian:bullseye(11)
+#   redhat/ubi9, redhat/ubi8 (failed because tcache_entry is mangled presumably for security reasons)
+#   fedora:40, fedora:39
+#   opensuse/tumbleweed, opensuse/leap:15.5, opensuse/leap:15.6
+#
 
 docker system prune -af > /dev/null
 docker build --build-arg VARIANT="ubuntu:20.04" -t ca_test -q -f test/DockerfileTest_ubuntu .
 
 docker system prune -af > /dev/null
 docker build --build-arg VARIANT="ubuntu:22.04" -t ca_test -q -f test/DockerfileTest_ubuntu .
-
-docker system prune -af > /dev/null
-docker build --build-arg VARIANT="ubuntu:23.04" -t ca_test -q -f test/DockerfileTest_ubuntu .
 
 docker system prune -af > /dev/null
 docker build --build-arg VARIANT="ubuntu:24.04" -t ca_test -q -f test/DockerfileTest_ubuntu .
@@ -51,30 +49,21 @@ docker build --build-arg VARIANT="redhat/ubi9" -t ca_test -q -f test/DockerfileT
 # docker build --build-arg VARIANT="redhat/ubi8" -t ca_test -q -f test/DockerfileTest_redhat .
 
 docker system prune -af > /dev/null
+docker build --build-arg VARIANT="fedora:40" -t ca_test -q -f test/DockerfileTest_redhat .
+
+docker system prune -af > /dev/null
 docker build --build-arg VARIANT="fedora:39" -t ca_test -q -f test/DockerfileTest_redhat .
-
-docker system prune -af > /dev/null
-docker build --build-arg VARIANT="fedora:38" -t ca_test -q -f test/DockerfileTest_redhat .
-
-docker system prune -af > /dev/null
-docker build --build-arg VARIANT="fedora:37" -t ca_test -q -f test/DockerfileTest_redhat .
 
 docker system prune -af > /dev/null
 docker build --build-arg VARIANT="opensuse/tumbleweed" -t ca_test -q -f test/DockerfileTest_suse .
 
 docker system prune -af > /dev/null
-docker build --build-arg VARIANT="opensuse/leap:15.3" -t ca_test -q -f test/DockerfileTest_suse .
+docker build --build-arg VARIANT="opensuse/leap:15.5" -t ca_test -q -f test/DockerfileTest_suse .
 
 docker system prune -af > /dev/null
-docker build --build-arg VARIANT="ubuntu:18.04" -t ca_test -q -f test/DockerfileTest_gdb_9_2 .
+docker build --build-arg VARIANT="opensuse/leap:15.6" -t ca_test -q -f test/DockerfileTest_suse .
 
 docker system prune -af > /dev/null
 docker build --build-arg VARIANT="ubuntu:20.04" -t ca_test -q -f test/DockerfileTest_gdb_9_2 .
-
-docker system prune -af > /dev/null
-docker build --build-arg VARIANT="ubuntu:16.04" -t ca_test -q -f test/DockerfileTest_gdb_8_1 .
-
-docker system prune -af > /dev/null
-docker build --build-arg VARIANT="ubuntu:16.04" -t ca_test -q -f test/DockerfileTest_gdb_7_11_1 .
 
 echo "Success!"

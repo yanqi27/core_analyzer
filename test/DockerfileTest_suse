@@ -5,8 +5,10 @@
 # Dockerfile to test core analyzer against ptmalloc/tcmalloc/jemalloc
 # ==============================================================================================
 
-#ARG VARIANT="opensuse/leap:15.3"
-ARG VARIANT="opensuse/tumbleweed"
+#ARG VARIANT="opensuse/tumbleweed"
+#ARG VARIANT="opensuse/leap:15.5"
+ARG VARIANT="opensuse/leap:15.6"
+
 FROM ${VARIANT}
 
 # [Optional] Uncomment this section to install additional packages.
@@ -34,6 +36,10 @@ RUN echo 'set pagination off' > /root/.gdbinit
 
 WORKDIR /workspaces/core_analyzer/
 COPY . .
+
+RUN zypper install -y gdb python3-pip && \
+    pip install distro && \
+    python test/extra_setup.py
 
 RUN ./build_gdb.sh 12.1
 RUN ./build_jemalloc.sh 5.3.0

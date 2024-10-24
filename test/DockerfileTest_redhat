@@ -5,8 +5,8 @@
 # Dockerfile to test core analyzer against ptmalloc/tcmalloc/jemalloc
 # ==============================================================================================
 
-#ARG VARIANT="fedora:37"
-#ARG VARIANT="fedora:36"
+#ARG VARIANT="fedora:40"
+#ARG VARIANT="fedora:39"
 ARG VARIANT="redhat/ubi9"
 #ARG VARIANT="redhat/ubi8"
 FROM ${VARIANT}
@@ -46,6 +46,8 @@ RUN cd /opt && \
 
 WORKDIR /workspaces/core_analyzer/
 COPY . .
+
+RUN python test/extra_setup.py
 
 RUN ./build_gdb.sh 12.1
 RUN ./build_tcmalloc.sh 2.10

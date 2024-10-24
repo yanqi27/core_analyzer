@@ -38,7 +38,7 @@ WORKDIR /workspaces/core_analyzer/
 COPY . .
 
 RUN zypper install -y gdb && \
-    python3 test/ensure_glibc_debuginfo.py
+    python test/extra_setup.py
 
 RUN ./build_gdb.sh 12.1
 RUN ./build_jemalloc.sh 5.3.0

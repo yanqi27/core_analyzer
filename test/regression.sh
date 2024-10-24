@@ -23,7 +23,7 @@ set -ex
 #   ubuntu:24.04, ubuntu:22.04, ubuntu:20.04
 #   debian:bookworm(12), debian:bullseye(11)
 #   redhat/ubi9, redhat/ubi8 (failed because tcache_entry is mangled presumably for security reasons)
-#   fedora:39
+#   fedora:40, fedora:39
 #   opensuse/tumbleweed, opensuse/leap:15.5, opensuse/leap:15.6
 #
 
@@ -47,6 +47,9 @@ docker build --build-arg VARIANT="redhat/ubi9" -t ca_test -q -f test/DockerfileT
 
 # docker system prune -af > /dev/null
 # docker build --build-arg VARIANT="redhat/ubi8" -t ca_test -q -f test/DockerfileTest_redhat .
+
+docker system prune -af > /dev/null
+docker build --build-arg VARIANT="fedora:40" -t ca_test -q -f test/DockerfileTest_redhat .
 
 docker system prune -af > /dev/null
 docker build --build-arg VARIANT="fedora:39" -t ca_test -q -f test/DockerfileTest_redhat .

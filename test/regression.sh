@@ -60,7 +60,10 @@ docker system prune -af > /dev/null
 docker build --build-arg VARIANT="opensuse/tumbleweed" -t ca_test -q -f test/DockerfileTest_suse .
 
 docker system prune -af > /dev/null
-docker build --build-arg VARIANT="opensuse/leap:15.3" -t ca_test -q -f test/DockerfileTest_suse .
+docker build --build-arg VARIANT="opensuse/leap:15.5" -t ca_test -q -f test/DockerfileTest_suse .
+
+docker system prune -af > /dev/null
+docker build --build-arg VARIANT="opensuse/leap:15.6" -t ca_test -q -f test/DockerfileTest_suse .
 
 docker system prune -af > /dev/null
 docker build --build-arg VARIANT="ubuntu:18.04" -t ca_test -q -f test/DockerfileTest_gdb_9_2 .

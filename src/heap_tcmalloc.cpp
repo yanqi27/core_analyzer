@@ -867,12 +867,19 @@ parse_pagemap(void)
 		return false;
 	}
 	ph_type = ca_type(pageheap_);
-	if (ca_name(ph_type) &&
-	    strcmp(ca_name(ph_type), "tcmalloc::Static::PageHeapStorage") == 0) {
+	if (!ca_name(ph_type)) {
+		CA_PRINT("Failed to get the type name of gv \"tcmalloc::Static::pageheap_\"\n");
+		return false;
+	}
+	if (strcmp(ca_name(ph_type), "tcmalloc::Static::PageHeapStorage") == 0) {
 		if (span_has_objects)
 			tc_version_minor = 6;
 		else
 			tc_version_minor = 7;
+	} else if (strcmp(ca_name(ph_type), "tcmalloc::StaticStorage<tcmalloc::PageHeap>") == 0) {
+		// TODO
+		// There should be a more reliable way to get the version
+		tc_version_minor = 16;
 	} else {
 		tc_version_minor = 5;
 	}
@@ -888,7 +895,7 @@ parse_pagemap(void)
 		leaf_type = lookup_pointer_type(leaf_type);
 		if (!parse_pagemap_2_5(pageheap_, leaf_type, span_type))
 			return false;
-	} else if (tc_version_minor <= 7) {
+	} else if (tc_version_minor <= 16) {
 		/* Version 2.6+ uses two-leveled page map */
 		type_name = "TCMalloc_PageMap2<35>::Leaf";
 		leaf_type = lookup_transparent_type(type_name);
@@ -951,14 +958,18 @@ parse_central_cache(void)
 		struct type *cfl_type;
 
 		v = value_subscript(central_cache, index);
-		/*
-		 * We need to work with tcmalloc::CentralFreeList,
-		 * which is base class of tcmalloc::CentralFreeListPaddedTo<16>,
-		 * which is base class of tcmalloc::CentralFreeListPadded
-		 */
-		cfl_type = TYPE_BASECLASS(value_type(v), 0);
-		cfl_type = TYPE_BASECLASS(cfl_type, 0);
-		cfl = value_cast(cfl_type, v);
+		if (tc_version_minor < 16) {
+			/*
+			* We need to work with tcmalloc::CentralFreeList,
+			* which is base class of tcmalloc::CentralFreeListPaddedTo<16>,
+			* which is base class of tcmalloc::CentralFreeListPadded
+			*/
+			cfl_type = TYPE_BASECLASS(value_type(v), 0);
+			cfl_type = TYPE_BASECLASS(cfl_type, 0);
+			cfl = value_cast(cfl_type, v);
+		} else {
+			cfl = v;
+		}
 
 		if (parse_central_freelist(cfl) == false)
 			return false;

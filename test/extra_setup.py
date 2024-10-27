@@ -3,7 +3,7 @@ import distro
 import subprocess
 
 info = distro.info()
-if info['id'] == 'opensuse':
+if info['id'].startswith('opensuse'):
         # SUSE glibc-debuginfo packages don't match the glibc build version, so we need to install the exact version again
         cmd = "gdb -q -ex 'file /lib64/libc.so.6'"
         ps = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE,stderr=subprocess.STDOUT)

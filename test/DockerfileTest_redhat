@@ -15,7 +15,7 @@ RUN set -euxo pipefail && \
     yum install -y wget procps-ng git autoconf gettext \
         gcc gcc-c++ make automake zlib-devel libtool diffutils \
         libcurl-devel sqlite-devel xz \
-        python3-devel sudo yum-utils cpan
+        python3-devel sudo yum-utils cpan patch
 RUN ln -s /usr/bin/python3 /usr/bin/python
 RUN debuginfo-install -y glibc
 RUN echo 'set pagination off' > /root/.gdbinit
@@ -52,11 +52,12 @@ RUN yum install -y python3-pip && \
     python test/extra_setup.py
 
 RUN ./build_gdb.sh 12.1
-RUN ./build_tcmalloc.sh 2.10
-RUN ./build_jemalloc.sh 5.3.0
 WORKDIR test
 RUN make check
-RUN make check-tcmalloc
+
+WORKDIR /workspaces/core_analyzer/
+RUN ./build_jemalloc.sh 5.3.0
+WORKDIR test
 RUN make check-jemalloc
 
 WORKDIR /workspaces/core_analyzer/
@@ -70,16 +71,16 @@ WORKDIR test
 RUN make check-jemalloc
 
 WORKDIR /workspaces/core_analyzer/
-RUN ./build_tcmalloc.sh 2.9
+RUN ./build_tcmalloc.sh 2.16
 WORKDIR test
 RUN make check-tcmalloc
 
 WORKDIR /workspaces/core_analyzer/
-RUN ./build_tcmalloc.sh 2.8
+RUN ./build_tcmalloc.sh 2.15
 WORKDIR test
 RUN make check-tcmalloc
 
 WORKDIR /workspaces/core_analyzer/
-RUN ./build_tcmalloc.sh 2.7
+RUN ./build_tcmalloc.sh 2.14
 WORKDIR test
 RUN make check-tcmalloc

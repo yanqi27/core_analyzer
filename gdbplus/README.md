@@ -52,6 +52,8 @@ on various Linux distros.
 |CentOS|`sudo debuginfo-install -y glibc`|You may need to set `enable=1` in file `/etc/yum.repos.d/CentOS-Debuginfo.repo`|
 |RedHat|`yum install glibc-debuginfo`<br>or<br>`yum install yum-utils`<br>`debuginfo-install glibc`| |
 
+In some cases, it may be necessary to enable the debug repository in order to install the package. For example on RHEL 9, `sudo subscription-manager repos --enable=rhel-9-for-$(uname -m)-baseos-debug-rpms`.
+
 The libc.so debug symbols are installed at /usr/lib/debug by default. If gdb doesn't find
 it, you can add the following line in you `.gdbinit` file.
 ```

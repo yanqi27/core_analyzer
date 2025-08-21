@@ -21,8 +21,8 @@ set -ex
 #
 # distros
 #   ubuntu:24.04, ubuntu:22.04, ubuntu:20.04
-#   debian:bookworm(12) (debian:bullseye(11) fails to build tcmalloc 2.16 due to gcc/g++ version)
-#   redhat/ubi9 (redhat/ubi8 failed because tcache_entry is mangled presumably for security reasons)
+#   debian:bookworm(12) (debian:trixie(13) fails to build gdb 12.1 because it packages python3.3.13 that removes module distutils; debian:bullseye(11) fails to build tcmalloc 2.16 due to gcc/g++ version)
+#   redhat/ubi9 (redhat/ubi10 fails to build gdb 12.1 because it packages python3.3.12 that removes module distutils; redhat/ubi8 failed because tcache_entry is mangled presumably for security reasons)
 #   fedora:40, fedora:39
 #   opensuse/tumbleweed, opensuse/leap:15.5, opensuse/leap:15.6
 #

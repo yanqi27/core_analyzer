@@ -13,10 +13,10 @@
 # ==============================================================================================
 
 set -e
-gdb_version="12.1"
+gdb_version="16.3"
 if [ "$#" -ne 1 ]
 then
-    echo "build gdb 12.1"
+    echo "build gdb 16.3"
 else
     gdb_version=$1
 fi

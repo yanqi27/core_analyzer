@@ -585,8 +585,8 @@ gdb_symbol_prelude(void)
 	 * template <int BITS>
 	 *     class TCMalloc_PageMap2, TCMalloc_PageMap3
 	 */
-	pagemap2 = lookup_symbol("TCMalloc_PageMap2<35>", nullptr, SEARCH_VAR_DOMAIN, nullptr).symbol;
-	pagemap3 = lookup_symbol("TCMalloc_PageMap3<35>", nullptr, SEARCH_VAR_DOMAIN, nullptr).symbol;
+	pagemap2 = lookup_symbol("TCMalloc_PageMap2<35>::LEAF_BITS", nullptr, SEARCH_VAR_DOMAIN, nullptr).symbol;
+	pagemap3 = lookup_symbol("TCMalloc_PageMap3<35>::LEAF_BITS", nullptr, SEARCH_VAR_DOMAIN, nullptr).symbol;
 	if (pagemap2 == NULL && pagemap3 == NULL) {
 		CA_PRINT_DBG("Failed to lookup type \"TCMalloc_PageMap2<35>\" and \"TCMalloc_PageMap3<35>\""
 		    "\n");

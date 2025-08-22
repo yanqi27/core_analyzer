@@ -28,19 +28,22 @@ set -ex
 #
 
 docker system prune -af > /dev/null
-docker build --build-arg VARIANT="ubuntu:20.04" -t ca_test -q -f test/DockerfileTest_ubuntu .
+docker build --build-arg VARIANT="ubuntu:24.04" -t ca_test -q -f test/DockerfileTest_ubuntu .
 
 docker system prune -af > /dev/null
 docker build --build-arg VARIANT="ubuntu:22.04" -t ca_test -q -f test/DockerfileTest_ubuntu .
 
 docker system prune -af > /dev/null
-docker build --build-arg VARIANT="ubuntu:24.04" -t ca_test -q -f test/DockerfileTest_ubuntu .
+docker build --build-arg VARIANT="ubuntu:20.04" --build-arg GDB_VERSION="12.1" -t ca_test -q -f test/DockerfileTest_ubuntu .
 
-#docker system prune -af > /dev/null
-#docker build --build-arg VARIANT="debian:bullseye" -t ca_test -q -f test/DockerfileTest_ubuntu .
+docker system prune -af > /dev/null
+docker build --build-arg VARIANT="debian:trixie" -t ca_test -q -f test/DockerfileTest_ubuntu .
 
 docker system prune -af > /dev/null
 docker build --build-arg VARIANT="debian:bookworm" -t ca_test -q -f test/DockerfileTest_ubuntu .
+
+#docker system prune -af > /dev/null
+#docker build --build-arg VARIANT="debian:bullseye" -t ca_test -q -f test/DockerfileTest_ubuntu .
 
 docker system prune -af > /dev/null
 docker build --build-arg VARIANT="redhat/ubi9" -t ca_test -q -f test/DockerfileTest_redhat .

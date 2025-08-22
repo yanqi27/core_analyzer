@@ -3,35 +3,24 @@
 # AUTHOR	:	yanqi27
 # CREATION	:	2023-03-22
 # Dockerfile to test core analyzer against ptmalloc/tcmalloc/jemalloc
+# Tested base images:
+#     debian:trixie, debian:bullseye, debian:bookworm(fail)
+#     ubuntu:24.04, ubuntu:22.04, ubuntu:20.04
 # ==============================================================================================
 
-#ARG VARIANT="debian:bullseye"
-#ARG VARIANT="debian:bookworm"
-#ARG VARIANT="ubuntu:20.04"
-#ARG VARIANT="ubuntu:22.04"
+ARG GDB_VERSION=16.3
 ARG VARIANT="ubuntu:24.04"
 FROM ${VARIANT}
-
-# [Optional] Uncomment this section to install additional packages.
-RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
-    && apt install -y texinfo \
-    && apt install -y libgmp-dev \
-    && apt install -y build-essential \
-    && apt install -y wget \
-    && apt install -y python3-dev \
-    && apt install -y python3-pip \
-    && apt install -y dh-autoreconf \
-    && apt install -y git \
-    && apt install -y sudo \
-    && apt install -y libc6-dbg
-
-RUN ln -s /usr/bin/python3 /usr/bin/python
-RUN echo 'set pagination off' > /root/.gdbinit
 
 WORKDIR /workspaces/core_analyzer/
 COPY . .
 
-RUN ./build_gdb.sh 12.1
+RUN ./test/setup_ubuntu.sh
+
+RUN echo 'set pagination off' > /root/.gdbinit
+
+WORKDIR /workspaces/core_analyzer/
+RUN ./build_gdb.sh ${GDB_VERSION}
 WORKDIR test
 RUN make check
 

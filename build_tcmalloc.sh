@@ -50,6 +50,6 @@ else
 fi
 
 echo "building..."
-./autogen.sh
+autoreconf --force --install
 ./configure
 make clean && make -j 4 && sudo make install

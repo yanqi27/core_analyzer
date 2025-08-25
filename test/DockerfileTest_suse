@@ -3,44 +3,25 @@
 # AUTHOR	:	yanqi27
 # CREATION	:	2023-03-22
 # Dockerfile to test core analyzer against ptmalloc/tcmalloc/jemalloc
+# Tested base images:
+#   opensuse/leap:15.6, opensuse/leap:15.5
 # ==============================================================================================
 
-#ARG VARIANT="opensuse/tumbleweed"
-#ARG VARIANT="opensuse/leap:15.5"
 ARG VARIANT="opensuse/leap:15.6"
 
 FROM ${VARIANT}
 
-# [Optional] Uncomment this section to install additional packages.
-RUN zypper install -y gcc gcc-c++ && \
-    zypper install -y wget sudo texinfo && \
-    zypper install -y tar gzip xz && \
-    zypper install -y git make makeinfo m4 automake libtool python3-devel patch
-
-RUN cd /opt && \
-    wget https://ftp.gnu.org/gnu/gmp/gmp-6.2.1.tar.xz && \
-    tar xvf gmp-6.2.1.tar.xz && \
-    cd gmp-6.2.1 && \
-    ./configure && make -j 4 && make install
-
-RUN cd /opt && \
-    git clone https://gitlab.inria.fr/mpfr/mpfr.git && \
-    cd mpfr && \
-    ./autogen.sh && ./configure && make -j 4 && make install
-
-RUN zypper mr -ea && \
-    zypper install -y glibc-debuginfo
-
-RUN ln -s /usr/bin/python3 /usr/bin/python
-RUN echo 'set pagination off' > /root/.gdbinit
-
 WORKDIR /workspaces/core_analyzer/
 COPY . .
 
-RUN zypper install -y gdb python3-distro && \
-    python test/extra_setup.py
+RUN ./test/setup_suse.sh
+RUN python ./test/extra_setup.py
 
-RUN ./build_gdb.sh 12.1
+RUN echo 'set pagination off' > /root/.gdbinit
+
+ARG GDB_VERSION=latest
+
+RUN ./build_gdb.sh ${GDB_VERSION}
 WORKDIR test
 RUN make check
 

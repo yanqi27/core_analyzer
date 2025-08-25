@@ -3,55 +3,25 @@
 # AUTHOR	:	yanqi27
 # CREATION	:	2023-03-22
 # Dockerfile to test core analyzer against ptmalloc/tcmalloc/jemalloc
+# Tested base images:
+#     redhat/ubi10, redhat/ubi9, redhat/ubi8
+#     fedora:40, fedora:39
 # ==============================================================================================
 
-#ARG VARIANT="fedora:40"
-#ARG VARIANT="fedora:39"
-ARG VARIANT="redhat/ubi9"
-#ARG VARIANT="redhat/ubi8"
+ARG VARIANT=latest
 FROM ${VARIANT}
-
-RUN set -euxo pipefail && \
-    yum install -y wget procps-ng git autoconf gettext \
-        gcc gcc-c++ make automake zlib-devel libtool diffutils \
-        libcurl-devel sqlite-devel xz \
-        python3-devel sudo yum-utils cpan patch
-RUN ln -s /usr/bin/python3 /usr/bin/python
-RUN debuginfo-install -y glibc
-RUN echo 'set pagination off' > /root/.gdbinit
-
-RUN cd /opt && \
-    wget https://ftp.gnu.org/pub/gnu/gettext/gettext-0.21.tar.gz && \
-    tar xvf gettext-0.21.tar.gz && \
-    cd gettext-0.21 && \
-    ./configure && make -j 4 && make install
-
-RUN cd /opt && \
-    wget https://www.libarchive.org/downloads/libarchive-3.6.1.tar.gz && \
-    tar xvf libarchive-3.6.1.tar.gz && \
-    cd libarchive-3.6.1 && \
-    ./configure --prefix=/usr && make -j 4 && make install
-
-RUN cd /opt && \
-    wget https://ftp.gnu.org/gnu/texinfo/texinfo-7.0.3.tar.gz && \
-    tar xvf texinfo-7.0.3.tar.gz && \
-    cd texinfo-7.0.3 && \
-    ./configure && make -j 4 && make install
-
-RUN cd /opt && \
-    wget https://ftp.gnu.org/gnu/gmp/gmp-6.2.1.tar.xz && \
-    tar xvf gmp-6.2.1.tar.xz && \
-    cd gmp-6.2.1 && \
-    ./configure && make -j 4 && make install
 
 WORKDIR /workspaces/core_analyzer/
 COPY . .
 
-RUN yum install -y python3-pip && \
-    pip install distro && \
-    python test/extra_setup.py
+RUN ./test/setup_redhat.sh
 
-RUN ./build_gdb.sh 12.1
+RUN echo 'set pagination off' > /root/.gdbinit
+
+ARG GDB_VERSION=latest
+
+WORKDIR /workspaces/core_analyzer/
+RUN ./build_gdb.sh ${GDB_VERSION}
 WORKDIR test
 RUN make check
 

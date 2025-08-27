@@ -20,7 +20,7 @@ A power tool to debug memory issues. By parsing the memory image of a process's 
 The tool supports x86_64 architecture including Windows/RedHat/SUSE/MacOSX. It integrates with gdb and Windbg debuggers and supports gdb's python extension.
 
 # How to build it
-To build it, just run the `./build_gdb.sh`, it will build the gdb with core analyzer support. You can modified the `build_gdb.sh` to configure how the gdb is built and which version you would like to build.
+To build it, just run the `./build_gdb.sh`, it will build the gdb with additional core analyzer commands. You can modified the `build_gdb.sh` to configure how the gdb is built and which version you would like to build. It is also easy to build in a container with the Dockerfiles.
 
 # How to use it
 For more information, please see the project's web site http://core-analyzer.sourceforge.net/
@@ -29,21 +29,21 @@ For more information, please see the project's web site http://core-analyzer.sou
 The latest release passed the build and sanity tests (with a few exceptions) on the following platforms with various versions of heap manager, gdb and OS.
 
 * Heap Manager
-    - glibc/ptmalloc 2.17, 2.27 - 2.37
-	- gperftools/tcmalloc 2.7 - 2.10
-	- jemalloc 5.3.0, 5.2.1, 5.2.0
-	- Windows/mscrt 9, 10, 11
+    - glibc/ptmalloc
+	- gperftools/tcmalloc
+	- jemalloc
+	- Windows/mscrt
 	- Darwin
 
 * gdb
-    - 7.1.11, 8.1, 9.2, 12.1
+    - 16.3, 12.1, 9.2
 	- 1824 (Darwin)
 
 * OS
-    - Ubuntu 16.04, 18.04, 20.04, 22.04, 23.04; Debian 11, 12
-	- Redhat 8, 9; CentOS 7, 8; fedora 36, 37
-	- Suse 15
-	- Windows 9, 10, 11
+    - Ubuntu; Debian
+	- Redhat; fedora
+	- Suse
+	- Windows
 
 * Compiler
     - gcc

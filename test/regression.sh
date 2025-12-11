@@ -14,7 +14,7 @@ set -ex
 #   2.41 - 2.27
 #
 # tcmalloc
-#   2.16, 2.15, 2.14
+#   2.17, 2.16, 2.15
 #
 # jemalloc
 #   5.3.0, 5.2.1, 5.2.0
@@ -24,7 +24,7 @@ set -ex
 #   debian:trixie(13), debian:bookworm(12) (debian:bullseye(11) fails for tcmalloc 2.16 due to gcc/g++ version)
 #   redhat/ubi10, redhat/ubi9 (redhat/ubi8 fails because tcache_entry is mangled, presumably for security reasons)
 #   fedora:41, fedora:40 (fedora:42 fails due to default gcc, EXTRA_CFLAGS=-std=gnu17 may fix)
-#   opensuse/leap:15.6, opensuse/leap:15.5
+#   opensuse/leap:15.6, opensuse/leap:15.5 (opensuse/leap:16.0 fails due to gcc 15 and readline issues https://lists.buildroot.org/pipermail/buildroot/2025-May/777877.html)
 #
 
 docker system prune -af > /dev/null

@@ -26,7 +26,7 @@ To build it, just run the `./build_gdb.sh`, it will build the gdb with additiona
 For more information, please see the project's web site http://core-analyzer.sourceforge.net/
 
 # Tested Platforms
-The latest release passed the build and sanity tests (with a few exceptions) on the following platforms with various versions of heap manager, gdb and OS.
+The latest release passed the build and sanity tests (with a few exceptions) on the following platforms with various versions of heap manager, gdb and OS. Please see [regression](test/regression.sh).
 
 * Heap Manager
     - glibc/ptmalloc
@@ -35,15 +35,16 @@ The latest release passed the build and sanity tests (with a few exceptions) on 
 	- Windows/mscrt
 	- Darwin
 
-* gdb
-    - 16.3, 12.1, 9.2
-	- 1824 (Darwin)
+* Debugger
+    - gdb
+	- Windbg
 
 * OS
     - Ubuntu; Debian
 	- Redhat; fedora
 	- Suse
 	- Windows
+    - MacOS
 
 * Compiler
     - gcc

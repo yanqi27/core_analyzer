@@ -5,6 +5,22 @@ on:
     branches: master
   pull_request:
     branches: master
+  workflow_dispatch:
+    inputs:
+      logLevel:
+        description: 'Log level'
+        required: true
+        default: 'info'
+        type: choice
+        options:
+        - info
+        - warning
+        - debug
+      branch:
+        description: 'Branch to deploy to'
+        required: true
+        default: 'master'
+        type: string
 
 jobs:
 

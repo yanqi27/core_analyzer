@@ -54,6 +54,12 @@ PWD=$(pwd)
 # if you prefer the gdb with debug symbol use commented line to build
 # $PWD/../configure -disable-binutils --with-python --disable-ld --disable-gold --disable-gas --disable-sim --disable-gprof CXXFLAGS='-g' CFLAGS='-g' --prefix=/usr
 
-$PWD/../configure --with-python --prefix=/usr
+# If gcc version is 15 or higher, add -std=gnu17 to the CFLAGS in configure option
+gcc_version=$(gcc -dumpversion | cut -f1 -d.)
+if [ "$gcc_version" -ge 15 ]; then
+    CONF_OPTIONS="CFLAGS=-std=gnu17"
+fi
+
+$PWD/../configure --with-python --prefix=/usr $CONF_OPTIONS
 make -j 8 && sudo make install # do not remove the build folder && rm -rf $build_folder
 echo "if you want to remove the build folder, please run \"rm -rf $build_folder\""

@@ -12,21 +12,13 @@ set -ex
 zypper install -y gcc gcc-c++ && \
     zypper install -y wget sudo texinfo && \
     zypper install -y tar gzip xz && \
+    zypper install -y gmp-devel mpfr-devel && \
     zypper install -y git make makeinfo m4 automake libtool python3-devel patch
 
-cd /opt && \
-    wget https://ftp.gnu.org/gnu/gmp/gmp-6.2.1.tar.xz && \
-    tar xvf gmp-6.2.1.tar.xz && \
-    cd gmp-6.2.1 && \
-    ./configure && make -j 4 && make install
-
-cd /opt && \
-    git clone https://gitlab.inria.fr/mpfr/mpfr.git && \
-    cd mpfr && \
-    ./autogen.sh && ./configure && make -j 4 && make install
-
 zypper mr -ea && \
-    zypper install -y glibc-debuginfo
+    zypper install -y glibc-debuginfo && \
+    zypper ref && \
+    zypper dup -y
 
 ln -s /usr/bin/python3 /usr/bin/python
 

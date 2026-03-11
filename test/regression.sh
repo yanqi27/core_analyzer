@@ -23,7 +23,7 @@ set -ex
 #   ubuntu:24.04, ubuntu:22.04, ubuntu:20.04
 #   debian:trixie(13), debian:bookworm(12) (debian:bullseye(11) fails for tcmalloc 2.16 due to gcc/g++ version)
 #   redhat/ubi10, redhat/ubi9 (redhat/ubi8 fails because tcache_entry is mangled, presumably for security reasons)
-#   fedora:41, fedora:40 (fedora:42 fails due to default gcc, EXTRA_CFLAGS=-std=gnu17 may fix)
+#   fedora:42, fedora:41, fedora:40 (fedora:43 fails because of glibc 2.42, which is not supported by core_analyzer ptmalloc 2.35 parser)
 #   opensuse/leap:16.0, opensuse/leap:15.6, opensuse/leap:15.5
 #
 
@@ -52,7 +52,10 @@ docker system prune -af > /dev/null
 docker build --build-arg VARIANT="redhat/ubi9" --build-arg GDB_VERSION="12.1" -t ca_test -q -f test/DockerfileTest_redhat .
 
 # docker system prune -af > /dev/null
-# docker build --build-arg VARIANT="redhat/ubi8" -t ca_test -q -f test/DockerfileTest_redhat .
+# docker build --build-arg VARIANT="redhat/ubi8" --build-arg GDB_VERSION="12.1" -t ca_test -q -f test/DockerfileTest_redhat .
+
+docker system prune -af > /dev/null
+docker build --build-arg VARIANT="fedora:42" --build-arg GDB_VERSION="16.3" -t ca_test -q -f test/DockerfileTest_redhat .
 
 docker system prune -af > /dev/null
 docker build --build-arg VARIANT="fedora:41" --build-arg GDB_VERSION="16.3" -t ca_test -q -f test/DockerfileTest_redhat .

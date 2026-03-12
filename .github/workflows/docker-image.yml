@@ -35,8 +35,8 @@ jobs:
     - name: Run test redhat
       run: docker build . --file test/DockerfileTest_redhat --build-arg VARIANT="redhat/ubi10" --build-arg GDB_VERSION="16.3" --tag core_analyzer:rdht$(date +%s)
     - name: Run test fedora
-      run: docker build . --file test/DockerfileTest_redhat --build-arg VARIANT="fedora:41" --build-arg GDB_VERSION="16.3" --tag core_analyzer:rdht$(date +%s)
+      run: docker build . --file test/DockerfileTest_redhat --build-arg VARIANT="fedora:42" --build-arg GDB_VERSION="16.3" --tag core_analyzer:rdht$(date +%s)
     - name: Run test suse
-      run: docker build . --file test/DockerfileTest_suse --build-arg VARIANT="opensuse/leap:15.6" --build-arg GDB_VERSION="12.1" --tag core_analyzer:suse$(date +%s)
+      run: docker build . --file test/DockerfileTest_suse --build-arg VARIANT="opensuse/leap:16.0" --build-arg GDB_VERSION="16.3" --tag core_analyzer:suse$(date +%s)
     - name: Run test 9
       run: docker build . --file test/DockerfileTest_gdb_9_2 --tag core_analyzer:9_2$(date +%s)

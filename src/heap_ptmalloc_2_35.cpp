@@ -23,7 +23,9 @@
 /*
 *   Per-thread cache is added since GNU C Library version 2.26
 */
-# define TCACHE_MAX_BINS		64
+# define TCACHE_SMALL_BINS		64
+# define TCACHE_LARGE_BINS		12 /* Up to 4M chunks */
+# define TCACHE_MAX_BINS	(TCACHE_SMALL_BINS + TCACHE_LARGE_BINS)
 
 typedef struct tcache_entry
 {
@@ -51,7 +53,8 @@ struct ca_malloc_par
   INTERNAL_SIZE_T  max_total_mem;
   char*            sbrk_base;
   /* per-thread cache  */
-  size_t tcache_bins;		/* Maximum number of buckets to use. */
+  size_t tcache_bins;		/* Maximum number of buckets to use (removed in glibc 2.42) */
+  size_t tcache_small_bins;	/* Maximum number of small buckets to use (glibc 2.42) */
   size_t tcache_max_bytes;
   size_t tcache_count;		/* Maximum number of chunks in each bucket. */
   /*
@@ -380,6 +383,11 @@ static bool heap_walk(address_t heapaddr, bool verbose)
 	CA_PRINT("\t\ttotal mmap regions created=%d\n", mparams.max_n_mmaps);
 	CA_PRINT("\t\tmmapped_mem=" PRINT_FORMAT_SIZE "\n", mparams.mmapped_mem);
 	CA_PRINT("\t\tsbrk_base=%p\n", mparams.sbrk_base);
+	CA_PRINT("\t\ttcache_bins=" PRINT_FORMAT_SIZE "\n", mparams.tcache_bins);
+	if (mparams.tcache_small_bins > 0)
+		CA_PRINT("\t\ttcache_small_bins=" PRINT_FORMAT_SIZE "\n", mparams.tcache_small_bins);
+	CA_PRINT("\t\ttcache_max_bytes=" PRINT_FORMAT_SIZE "\n", mparams.tcache_max_bytes);
+	CA_PRINT("\t\ttcache_count=" PRINT_FORMAT_SIZE "\n", mparams.tcache_count);
 
 	if (verbose)
 		init_mem_histogram(16);
@@ -684,7 +692,7 @@ static CoreAnalyzerHeapInterface sPtMallHeapManager = {
 void register_pt_malloc_2_35() {
     bool my_heap = false;
     if (pt::get_glibc_version(&glibc_ver_major, &glibc_ver_minor)) {
-        if (glibc_ver_major == 2 && glibc_ver_minor >= 32 && glibc_ver_minor <= 40)
+        if (glibc_ver_major == 2 && glibc_ver_minor >= 32 && glibc_ver_minor <= 42)
             my_heap = true;
     }
     return register_heap_manager("pt 2.32-2.37", &sPtMallHeapManager, my_heap);
@@ -945,15 +953,39 @@ compare_tcache_chunk(const void* lhs, const void* rhs)
 		return 0;
 }
 
+static bool extract_tcache(tcache_perthread_struct *tcps, struct symbol *tcsym)
+{
+	struct value *val;
+
+	try
+	{
+		val = value_of_variable(tcsym, 0);
+		if (!val)
+			return false;
+
+		val = value_coerce_to_target(val);
+		val = value_ind(val);
+		if (!val)
+			return false;
+	}
+	catch (gdb_exception_error &e)
+	{
+		CA_PRINT("Failed to evaluate thread-local variable \"tcache\": %s\n", e.what());
+		return false;
+	}
+
+	if (!ca_memcpy_field_value(val, "entries", (char *)&tcps->entries[0], sizeof(tcps->entries[0]) * mparams.tcache_bins)) {
+		CA_PRINT("Failed to extract tcache.entries from thread-local variable \"tcache\"\n");
+		return false;
+	}
+	return true;
+}
+
 static int
 thread_tcache (struct thread_info *info, void *data)
 {
 	struct symbol *tcsym;
-	struct value *val;
-	struct type *type;
 	tcache_perthread_struct tcps;
-	size_t valsz;
-	address_t addr;
 	unsigned int i;
 
 	switch_to_thread (info);
@@ -963,32 +995,11 @@ thread_tcache (struct thread_info *info, void *data)
 		CA_PRINT("Failed to lookup thread-local variable \"tcache\"\n");
 		return false;
 	}
-	try
-	{
-		val = value_of_variable(tcsym, 0);
+	} else if (!extract_tcache(&tcps, tcsym)) {
+		CA_PRINT("Failed to extract tcache from thread-local variable \"tcache\"\n");
+		return false;
+	}
 
-		val = value_coerce_to_target(val);
-		type = value_type(val);
-		type = check_typedef(TYPE_TARGET_TYPE(type));
-		valsz = TYPE_LENGTH(type);
-		if (sizeof(tcps) != valsz)
-		{
-			CA_PRINT("Internal error: \"struct tcache_perthread_struct\" is incorrect\n");
-			CA_PRINT("Assumed tcache size=%ld while gdb sees size=%ld\n", sizeof(tcps), valsz);
-			return false;
-		}
-		addr = value_as_address(val);
-	}
-	catch (gdb_exception_error &e)
-	{
-		CA_PRINT("Failed to evaluate thread-local variable \"tcache\": %s\n", e.what());
-		return false;
-	}
-	//CA_PRINT("tcache for ptid.pid [%d]: 0x%lx\n", info->ptid.pid(), addr);
-	if (!read_memory_wrapper(NULL, addr, &tcps, valsz)) {
-		CA_PRINT("Failed to read thread-local variable \"tcache\"\n");
-		return false;
-	}
 	/* Each entry is a singly-linked list */
 	for (i = 0; i < mparams.tcache_bins; i++) {
 		unsigned int count = 0;
@@ -1488,18 +1499,24 @@ read_mp_by_symbol(void)
 		return false;
 	mparams.sbrk_base = (char *)data;
 	/* per-thread cache since glibc 2.26 */
-	if (!ca_get_field_value(val, "tcache_bins", &data, true))
-		return false;
-	if (data != ULONG_MAX)
-		mparams.tcache_bins = data;
-	if (!ca_get_field_value(val, "tcache_max_bytes", &data, true))
+	if (!ca_get_field_value(val, "tcache_max_bytes", &data, false))
 		return false;
 	if (data != ULONG_MAX)
 		mparams.tcache_max_bytes = request2size(data);
-	if (!ca_get_field_value(val, "tcache_count", &data, true))
+	if (!ca_get_field_value(val, "tcache_count", &data, false))
 		return false;
 	if (data != ULONG_MAX)
 		mparams.tcache_count = data;
+	// pre glibc 2.42
+	if (ca_get_field_value(val, "tcache_bins", &data, true) && data != ULONG_MAX) {
+		mparams.tcache_small_bins = 0;
+		mparams.tcache_bins = data;
+	}
+	// glibc 2.42 and later
+	if (ca_get_field_value(val, "tcache_small_bins", &data, true) && data != ULONG_MAX) {
+		mparams.tcache_small_bins = data;
+		mparams.tcache_bins = TCACHE_MAX_BINS;
+	}
 
 	/* ptmalloc: static INTERNAL_SIZE_T global_max_fast; */
 	sym = lookup_symbol("global_max_fast", 0, VAR_DOMAIN, 0).symbol;

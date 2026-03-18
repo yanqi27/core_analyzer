@@ -22,7 +22,7 @@ set -ex
 # distros
 #   ubuntu:24.04, ubuntu:22.04, ubuntu:20.04
 #   debian:trixie(13), debian:bookworm(12) (debian:bullseye(11) fails for tcmalloc 2.16 due to gcc/g++ version)
-#   redhat/ubi10, redhat/ubi9 (redhat/ubi8 fails because tcache_entry is mangled, presumably for security reasons)
+#   redhat/ubi10, redhat/ubi9 (redhat/ubi8 fails because its ptmalloc(glibc 2.28) cherry-picks Safe-Linking feature from later glibc 2.32 and later)
 #   fedora:43, fedora:42, fedora:41
 #   opensuse/leap:16.0, opensuse/leap:15.6, opensuse/leap:15.5
 #

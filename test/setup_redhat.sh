@@ -54,4 +54,4 @@ cd /opt && \
 cd /opt && \
     git clone https://gitlab.inria.fr/mpfr/mpfr.git && \
     cd mpfr && \
-    ./autogen.sh && ./configure $CONF_OPTIONS && make -j 4 && make install
+    ./autogen.sh && ./configure --prefix=/usr $CONF_OPTIONS && make -j 4 && make install

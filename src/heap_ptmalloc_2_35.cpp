@@ -995,7 +995,7 @@ thread_tcache (struct thread_info *info, void *data)
 		CA_PRINT("Failed to lookup thread-local variable \"tcache\"\n");
 		return false;
 	}
-	} else if (!extract_tcache(&tcps, tcsym)) {
+	else if (!extract_tcache(&tcps, tcsym)) {
 		CA_PRINT("Failed to extract tcache from thread-local variable \"tcache\"\n");
 		return false;
 	}

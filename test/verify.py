@@ -186,6 +186,8 @@ try:
 
 	print("[ca_test] ==== Test Against Core Dump ====")
 	core_name = 'core.' + str(gdb.inferiors()[0].pid)
+	gdb.execute ('set use-coredump-filter off')
+	gdb.execute ('set dump-excluded-mappings on')
 	gdb.execute ('gcore ' + core_name)
 	gdb.execute ('kill')
 	gdb.execute ('core ' + core_name)

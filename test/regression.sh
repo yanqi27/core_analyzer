@@ -63,8 +63,8 @@ docker build --build-arg VARIANT="fedora:42" --build-arg GDB_VERSION="16.3" -t c
 docker system prune -af > /dev/null
 docker build --build-arg VARIANT="fedora:41" --build-arg GDB_VERSION="16.3" -t ca_test -q -f test/DockerfileTest_redhat .
 
-#docker system prune -af > /dev/null
-#docker build --build-arg VARIANT="opensuse/tumbleweed" --build-arg GDB_VERSION="12.1" -t ca_test -q -f test/DockerfileTest_suse .
+docker system prune -af > /dev/null
+docker build --build-arg VARIANT="opensuse/tumbleweed" --build-arg GDB_VERSION="16.3" -t ca_test -q -f test/DockerfileTest_suse .
 
 docker system prune -af > /dev/null
 docker build --build-arg VARIANT="opensuse/leap:16.0" --build-arg GDB_VERSION="16.3" -t ca_test -q -f test/DockerfileTest_suse .

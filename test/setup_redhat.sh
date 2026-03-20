@@ -31,13 +31,13 @@ cd /opt && \
     wget https://ftp.gnu.org/pub/gnu/gettext/gettext-0.21.tar.gz && \
     tar xvf gettext-0.21.tar.gz && \
     cd gettext-0.21 && \
-    ./configure && make -j 4 && make install
+    ./configure $CONF_OPTIONS && make -j 4 && make install
 
 cd /opt && \
     wget https://www.libarchive.org/downloads/libarchive-3.6.1.tar.gz && \
     tar xvf libarchive-3.6.1.tar.gz && \
     cd libarchive-3.6.1 && \
-    ./configure --prefix=/usr && make -j 4 && make install
+    ./configure --prefix=/usr $CONF_OPTIONS&& make -j 4 && make install
 
 cd /opt && \
     wget https://ftp.gnu.org/gnu/texinfo/texinfo-7.0.3.tar.gz && \

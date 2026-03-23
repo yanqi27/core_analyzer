@@ -30,12 +30,12 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3
+    - name: Run test fedora
+      run: docker build . --file test/DockerfileTest_redhat --build-arg VARIANT="fedora:43" --build-arg GDB_VERSION="16.3" --tag core_analyzer:rdht$(date +%s)
     - name: Run test ubuntu
       run: docker build . --file test/DockerfileTest_ubuntu --build-arg VARIANT="ubuntu:24.04" --build-arg GDB_VERSION="16.3" --tag core_analyzer:ubuntu$(date +%s)
     - name: Run test redhat
       run: docker build . --file test/DockerfileTest_redhat --build-arg VARIANT="redhat/ubi10" --build-arg GDB_VERSION="16.3" --tag core_analyzer:rdht$(date +%s)
-    - name: Run test fedora
-      run: docker build . --file test/DockerfileTest_redhat --build-arg VARIANT="fedora:43" --build-arg GDB_VERSION="16.3" --tag core_analyzer:rdht$(date +%s)
     - name: Run test suse
       run: docker build . --file test/DockerfileTest_suse --build-arg VARIANT="opensuse/leap:16.0" --build-arg GDB_VERSION="16.3" --tag core_analyzer:suse$(date +%s)
     - name: Run test 9

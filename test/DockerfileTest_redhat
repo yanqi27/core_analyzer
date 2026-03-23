@@ -16,7 +16,8 @@ COPY . .
 
 RUN ./test/setup_redhat.sh
 
-RUN echo 'set pagination off' > /root/.gdbinit
+RUN echo 'set pagination off' >> /root/.gdbinit
+RUN echo 'set auto-load safe-path /' >> /root/.gdbinit
 
 ARG GDB_VERSION=latest
 

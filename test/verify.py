@@ -185,9 +185,7 @@ try:
 	run_tests()
 
 	print("[ca_test] ==== Test Against Core Dump ====")
-	pid = gdb.inferiors()[0].pid
-	os.system('echo 0xff > /proc/{}/coredump_filter'.format(pid))
-	core_name = 'core.' + str(pid)
+	core_name = 'core.' + str(gdb.inferiors()[0].pid)
 	gdb.execute ('gcore ' + core_name)
 	gdb.execute ('kill')
 	gdb.execute ('core ' + core_name)

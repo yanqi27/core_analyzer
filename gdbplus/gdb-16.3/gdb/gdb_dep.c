@@ -1451,7 +1451,6 @@ print_func_locals (void)
 	/* check local vars */
 	block = get_frame_block (frame, 0);
 	while (block) {
-		struct block_iterator iter;
 		struct value *val;
 		CORE_ADDR val_addr;
 

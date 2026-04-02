@@ -19,6 +19,9 @@ set -ex
 # jemalloc
 #   5.3.0, 5.2.1, 5.2.0
 #
+# mimalloc
+#   2.2.7
+#
 # distros
 #   ubuntu:24.04, ubuntu:22.04, ubuntu:20.04
 #   debian:trixie(13), debian:bookworm(12) (debian:bullseye(11) fails for tcmalloc 2.16 due to gcc/g++ version)
@@ -33,8 +36,9 @@ docker build --build-arg VARIANT="ubuntu:24.04" --build-arg GDB_VERSION="16.3" -
 docker system prune -af > /dev/null
 docker build --build-arg VARIANT="ubuntu:22.04" --build-arg GDB_VERSION="16.3" -t ca_test -q -f test/DockerfileTest_ubuntu .
 
+# cmake 3.16 in ubuntu:20.04 is too old to build mimalloc 2.2.7, so skip it
 docker system prune -af > /dev/null
-docker build --build-arg VARIANT="ubuntu:20.04" --build-arg GDB_VERSION="12.1" -t ca_test -q -f test/DockerfileTest_ubuntu .
+docker build --build-arg VARIANT="ubuntu:20.04" --build-arg GDB_VERSION="12.1" --build-arg SKIP_MIMALLOC="1" -t ca_test -q -f test/DockerfileTest_ubuntu .
 
 docker system prune -af > /dev/null
 docker build --build-arg VARIANT="debian:trixie" --build-arg GDB_VERSION="16.3" -t ca_test -q -f test/DockerfileTest_ubuntu .

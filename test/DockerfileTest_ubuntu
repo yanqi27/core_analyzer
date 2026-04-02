@@ -25,6 +25,12 @@ RUN ./build_gdb.sh ${GDB_VERSION}
 WORKDIR test
 RUN make check
 
+ARG SKIP_MIMALLOC
+RUN if [[ -z "$SKIP_MIMALLOC" ]] ; then \
+		cd /workspaces/core_analyzer/ && ./build_mimalloc.sh 2.2.7 && \
+		cd test && make check-mimalloc ; \
+	fi
+
 WORKDIR /workspaces/core_analyzer/
 RUN ./build_jemalloc.sh 5.3.0
 WORKDIR test

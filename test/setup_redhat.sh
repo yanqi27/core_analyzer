@@ -11,7 +11,7 @@ set -ex
 
 dnf update -y
 dnf install -y wget procps-ng git autoconf gettext \
-    gcc gcc-c++ make automake zlib-devel libtool diffutils \
+    gcc gcc-c++ make automake cmake zlib-devel libtool diffutils \
     libcurl-devel sqlite-devel xz \
     python3-devel python3-pip sudo yum-utils cpan patch
 

@@ -41,5 +41,14 @@ mallocTest_jemalloc: mallocTest_jemalloc.o
 check-jemalloc: mallocTest_jemalloc
 	export LD_LIBRARY_PATH=/usr/local/lib; $(GDB) mallocTest_jemalloc -q -x verify.py
 
+mallocTest_mimalloc.o: mallocTest.cpp
+	$(CXX) $(COMP_OPT) -DMIMALLOC_TEST -c -o $@ $^
+
+mallocTest_mimalloc: mallocTest_mimalloc.o
+	$(CXX) $(COMP_OPT) -o $@ $^ $(LIBS) -lmimalloc
+
+check-mimalloc: mallocTest_mimalloc
+	export LD_LIBRARY_PATH=/usr/local/lib64; $(GDB) mallocTest_mimalloc -q -x verify.py
+
 clean:
 	rm *.o ${TARGETS}

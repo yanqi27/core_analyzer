@@ -16,6 +16,7 @@ apt-get install -y \
 	libmpfr-dev \
     libtool \
     build-essential \
+    cmake \
 	gawk \
     wget \
     python3-dev \

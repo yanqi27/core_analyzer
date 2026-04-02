@@ -31,6 +31,7 @@ The latest release passed the build and sanity tests (with a few exceptions) on 
 * Heap Manager
     - glibc/ptmalloc
 	- gperftools/tcmalloc
+    - microsoft/mimalloc
 	- jemalloc
 	- Windows/mscrt
 	- Darwin

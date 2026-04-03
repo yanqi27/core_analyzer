@@ -32,11 +32,19 @@ jobs:
     - uses: actions/checkout@v3
     - name: Run test ubuntu
       run: docker build . --file test/DockerfileTest_ubuntu --build-arg VARIANT="ubuntu:24.04" --build-arg GDB_VERSION="16.3" --tag core_analyzer:ubuntu$(date +%s)
+    - name: Clean up disk space
+      run: docker system prune -f
     - name: Run test redhat
       run: docker build . --file test/DockerfileTest_redhat --build-arg VARIANT="redhat/ubi10" --build-arg GDB_VERSION="16.3" --tag core_analyzer:rdht$(date +%s)
+    - name: Clean up disk space
+      run: docker system prune -f
     - name: Run test fedora
       run: docker build . --file test/DockerfileTest_redhat --build-arg VARIANT="fedora:42" --build-arg GDB_VERSION="16.3" --tag core_analyzer:rdht$(date +%s)
+    - name: Clean up disk space
+      run: docker system prune -f
     - name: Run test suse
       run: docker build . --file test/DockerfileTest_suse --build-arg VARIANT="opensuse/leap:16.0" --build-arg GDB_VERSION="16.3" --tag core_analyzer:suse$(date +%s)
-    - name: Run test 9
+    - name: Clean up disk space
+      run: docker system prune -f
+    - name: Run test gdb 9.2
       run: docker build . --file test/DockerfileTest_gdb_9_2 --tag core_analyzer:9_2$(date +%s)

@@ -17,6 +17,8 @@
 #include <gperftools/tcmalloc.h>
 #elif defined(JEMALLOC_TEST)
 #include <jemalloc/jemalloc.h>
+#elif defined(MIMALLOC_TEST)
+#include <mimalloc-2.2/mimalloc.h>
 #else
 #include <malloc.h>
 #endif
@@ -168,6 +170,8 @@ region_size(void *p)
 	return tc_malloc_size(p);
 #elif defined(JEMALLOC_TEST)
 	return malloc_usable_size(p);
+#elif defined(MIMALLOC_TEST)
+	return mi_usable_size(p);
 #else
 	return malloc_usable_size(p);
 #endif

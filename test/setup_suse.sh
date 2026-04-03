@@ -13,7 +13,7 @@ zypper install -y gcc gcc-c++ && \
     zypper install -y wget sudo texinfo && \
     zypper install -y tar gzip xz && \
     zypper install -y gmp-devel mpfr-devel && \
-    zypper install -y git make makeinfo m4 automake libtool python3-devel patch
+    zypper install -y git make cmake makeinfo m4 automake libtool python3-devel patch
 
 zypper mr -ea && \
     zypper install -y glibc-debuginfo && \

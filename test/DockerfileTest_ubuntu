@@ -27,6 +27,8 @@ RUN make check
 
 ARG SKIP_MIMALLOC
 RUN if [[ -z "$SKIP_MIMALLOC" ]] ; then \
+		cd /workspaces/core_analyzer/ && ./build_mimalloc.sh 3.2.8 && \
+		cd test && make check-mimalloc ; \
 		cd /workspaces/core_analyzer/ && ./build_mimalloc.sh 2.2.7 && \
 		cd test && make check-mimalloc ; \
 	fi

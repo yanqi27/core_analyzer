@@ -26,6 +26,11 @@ WORKDIR test
 RUN make check
 
 WORKDIR /workspaces/core_analyzer/
+RUN ./build_mimalloc.sh 3.2.8
+WORKDIR test
+RUN make check-mimalloc
+
+WORKDIR /workspaces/core_analyzer/
 RUN ./build_mimalloc.sh 2.2.7
 WORKDIR test
 RUN make check-mimalloc

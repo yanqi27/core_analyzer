@@ -146,4 +146,18 @@ struct ca_bin {
   int bin_index = -1;
 };
 
+// version 3.x
+
+// maximum virtual address bits in a user-space pointer
+#define MI_MAX_VABITS     (47)
+
+# define MI_SIZE_SHIFT (3)  // 64bit arch
+#define MI_ARENA_SLICE_SHIFT              (13 + MI_SIZE_SHIFT) 
+
+// 2-level page map
+#define MI_PAGE_MAP_SUB_SHIFT     (13)
+#define MI_PAGE_MAP_SUB_COUNT     (1ul << MI_PAGE_MAP_SUB_SHIFT)
+#define MI_PAGE_MAP_SHIFT         (MI_MAX_VABITS - MI_PAGE_MAP_SUB_SHIFT - MI_ARENA_SLICE_SHIFT)
+#define MI_PAGE_MAP_COUNT         (1ul << MI_PAGE_MAP_SHIFT)
+
 #endif /* _MM_MIMALLOC_H */

@@ -323,7 +323,7 @@ walk_inuse_blocks(struct inuse_block* opBlocks, unsigned long* opCount)
 }
 
 
-CoreAnalyzerHeapInterface sMiMallHeapManager = {
+static CoreAnalyzerHeapInterface sMiMallHeapManager = {
    heap_version,
    init_heap,
    heap_walk,
@@ -334,9 +334,9 @@ CoreAnalyzerHeapInterface sMiMallHeapManager = {
    walk_inuse_blocks,
 };
 
-void register_mi_malloc() {
+void register_mi_malloc_v2() {
 	bool my_heap = gdb_symbol_prelude();
-    return register_heap_manager("mi", &sMiMallHeapManager, my_heap);
+    return register_heap_manager("mi v2", &sMiMallHeapManager, my_heap);
 }
 /******************************************************************************
  * Helper Functions
@@ -371,7 +371,7 @@ static bool parse_page(struct value* page_val, int bin_index)
 
 	CA_PRINT_DBG("\tParsing mi_page_t at address %p for bin index %d\n",
 		(void*)(page_val->address()), bin_index);
-	
+
 	// If the page has "keys" field, it means the free list is encoded.
 	// We currently don't support parsing encoded free list, so skip this page
 	static bool once = false;

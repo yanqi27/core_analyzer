@@ -97,7 +97,8 @@ extern void register_pt_malloc_2_35();
 extern void register_tc_malloc();
 extern void register_je_malloc();
 extern void register_mscrt_malloc();
-extern void register_mi_malloc();
+extern void register_mi_malloc_v2();
+extern void register_mi_malloc_v3();
 
 extern std::string get_supported_heaps();
 

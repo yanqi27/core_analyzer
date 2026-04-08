@@ -30,7 +30,7 @@ mallocTest_tcmalloc: mallocTest_tcmalloc.o
 	$(CXX) $(COMP_OPT) -o $@ $^ $(LIBS) -ltcmalloc
 
 check-tcmalloc: mallocTest_tcmalloc
-	export LD_LIBRARY_PATH=/usr/local/lib; $(GDB) mallocTest_tcmalloc -q -x verify.py
+	export LD_LIBRARY_PATH=/usr/local/lib; $(GDB) mallocTest_tcmalloc -q -x verify.py && rm mallocTest_tcmalloc mallocTest_tcmalloc.o
 
 mallocTest_jemalloc.o: mallocTest.cpp
 	$(CXX) $(COMP_OPT) -DJEMALLOC_TEST -c -o $@ $^
@@ -39,7 +39,7 @@ mallocTest_jemalloc: mallocTest_jemalloc.o
 	$(CXX) $(COMP_OPT) -o $@ $^ $(LIBS) -ljemalloc
 
 check-jemalloc: mallocTest_jemalloc
-	export LD_LIBRARY_PATH=/usr/local/lib; $(GDB) mallocTest_jemalloc -q -x verify.py
+	export LD_LIBRARY_PATH=/usr/local/lib; $(GDB) mallocTest_jemalloc -q -x verify.py && rm mallocTest_jemalloc mallocTest_jemalloc.o
 
 mallocTest_mimalloc.o: mallocTest.cpp
 	$(CXX) $(COMP_OPT) -DMIMALLOC_TEST -I/usr/local/include/mimalloc-2.2 -I/usr/local/include/mimalloc-3.2 -c -o $@ $^
@@ -48,7 +48,7 @@ mallocTest_mimalloc: mallocTest_mimalloc.o
 	$(CXX) $(COMP_OPT) -o $@ $^ $(LIBS) -lmimalloc
 
 check-mimalloc: mallocTest_mimalloc
-	export LD_LIBRARY_PATH=/usr/local/lib64; $(GDB) mallocTest_mimalloc -q -x verify.py
+	export LD_LIBRARY_PATH=/usr/local/lib64; $(GDB) mallocTest_mimalloc -q -x verify.py && rm mallocTest_mimalloc mallocTest_mimalloc.o
 
 clean:
 	rm *.o ${TARGETS}

@@ -1149,7 +1149,8 @@ COMMON_SFILES = \
 	heap_ptmalloc_2_35.c \
 	heap_tcmalloc.c \
 	heap_jemalloc.c \
-	heap_mimalloc.c \
+	heap_mimalloc_v2.c \
+	heap_mimalloc_v3.c \
 	heapcmd.c \
 	i386-decode.c \
 	inf-child.c \

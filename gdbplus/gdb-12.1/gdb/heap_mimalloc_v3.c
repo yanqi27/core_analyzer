@@ -28,17 +28,19 @@ static bool mi_guard_page = false;
 static bool mi_encode_freelist = false;
 
 static bool g_initialized = false;
-static int g_bin_count = 0;		// number of size classes (or "bins") of pages
+static int  g_bin_count = 0;			// number of size classes (or "bins") of pages
+static size_t* g_bin_sizes = nullptr;	// Array of bin sizes
 
 static std::set<address_t> g_cached_blocks;	// free blocks
 static std::vector<ca_page> g_pages;
+static std::set<address_t> g_parsed_pages;
 
 // Forward declaration
 static bool gdb_symbol_prelude(void);
 static bool read_mi_version(void);
-static bool parse_thread_local_heap(void);
+static bool parse_page_map(void);
 static bool parse_page(struct value* page_val, int bin_index);
-static bool parse_page_queue(struct value* page_queue_val, int bin_index);
+static bool parse_thread_local_heap(void);
 
 static ca_page* find_page(address_t addr);
 static ca_page* find_next_page(address_t addr);
@@ -63,13 +65,47 @@ init_heap(void)
 	g_initialized = false;
 	g_cached_blocks.clear();
 	g_pages.clear();
+	g_parsed_pages.clear();
+	g_bin_count = 0;
+	delete[] g_bin_sizes;
+	g_bin_sizes = nullptr;
 
 	// Start with allocator's version
 	read_mi_version();
 
+	// Initialize bin sizes through gv `const mi_theap_t _mi_theap_empty`
+	struct symbol* sym = lookup_global_symbol("_mi_theap_empty", 0,
+		VAR_DOMAIN).symbol;
+	if (sym == NULL) {
+		CA_PRINT("Failed to lookup gv \"_mi_theap_empty\"\n");
+		return false;
+	}
+	struct value* theap_empty_val = value_of_variable(sym, 0);
+	struct value* pages_val = ca_get_field_gdb_value(theap_empty_val, "pages");
+	LONGEST low_bound, high_bound;
+	if (get_array_bounds (value_type(pages_val), &low_bound, &high_bound) == 0) {
+		CA_PRINT("Could not determine \"_mi_theap_empty.pages\" bounds\n");
+		return false;
+	}
+	g_bin_count = high_bound - low_bound + 1;
+	g_bin_sizes = new size_t[g_bin_count];
+	for (int i = 0; i < g_bin_count; i++) {
+		// `_mi_theap_empty.pages` is an array of mi_page_queue_t[g_bin_count]
+		struct value* page_queue_val = value_subscript(pages_val, i);
+		struct value* block_size_val = ca_get_field_gdb_value(page_queue_val, "block_size");
+		g_bin_sizes[i] = value_as_long(block_size_val);
+	}
+
+	// Not sure why we couldn't get all pages from either of the following functions
+	// 
 	// Parse thread local heaps
 	if (!parse_thread_local_heap()) {
 		CA_PRINT("Failed to parse thread local heap\n");
+		return false;
+	}
+	// Parse the global page map
+	if (!parse_page_map()) {
+		CA_PRINT("Failed to parse _mi_page_map\n");
 		return false;
 	}
 
@@ -323,7 +359,7 @@ walk_inuse_blocks(struct inuse_block* opBlocks, unsigned long* opCount)
 }
 
 
-CoreAnalyzerHeapInterface sMiMallHeapManager = {
+static CoreAnalyzerHeapInterface sMiMallHeapManager = {
    heap_version,
    init_heap,
    heap_walk,
@@ -334,9 +370,9 @@ CoreAnalyzerHeapInterface sMiMallHeapManager = {
    walk_inuse_blocks,
 };
 
-void register_mi_malloc() {
+void register_mi_malloc_v3() {
 	bool my_heap = gdb_symbol_prelude();
-    return register_heap_manager("mi", &sMiMallHeapManager, my_heap);
+    return register_heap_manager("mi v3", &sMiMallHeapManager, my_heap);
 }
 /******************************************************************************
  * Helper Functions
@@ -344,21 +380,21 @@ void register_mi_malloc() {
 static bool read_mi_version(void)
 {
 	// hack it by reading the 2nd byte of funciton mi_version()
-	struct symbol* sym = lookup_symbol("mi_version", nullptr, SEARCH_FUNCTION_DOMAIN, nullptr).symbol;
+	struct symbol* sym = lookup_symbol("mi_version", 0, VAR_DOMAIN, 0).symbol;
 	if (sym == nullptr) {
 		CA_PRINT_DBG("Failed to lookup function \"mi_version\"\n");
 		return false;
 	}
 	struct value* func_val = value_of_variable(sym, 0);
 	address_t func_addr = value_as_address(func_val);
-	unsigned char version = 0;
+	unsigned short version = 0;
 	if (!read_memory_wrapper(nullptr, func_addr + 1, &version, sizeof(version))) {
 		CA_PRINT_DBG("Failed to read mi_version at address %p\n", (void*)(func_addr + 1));
 		return false;
 	}
-	mi_version_major = version/100;
-	mi_version_minor = (version%100)/10;
-	mi_version_patch = version%10;
+	mi_version_major = version/1000;
+	mi_version_minor = (version%1000)/100;
+	mi_version_patch = version%100;
 	CA_PRINT_DBG("Detected mimalloc version: %d.%d.%d\n",
 		mi_version_major, mi_version_minor, mi_version_patch);
 
@@ -369,8 +405,13 @@ static bool parse_page(struct value* page_val, int bin_index)
 {
 	struct ca_segment *segment;
 
+	if (g_parsed_pages.find(value_address(page_val)) != g_parsed_pages.end()) {
+		CA_PRINT_DBG("\tSkipping already parsed mi_page_t at address %p\n", (void*)(value_address(page_val)));
+		return true;
+	}
+
 	CA_PRINT_DBG("\tParsing mi_page_t at address %p for bin index %d\n",
-		(void*)(page_val->address()), bin_index);
+		(void*)(value_address(page_val)), bin_index);
 	
 	// If the page has "keys" field, it means the free list is encoded.
 	// We currently don't support parsing encoded free list, so skip this page
@@ -443,7 +484,7 @@ static bool parse_page(struct value* page_val, int bin_index)
 	block_addr &= ~0x3;
 	while (block_addr != 0) {
 		if (block_addr < block_start || block_addr >= block_end) {
-			CA_PRINT("Invalid xthread free block address %p in mi_page_t %p\n", (void*)block_addr, (void*)page_val->address());
+			CA_PRINT("Invalid xthread free block address %p in mi_page_t %p\n", (void*)block_addr, (void*)value_address(page_val));
 			return false;
 		}
 		g_cached_blocks.insert(block_addr);
@@ -466,15 +507,78 @@ static bool parse_page(struct value* page_val, int bin_index)
 		CA_PRINT_DBG("Invalid used or free block count in mi_page_t: used %zu + free %zu + local_free %zu != capacity %zu\n",
 			used_blk_count, free_blk_count, local_free_blk_count, capacity);
 	}
+
+	// Adjust bin index if necessary
+	if (bin_index == 0) {
+		// index 0 is not used, calculate the appropriate bin index by block size
+		for (int i = g_bin_count-1; i >= 0; i--) {
+			if (block_size >= g_bin_sizes[i]) {
+				bin_index = i;
+				break;
+			}
+		}
+	}
+
 	// Add the page to the global page list for future reference
-	ca_page page = { page_val->address(), block_start, block_end, block_size, bin_index };
+	ca_page page = { value_address(page_val), block_start, block_end, block_size, bin_index };
 	g_pages.push_back(page);
+	g_parsed_pages.insert(value_address(page_val));
 
 	// update the segment that the page belongs to
 	segment = get_segment(block_start, block_end - block_start);
 	if (segment && segment->m_type == ENUM_UNKNOWN) {
 		segment->m_type = ENUM_HEAP;
 	}
+	return true;
+}
+
+// 2-level page map
+//  The first level is of type mi_submap_t(2^18)
+//  The second level is an array of mi_page_t*(2^13)
+//
+//  Since the page is 64KiB or 2^16, the page map covers 2^47 virtual address space
+static bool parse_page_map(void)
+{
+	struct symbol *sym;
+	struct value *page_map;
+
+	// _mi_page_map is an array of mi_submap_t
+	// gv mi_page_map_count is the length of the array
+	sym = lookup_global_symbol("_mi_page_map", 0, VAR_DOMAIN).symbol;
+	if (sym == NULL) {
+		CA_PRINT("Failed to lookup gv \"_mi_page_map\"\n");
+		return false;
+	}
+	page_map = value_of_variable(sym, 0);
+
+	struct symbol *count_sym = lookup_symbol("mi_page_map_count", 0,
+		VAR_DOMAIN, 0).symbol;
+	if (count_sym == NULL) {
+		CA_PRINT("Failed to lookup gv \"mi_page_map_count\"\n");
+		return false;
+	}
+	struct value* count_val = value_of_variable(count_sym, 0);
+	size_t page_map_count = value_as_long(count_val);
+
+	// Walk through the first level page map
+	// TODO: instead of iterating over all elements, it is much faster to find non-zero entries
+	//       by inspecting the raw memory of the page map entries.
+	for (size_t i = 0; i < page_map_count; i++) {
+		struct value* submap_val = value_subscript(page_map, i);
+		if (submap_val && value_as_address(submap_val) != 0) {
+			// The second level is of type mi_submap_t, which is an array of mi_page_t*
+			// The length of the array is MI_PAGE_MAP_SUB_COUNT
+			for (size_t j = 0; j < MI_PAGE_MAP_SUB_COUNT; j++) {
+				struct value* page_val = value_subscript(submap_val, j);
+				if (page_val && value_as_address(page_val) != 0) {
+					// Process the mi_page_t* value
+					page_val = value_ind(page_val);
+					parse_page(page_val, 0);
+				}
+			}
+		}
+	}
+
 	return true;
 }
 
@@ -502,15 +606,14 @@ static int thread_local_heap (struct thread_info *info, void *data)
 
 	switch_to_thread (info);
 
-	// __thread mi_heap_t* _mi_heap_default
-	sym = lookup_global_symbol("_mi_heap_default", nullptr,
-		SEARCH_VAR_DOMAIN).symbol;
+	// __thread mi_theap_t* __mi_theap_default
+	sym = lookup_global_symbol("__mi_theap_default", 0, VAR_DOMAIN).symbol;
 	if (sym == NULL) {
-		CA_PRINT("Failed to lookup gv \"_mi_heap_default\"\n");
+		CA_PRINT("Failed to lookup gv \"__mi_theap_default\"\n");
 		return false;
 	}
 	thread_heap_p = value_of_variable(sym, 0);
-	CA_PRINT_DBG("Thread %d: _mi_heap_default at address %p\n", info->global_num, (void*)value_as_address(thread_heap_p));
+	CA_PRINT_DBG("Thread %d: __mi_theap_default at address %p\n", info->global_num, (void*)value_as_address(thread_heap_p));
 	thread_heap = value_ind(thread_heap_p);
 
 	// If the heap has "guarded_size_min" field, it means the heap has guard page enabled
@@ -531,37 +634,12 @@ static int thread_local_heap (struct thread_info *info, void *data)
 		if (page_count_val && value_as_long(page_count_val) > 0) {
 			// Field "pages" is an array of mi_page_queue_t
 			struct value* pages_val = ca_get_field_gdb_value(thread_heap, "pages");
-			if (g_bin_count == 0) {
-				LONGEST low_bound, high_bound;
-				if (get_array_bounds (pages_val->type(), &low_bound, &high_bound) == 0) {
-					CA_PRINT("Could not determine \"pages\" bounds\n");
-					return false;
-				}
-				g_bin_count = high_bound - low_bound + 1;
-				CA_PRINT_DBG("Detected mi_heap_t::pages[%ld-%ld] array length %d\n",
-					low_bound, high_bound, g_bin_count);
-				if (g_bin_count <= 0) {
-					CA_PRINT("Invalid \"pages\" array bounds: low %ld, high %ld\n", low_bound, high_bound);
-					return false;
-				}
-			}
 			for (int index = 0; index < g_bin_count; index++) {
 				struct value *val = value_subscript(pages_val, index);
 				if (parse_page_queue(val, index) == false) {
 					CA_PRINT("Failed to parse mi_page_queue_t at index %d\n", index);
 					break;
 				}
-			}
-		}
-		// mi_heap_t::thread_delayed_free is a list of delayed free blocks.
-		struct value* delayed_free_val = ca_get_field_gdb_value(thread_heap, "thread_delayed_free");
-		address_t block_addr = value_as_address(delayed_free_val);
-		while (block_addr != 0) {
-			g_cached_blocks.insert(block_addr);
-			// Assume singly linked list
-			if (!read_memory_wrapper(nullptr, block_addr, &block_addr, sizeof(block_addr))) {
-				CA_PRINT("Failed to read mi_heap_t::thread_delayed_free at address %p\n", (void*)block_addr);
-				break;
 			}
 		}
 
@@ -611,9 +689,9 @@ static void add_one_big_block(struct heap_block *blks, unsigned int num,
 static bool gdb_symbol_prelude(void)
 {
 	// static __attribute__((aligned(64))) mi_arena_t* mi_arenas[MI_MAX_ARENAS];
-	struct symbol *sym = lookup_symbol("mi_arenas", nullptr, SEARCH_VAR_DOMAIN, nullptr).symbol;
+	struct symbol *sym = lookup_symbol("_mi_page_map", 0, VAR_DOMAIN, 0).symbol;
 	if (sym == nullptr) {
-		CA_PRINT_DBG("Failed to lookup gv \"mi_arenas\"\n");
+		CA_PRINT_DBG("Failed to lookup gv \"_mi_page_map\"\n");
 		return false;
 	}
 	return true;

@@ -18,7 +18,7 @@
 #elif defined(JEMALLOC_TEST)
 #include <jemalloc/jemalloc.h>
 #elif defined(MIMALLOC_TEST)
-#include <mimalloc-2.2/mimalloc.h>
+#include <mimalloc.h>
 #else
 #include <malloc.h>
 #endif

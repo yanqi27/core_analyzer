@@ -42,7 +42,7 @@ check-jemalloc: mallocTest_jemalloc
 	export LD_LIBRARY_PATH=/usr/local/lib; $(GDB) mallocTest_jemalloc -q -x verify.py
 
 mallocTest_mimalloc.o: mallocTest.cpp
-	$(CXX) $(COMP_OPT) -DMIMALLOC_TEST -c -o $@ $^
+	$(CXX) $(COMP_OPT) -DMIMALLOC_TEST -I/usr/local/include/mimalloc-2.2 -I/usr/local/include/mimalloc-3.2 -c -o $@ $^
 
 mallocTest_mimalloc: mallocTest_mimalloc.o
 	$(CXX) $(COMP_OPT) -o $@ $^ $(LIBS) -lmimalloc

@@ -14,13 +14,13 @@ set -ex
 #   2.43 - 2.27
 #
 # tcmalloc
-#   2.18, 2.17, 2.16 (2.15 not tested any more)
+#   2.18, 2.17, 2.16
 #
 # jemalloc
-#   5.3.0, 5.2.1, 5.2.0
+#   5.3.0, 5.2.1
 #
 # mimalloc
-#   2.2.7
+#   3.2.8, 2.2.7
 #
 # distros
 #   ubuntu:24.04, ubuntu:22.04, ubuntu:20.04

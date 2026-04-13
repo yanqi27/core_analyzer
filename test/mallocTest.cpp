@@ -193,10 +193,17 @@ mysleep(unsigned long s)
 #endif
 }
 
+struct targs {
+	volatile bool mFinished;
+	int mThreadNum;
+};
+
 static void *
 thread_func(void *arg)
 {
-	volatile bool *done = (volatile bool *)arg;
+	struct targs *args = (struct targs *)arg;
+	volatile bool *done = &args->mFinished;
+	int thread_num = args->mThreadNum;
 	unsigned int index, i;
 
 	// Allocate small memory blocks in random sizes
@@ -236,8 +243,14 @@ thread_func(void *arg)
 		}
 	}
 
-	// Don't exit the thread so that per-thread cache is valid
+	// Let the odd-numbered threads exit while others stay alive
+	// so that some per-thread cache remains local while others are migrated
+	// to other threads or global cache.
 	*done = true;
+	if (thread_num % 2 == 1) {
+		return NULL;
+	}
+
 	while (true) {
 		mysleep(1);
 	}
@@ -292,36 +305,38 @@ main(int argc, char** argv)
 	}
 	hidden_object = (uintptr_t)objlist.front();
 
-	bool *flags = new bool [NUM_THREADS];
-	for (i = 0; i < NUM_THREADS; i++)
-		flags[i] = false;
+	targs* args = new targs[NUM_THREADS];
+	for (i = 0; i < NUM_THREADS; i++) {
+		args[i].mFinished = false;
+		args[i].mThreadNum = i;
+	}
 
 	// Spawn threads
 	std::list<std::thread *> threads;
 	for (i = 0; i < NUM_THREADS; i++) {
-		std::thread *thrd = new std::thread(thread_func, &flags[i]);
+		std::thread *thrd = new std::thread(thread_func, &args[i]);
 		threads.push_back(thrd);
 	}
 
 	// Wait for threads to finish memory allocations
 	for (i = 0; i < NUM_THREADS; i++) {
-		while (flags[i] == false)
+		while (args[i].mFinished == false)
 			mysleep(1);
 	}
 	// Signal threads to start releasing memory
 	region_index = 0;
 	for (i = 0; i < NUM_THREADS; i++)
-		flags[i] = false;
+		args[i].mFinished = false;
 	// Wait until memory release is done
 	for (i = 0; i < NUM_THREADS; i++) {
-		while (flags[i] == false)
+		while (args[i].mFinished == false)
 			mysleep(1);
 	}
 
 	// Test driver may break at this function for inspection or create a core dump
 	last_call();
 
-	delete[] flags;
+	delete[] args;
 
 	return 0;
 }

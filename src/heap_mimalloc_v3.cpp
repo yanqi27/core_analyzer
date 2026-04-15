@@ -645,12 +645,12 @@ static int thread_local_heap (struct thread_info *info, void *data)
 			}
 		}
 
-		// next heap
-		struct value* heap_next = ca_get_field_gdb_value(thread_heap, "next");
-		if (heap_next == nullptr || value_as_address(heap_next) == 0)
+		// next mi_theap_t
+		struct value* theap_next = ca_get_field_gdb_value(thread_heap, "tnext");
+		if (theap_next == nullptr || value_as_address(theap_next) == 0)
 			thread_heap = nullptr;
 		else
-			thread_heap = value_ind(heap_next);
+			thread_heap = value_ind(theap_next);
 	}
 
 	return 0;

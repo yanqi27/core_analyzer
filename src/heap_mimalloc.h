@@ -146,6 +146,14 @@ struct ca_bin {
   int bin_index = -1;
 };
 
+// version 2.x
+typedef size_t mi_bitmap_field_t;
+# define MI_INTPTR_SHIFT       (3)
+#define MI_SEGMENT_SLICE_SHIFT (13 + MI_INTPTR_SHIFT)         // 64KiB
+#define MI_SEGMENT_SHIFT       ( 9 + MI_SEGMENT_SLICE_SHIFT)  // 32MiB
+#define MI_SEGMENT_SIZE        ((1ULL)<<MI_SEGMENT_SHIFT)
+#define MI_ARENA_BLOCK_SIZE    (MI_SEGMENT_SIZE)
+
 // version 3.x
 
 // maximum virtual address bits in a user-space pointer

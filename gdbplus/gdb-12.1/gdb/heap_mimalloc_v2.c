@@ -29,6 +29,7 @@ static bool mi_encode_freelist = false;
 
 static bool g_initialized = false;
 static int g_bin_count = 0;		// number of size classes (or "bins") of pages
+static size_t* g_bin_sizes = nullptr;	// Array of bin sizes
 
 static std::set<address_t> g_cached_blocks;	// free blocks
 static std::vector<ca_page> g_pages;
@@ -39,6 +40,7 @@ static bool read_mi_version(void);
 static bool parse_thread_local_heap(void);
 static bool parse_page(struct value* page_val, int bin_index);
 static bool parse_page_queue(struct value* page_queue_val, int bin_index);
+static bool parse_abandoned(void);
 
 static ca_page* find_page(address_t addr);
 static ca_page* find_next_page(address_t addr);
@@ -63,13 +65,44 @@ init_heap(void)
 	g_initialized = false;
 	g_cached_blocks.clear();
 	g_pages.clear();
+	g_bin_count = 0;
+	delete[] g_bin_sizes;
+	g_bin_sizes = nullptr;
 
 	// Start with allocator's version
 	read_mi_version();
 
+	// Initialize bin sizes through gv `const mi_heap_t _mi_heap_empty`
+	struct symbol* sym = lookup_global_symbol("_mi_heap_empty", nullptr,
+		VAR_DOMAIN).symbol;
+	if (sym == NULL) {
+		CA_PRINT("Failed to lookup gv \"_mi_heap_empty\"\n");
+		return false;
+	}
+	struct value* heap_empty_val = value_of_variable(sym, 0);
+	struct value* pages_val = ca_get_field_gdb_value(heap_empty_val, "pages");
+	LONGEST low_bound, high_bound;
+	if (get_array_bounds (value_type(pages_val), &low_bound, &high_bound) == 0) {
+		CA_PRINT("Could not determine \"_mi_heap_empty.pages\" bounds\n");
+		return false;
+	}
+	g_bin_count = high_bound - low_bound + 1;
+	g_bin_sizes = new size_t[g_bin_count];
+	for (int i = 0; i < g_bin_count; i++) {
+		// `_mi_heap_empty.pages` is an array of mi_page_queue_t[g_bin_count]
+		struct value* page_queue_val = value_subscript(pages_val, i);
+		struct value* block_size_val = ca_get_field_gdb_value(page_queue_val, "block_size");
+		g_bin_sizes[i] = value_as_long(block_size_val);
+	}
+
 	// Parse thread local heaps
 	if (!parse_thread_local_heap()) {
 		CA_PRINT("Failed to parse thread local heap\n");
+		return false;
+	}
+	// When thread exits, its heap will be abandoned
+	if (!parse_abandoned()) {
+		CA_PRINT("Failed to parse abandoned heaps\n");
 		return false;
 	}
 
@@ -344,7 +377,7 @@ void register_mi_malloc_v2() {
 static bool read_mi_version(void)
 {
 	// hack it by reading the 2nd byte of funciton mi_version()
-	struct symbol* sym = lookup_symbol("mi_version", 0, VAR_DOMAIN, 0).symbol;
+	struct symbol* sym = lookup_symbol("mi_version", nullptr, VAR_DOMAIN, nullptr).symbol;
 	if (sym == nullptr) {
 		CA_PRINT_DBG("Failed to lookup function \"mi_version\"\n");
 		return false;
@@ -370,7 +403,7 @@ static bool parse_page(struct value* page_val, int bin_index)
 	struct ca_segment *segment;
 
 	CA_PRINT_DBG("\tParsing mi_page_t at address %p for bin index %d\n",
-		(void*)(page_val->address()), bin_index);
+		(void*)value_as_address(page_val), bin_index);
 
 	// If the page has "keys" field, it means the free list is encoded.
 	// We currently don't support parsing encoded free list, so skip this page
@@ -444,7 +477,7 @@ static bool parse_page(struct value* page_val, int bin_index)
 	while (block_addr != 0) {
 		if (block_addr < block_start || block_addr >= block_end) {
 			CA_PRINT("Invalid xthread free block address %p in mi_page_t %p\n",
-				(void*)block_addr, (void*)value_address(page_val));
+				(void*)block_addr, (void*)value_as_address(page_val));
 			return false;
 		}
 		g_cached_blocks.insert(block_addr);
@@ -467,6 +500,18 @@ static bool parse_page(struct value* page_val, int bin_index)
 		CA_PRINT_DBG("Invalid used or free block count in mi_page_t: used %zu + free %zu + local_free %zu != capacity %zu\n",
 			used_blk_count, free_blk_count, local_free_blk_count, capacity);
 	}
+
+	// Adjust bin index if necessary
+	if (bin_index == 0) {
+		// index 0 is not used, calculate the appropriate bin index by block size
+		for (int i = g_bin_count-1; i >= 0; i--) {
+			if (block_size >= g_bin_sizes[i]) {
+				bin_index = i;
+				break;
+			}
+		}
+	}
+
 	// Add the page to the global page list for future reference
 	ca_page page = { value_address(page_val), block_start, block_end, block_size, bin_index };
 	g_pages.push_back(page);
@@ -532,20 +577,6 @@ static int thread_local_heap (struct thread_info *info, void *data)
 		if (page_count_val && value_as_long(page_count_val) > 0) {
 			// Field "pages" is an array of mi_page_queue_t
 			struct value* pages_val = ca_get_field_gdb_value(thread_heap, "pages");
-			if (g_bin_count == 0) {
-				LONGEST low_bound, high_bound;
-				if (get_array_bounds (value_type(pages_val), &low_bound, &high_bound) == 0) {
-					CA_PRINT("Could not determine \"pages\" bounds\n");
-					return false;
-				}
-				g_bin_count = high_bound - low_bound + 1;
-				CA_PRINT_DBG("Detected mi_heap_t::pages[%ld-%ld] array length %d\n",
-					low_bound, high_bound, g_bin_count);
-				if (g_bin_count <= 0) {
-					CA_PRINT("Invalid \"pages\" array bounds: low %ld, high %ld\n", low_bound, high_bound);
-					return false;
-				}
-			}
 			for (int index = 0; index < g_bin_count; index++) {
 				struct value *val = value_subscript(pages_val, index);
 				if (parse_page_queue(val, index) == false) {
@@ -607,6 +638,149 @@ static void add_one_big_block(struct heap_block *blks, unsigned int num,
 			break;
 		}
 	}
+}
+
+static bool parse_segment(struct value* segment_val)
+{
+	// filed "slices[MI_SLICES_PER_SEGMENT+1]" is an array of mi_slice_t,
+	// which are candidates for pages.
+	struct value* slices_val = ca_get_field_gdb_value(segment_val, "slices");
+	if (slices_val == nullptr) {
+		CA_PRINT("Failed to get field \"slices\" of mi_segment_t\n");
+		return false;
+	}
+	LONGEST low_bound, high_bound;
+	if (get_array_bounds (value_type(slices_val), &low_bound, &high_bound) == 0) {
+		CA_PRINT("Could not determine \"slices\" bounds\n");
+		return false;
+	}
+	for (LONGEST index = low_bound; index <= high_bound; index++) {
+		// slice is a page under disguise "typedef mi_page_t  mi_slice_t;"
+		struct value* page_val = value_subscript(slices_val, index);
+		// For a real page, fields slice_count!=0 and slice_offset==0 and page_start!=0
+		// We can use this to filter out the slices that are not real pages.
+		struct value* slice_count_val = ca_get_field_gdb_value(page_val, "slice_count");
+		struct value* slice_offset_val = ca_get_field_gdb_value(page_val, "slice_offset");
+		struct value* page_start_val = ca_get_field_gdb_value(page_val, "page_start");
+		if (!slice_count_val || !slice_offset_val || !page_start_val) {
+			CA_PRINT("Failed to get fields of mi_slice_t: slice_count, slice_offset or page_start\n");
+			continue;
+		} else if (value_as_long(slice_count_val) == 0 || value_as_long(slice_offset_val) != 0 || value_as_address(page_start_val) == 0) {
+			continue;
+		}
+		if (!parse_page(page_val, 0)) {
+			CA_PRINT("Failed to parse mi_slice_t at index %ld as mi_page_t\n", index);
+			continue;
+		}
+	}
+	return true;
+}
+
+static bool parse_abandoned(void)
+{
+	// Starts with gv "mi_arenas[MI_MAX_ARENAS]"
+	// When pages/segments are abandoned, they are detached from thread local data.
+	// But they are still reachable from the global arena, which mark them in a bitmap
+	struct symbol *sym = lookup_symbol("mi_arenas", nullptr, VAR_DOMAIN, nullptr).symbol;
+	if (sym == nullptr) {
+		CA_PRINT("Failed to lookup gv \"mi_arenas\"\n");
+		return false;
+	}
+	struct value* mi_arenas_val = value_of_variable(sym, 0);
+	LONGEST low_bound, high_bound;
+	if (get_array_bounds (value_type(mi_arenas_val), &low_bound, &high_bound) == 0) {
+		CA_PRINT("Could not determine \"mi_arenas\" bounds\n");
+		return false;
+	}
+	unsigned int mi_arenas_len = high_bound - low_bound + 1;
+	// Get gv "mi_arena_count", which is the actual number of arenas in use (can be less than MI_MAX_ARENAS)
+	sym = lookup_symbol("mi_arena_count", nullptr, VAR_DOMAIN, nullptr).symbol;
+	if (sym == nullptr) {
+		CA_PRINT("Failed to lookup gv \"mi_arena_count\"\n");
+		return false;
+	}
+	struct value* mi_arena_count_val = value_of_variable(sym, 0);
+	size_t mi_arena_count = value_as_long(mi_arena_count_val);
+	if (mi_arena_count > mi_arenas_len) {
+		CA_PRINT("Invalid mi_arena_count %zu greater than mi_arenas array length %u\n",
+			mi_arena_count, mi_arenas_len);
+		return false;
+	}
+	// Traverse mi_arenas array and find the arenas in use (with non-nullptr value)
+	for (unsigned int index = 0; index < mi_arena_count; index++) {
+		struct value *val = value_subscript(mi_arenas_val, index);
+		if (value_as_address(val)) {
+			val = value_ind(val);
+			// Get field "field_count", which is the size of the bitmap
+			struct value* field_count_val = ca_get_field_gdb_value(val, "field_count");
+			if (field_count_val == nullptr) {
+				CA_PRINT("Failed to get field \"field_count\" of mi_arenas[%d]\n", index);
+				return false;
+			}
+			size_t field_count = value_as_long(field_count_val);
+			size_t bitmap_size = field_count * sizeof(mi_bitmap_field_t);
+			unsigned char* bitmap = new unsigned char[bitmap_size];
+			// Get field "blocks_abandoned", which is the bitmap for abandoned segments
+			struct value* blocks_abandoned_val = ca_get_field_gdb_value(val, "blocks_abandoned");
+			if (blocks_abandoned_val == nullptr) {
+				CA_PRINT("Failed to get field \"blocks_abandoned\" of mi_arenas[%d]\n", index);
+				delete[] bitmap;
+				return false;
+			}
+			if (!read_memory_wrapper(nullptr, value_as_address(blocks_abandoned_val), bitmap, bitmap_size)) {
+				CA_PRINT("Failed to read blocks_abandoned bitmap of mi_arenas[%d] at address %p\n",
+					index, (void*)value_as_address(blocks_abandoned_val));
+				delete[] bitmap;
+				return false;
+			}
+			// Get the start address with field "start"
+			struct value* start_val = ca_get_field_gdb_value(val, "start");
+			if (start_val == nullptr) {
+				CA_PRINT("Failed to get field \"start\" of mi_arenas[%d]\n", index);
+				delete[] bitmap;
+				return false;
+			}
+			address_t start_addr = value_as_address(start_val);
+			// Traverse the bitmap, for any bit set, it means the corresponding segment is abandoned,
+			// and we can calculate the segment address by start address + index * MI_ARENA_BLOCK_SIZE
+			//
+			// First get the type of "mi_segment_t*"" for future use in value_at() through gv "mi_subproc_default"
+			struct symbol* mi_subproc_default_sym = lookup_symbol("mi_subproc_default", nullptr, VAR_DOMAIN, nullptr).symbol;
+			if (mi_subproc_default_sym == nullptr) {
+				CA_PRINT("Failed to lookup gv \"mi_subproc_default\"\n");
+				delete[] bitmap;
+				return false;
+			}
+			struct value* mi_subproc_default_val = value_of_variable(mi_subproc_default_sym, 0);
+			struct value* abandoned_os_list_val = ca_get_field_gdb_value(mi_subproc_default_val, "abandoned_os_list");
+			if (abandoned_os_list_val == nullptr) {
+				CA_PRINT("Failed to get field \"abandoned_os_list\" of mi_subproc_default\n");
+				delete[] bitmap;
+				return false;
+			}
+			struct type* mi_segment_type = value_type(value_ind(abandoned_os_list_val));
+
+			for (size_t bit_index = 0; bit_index < bitmap_size * 8; bit_index++) {
+				size_t byte_index = bit_index / 8;
+				size_t bit_offset = bit_index % 8;
+				if (bitmap[byte_index] & (1 << bit_offset)) {
+					address_t block_addr = start_addr + bit_index * MI_ARENA_BLOCK_SIZE;
+					// Parse the abandoned segment
+					struct value* segment_val = value_at(mi_segment_type, block_addr);
+					if (segment_val == nullptr) {
+						CA_PRINT("Failed to create value for mi_segment_t at address %p\n", (void*)block_addr);
+						continue;
+					}
+					if (!parse_segment(segment_val)) {
+						CA_PRINT("Failed to parse mi_segment_t at address %p\n", (void*)block_addr);
+						continue;
+					}
+				}
+			}
+		}
+	}
+
+	return true;
 }
 
 static bool gdb_symbol_prelude(void)

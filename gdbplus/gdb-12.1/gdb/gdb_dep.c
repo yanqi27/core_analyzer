@@ -2903,7 +2903,7 @@ ca_get_field_gdb_value(struct value *val, const char *field_name)
 
 	int fieldno = type_field_name2no(type, field_name);
 	if (fieldno < 0) {
-		CA_PRINT("failed to find member \"%s\"\n", field_name);
+		/*CA_PRINT("failed to find member \"%s\"\n", field_name);*/
 		return NULL;
 	}
 

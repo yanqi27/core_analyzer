@@ -37,12 +37,17 @@
 
 const int NUM_THREADS = 4;
 
-const unsigned int num_small_regions = 4096 * NUM_THREADS;
-const unsigned int num_big_regions = 16 * NUM_THREADS;
+const size_t big_region_sizes [] = {
+	128 * 1024, 256 * 1024, 512 * 1024, 1024 * 1024, 2 * 1024 * 1024,
+	4 * 1024 * 1024, 8 * 1024 * 1024, 16 * 1024 * 1024, 32 * 1024 * 1024
+};
+
+const unsigned int num_small_regions = 8192 * NUM_THREADS;
+const unsigned int num_big_regions = (sizeof(big_region_sizes) / sizeof(big_region_sizes[0])) * NUM_THREADS;
 const unsigned int num_regions = num_small_regions + num_big_regions + 1;
 
 const size_t max_small_sz = 1032;
-const size_t threshold = 128 * 1024;
+const size_t threshold = big_region_sizes[0];
 const size_t page_size = 4096;
 
 /*
@@ -220,7 +225,7 @@ thread_func(void *arg)
 	// Allocate big memory blocks, i.e. > 128KiB
 	for (i = 0; i < num_big_regions/NUM_THREADS; i++) {
 		index = get_index();
-		regions[index].size = threshold + (rand() % 16) * page_size;
+		regions[index].size = big_region_sizes[i] + ((rand() % 16) * page_size);
 		regions[index].inuse = true;
 		regions[index].p = malloc(regions[index].size);
 		if (regions[index].p == NULL)

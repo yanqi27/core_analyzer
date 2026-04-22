@@ -24,7 +24,11 @@ def check_heap_blocks(known_blks, count):
 		blk_size = int(blk['size'].cast(ulong_type))
 		my_blk = gdb.heap_block(blk_addr)
 		if not my_blk:
-			raise Exception('Failed to query block at 0x%x' % blk_addr)
+			if blk['inuse'] == 0:
+				print("[ca_test_info] block at 0x%x (size=%ld) was freed, it might not be queryable anymore" % (blk_addr, blk_size))
+				i = i + 1
+				continue
+			raise Exception('Failed to query block at 0x%x (size=%ld inuse=%d)' % (blk_addr, blk_size, blk['inuse']))
 		match = True
 		if blk['inuse']:
 			if blk_addr != my_blk.address or blk_size != my_blk.size or not my_blk.inuse:
@@ -139,8 +143,8 @@ def check_ref():
 		% (refs[0].heap_addr, refs[0].heap_size, obj_addr))
 
 def check_heap_commands():
-	print("[ca_test] Execute command 'heap /u regions'")
-	gdb.execute('heap /u regions')
+	print("[ca_test] Execute command 'heap /u derived_objects'")
+	gdb.execute('heap /u derived_objects')
 	print("[ca_test] Execute command 'heap /tb 3'")
 	gdb.execute('heap /tb 3')
 

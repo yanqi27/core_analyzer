@@ -383,7 +383,8 @@ static bool heap_walk(address_t heapaddr, bool verbose)
 	CA_PRINT("\t\ttotal mmap regions created=%d\n", mparams.max_n_mmaps);
 	CA_PRINT("\t\tmmapped_mem=" PRINT_FORMAT_SIZE "\n", mparams.mmapped_mem);
 	CA_PRINT("\t\tsbrk_base=%p\n", mparams.sbrk_base);
-	CA_PRINT("\t\ttcache_bins=" PRINT_FORMAT_SIZE "\n", mparams.tcache_bins);
+	if (mparams.tcache_bins > 0)
+		CA_PRINT("\t\ttcache_bins=" PRINT_FORMAT_SIZE "\n", mparams.tcache_bins);
 	if (mparams.tcache_small_bins > 0)
 		CA_PRINT("\t\ttcache_small_bins=" PRINT_FORMAT_SIZE "\n", mparams.tcache_small_bins);
 	CA_PRINT("\t\ttcache_max_bytes=" PRINT_FORMAT_SIZE "\n", mparams.tcache_max_bytes);
@@ -537,7 +538,10 @@ static bool get_biggest_blocks(struct heap_block* blks, unsigned int num)
 			{
 				if (!read_memory_wrapper(NULL, heap->mStartAddr - size_t_sz, &achunk, mchunk_sz))
 					break;
-				blk.size = chunksize(&achunk) - size_t_sz * 2;
+				if (glibc_ver_minor >= 43)
+					blk.size = chunksize(&achunk) - CHUNK_HDR_SZ + size_t_sz;
+				else
+					blk.size = chunksize(&achunk) - size_t_sz * 2;
 				if (blk.size > smallest->size)
 				{
 					blk.addr = heap->mStartAddr + size_t_sz;
@@ -630,7 +634,10 @@ static bool walk_inuse_blocks(struct inuse_block* opBlocks, unsigned long* opCou
 			if (pBlockinfo)
 			{
 				pBlockinfo->addr = heap->mStartAddr + size_t_sz;
-				pBlockinfo->size = chunksize(&achunk) - size_t_sz*2;
+				if (glibc_ver_minor >= 43)
+					pBlockinfo->size = chunksize(&achunk) - CHUNK_HDR_SZ + size_t_sz;
+				else
+					pBlockinfo->size = chunksize(&achunk) - size_t_sz*2;
 				pBlockinfo++;
 			}
 		}
@@ -692,10 +699,10 @@ static CoreAnalyzerHeapInterface sPtMallHeapManager = {
 void register_pt_malloc_2_35() {
     bool my_heap = false;
     if (pt::get_glibc_version(&glibc_ver_major, &glibc_ver_minor)) {
-        if (glibc_ver_major == 2 && glibc_ver_minor >= 32 && glibc_ver_minor <= 42)
+        if (glibc_ver_major == 2 && glibc_ver_minor >= 32 && glibc_ver_minor <= 43)
             my_heap = true;
     }
-    return register_heap_manager("pt 2.32-2.37", &sPtMallHeapManager, my_heap);
+    return register_heap_manager("pt 2.32-2.43", &sPtMallHeapManager, my_heap);
 }
 /***************************************************************************
 * Ptmalloc Helper Functions
@@ -974,7 +981,12 @@ static bool extract_tcache(tcache_perthread_struct *tcps, struct symbol *tcsym)
 		return false;
 	}
 
-	if (!ca_memcpy_field_value(val, "entries", (char *)&tcps->entries[0], sizeof(tcps->entries[0]) * mparams.tcache_bins)) {
+	size_t bin_count = 0;
+	if (mparams.tcache_bins > 0)
+		bin_count = mparams.tcache_bins;
+	else if (mparams.tcache_small_bins > 0)
+		bin_count = mparams.tcache_small_bins;
+	if (!ca_memcpy_field_value(val, "entries", (char *)&tcps->entries[0], sizeof(tcps->entries[0]) * bin_count)) {
 		CA_PRINT("Failed to extract tcache.entries from thread-local variable \"tcache\"\n");
 		return false;
 	}
@@ -1000,7 +1012,8 @@ thread_tcache (struct thread_info *info, void *data)
 	}
 
 	/* Each entry is a singly-linked list */
-	for (i = 0; i < mparams.tcache_bins; i++) {
+	size_t bin_count = mparams.tcache_bins > 0 ? mparams.tcache_bins : mparams.tcache_small_bins;
+	for (i = 0; i < bin_count; i++) {
 		unsigned int count = 0;
 		tcache_entry *entry = tcps.entries[i];
 
@@ -1068,49 +1081,64 @@ read_malloc_state_by_symbol(address_t arena_vaddr, struct ca_malloc_state *mstat
 	/*
 	 * Extract data members of the arena metadata (struct malloc_state)
 	 */
-	if(!ca_get_field_value(val, "flags", &data, false))
+	if(!ca_get_field_value(val, "flags", &data, false)) {
+		CA_PRINT("Failed to extract malloc_state.flags of arena at " PRINT_FORMAT_POINTER "\n", arena_vaddr);
 		return false;
+	}
 	mstate->flags = data;
-	if(!ca_get_field_value(val, "nfastbins", &data, true))
-		return false;
+
+	ca_get_field_value(val, "nfastbins", &data, true);
 	if (data != ULONG_MAX)
 		mstate->nfastbins = data;
 	else
 		mstate->nfastbins = sizeof(mstate->fastbins) / sizeof(mstate->fastbins[0]);
+
+	// Starting with glibc 2.43, fastbin is removed in favor of tcache
 	// "fastbins" or "fastbinsY"?
-	if (!ca_memcpy_field_value(val, "fastbins", (char *)&mstate->fastbins[0],
-	    sizeof(mstate->fastbins)) &&
-		!ca_memcpy_field_value(val, "fastbinsY", (char *)&mstate->fastbins[0],
-	    sizeof(mstate->fastbins))) {
+	if (!ca_memcpy_field_value(val, "fastbins", (char *)&mstate->fastbins[0], sizeof(mstate->fastbins))
+		&& !ca_memcpy_field_value(val, "fastbinsY", (char *)&mstate->fastbins[0], sizeof(mstate->fastbins))) {
+		//CA_PRINT("Failed to extract malloc_state.fastbins of arena at " PRINT_FORMAT_POINTER "\n", arena_vaddr);
+	}
+
+	if(!ca_get_field_value(val, "top", &data, false)) {
+		CA_PRINT("Failed to extract malloc_state.top of arena at " PRINT_FORMAT_POINTER "\n", arena_vaddr);
 		return false;
 	}
-	if(!ca_get_field_value(val, "top", &data, false))
-		return false;
 	mstate->top = (mchunkptr)data;
-	if(!ca_get_field_value(val, "last_remainder", &data, false))
+	if(!ca_get_field_value(val, "last_remainder", &data, false)) {
+		CA_PRINT("Failed to extract malloc_state.last_remainder of arena at " PRINT_FORMAT_POINTER "\n", arena_vaddr);
 		return false;
+	}
 	mstate->last_remainder = (mchunkptr)data;
 	//bins
 	if (!ca_memcpy_field_value(val, "bins", (char *)&mstate->bins[0],
 	    sizeof(mstate->bins))) {
+		CA_PRINT("Failed to extract malloc_state.bins of arena at " PRINT_FORMAT_POINTER "\n", arena_vaddr);
 		return false;
 	}
 	//binmap
 	if (!ca_memcpy_field_value(val, "binmap", (char *)&mstate->binmap[0],
 	    sizeof(mstate->binmap))) {
+		CA_PRINT("Failed to extract malloc_state.binmap of arena at " PRINT_FORMAT_POINTER "\n", arena_vaddr);
 		return false;
 	}
-	if(!ca_get_field_value(val, "next", &data, false))
+	if(!ca_get_field_value(val, "next", &data, false)) {
+		CA_PRINT("Failed to extract malloc_state.next of arena at " PRINT_FORMAT_POINTER "\n", arena_vaddr);
 		return false;
+	}
 	mstate->next = (void *)data;
-	if(!ca_get_field_value(val, "next_free", &data, true))
+	if(!ca_get_field_value(val, "next_free", &data, true)) {
+		CA_PRINT("Failed to extract malloc_state.next_free of arena at " PRINT_FORMAT_POINTER "\n", arena_vaddr);
 		return false;
+	}
 	if (data == ULONG_MAX)
 		mstate->next_free = NULL;
 	else
 		mstate->next_free = (void *)data;
-	if(!ca_get_field_value(val, "system_mem", &data, false))
+	if(!ca_get_field_value(val, "system_mem", &data, false)) {
+		CA_PRINT("Failed to extract malloc_state.system_mem of arena at " PRINT_FORMAT_POINTER "\n", arena_vaddr);
 		return false;
+	}
 	mstate->system_mem = data;
 
 	return true;
@@ -1419,7 +1447,7 @@ static struct ca_arena* build_arena(address_t arena_vaddr, enum HEAP_TYPE type)
 						&& !prev_inuse(&mmap_chunk)
 						//&& chunksize(&mmap_chunk) >= mparams.mmap_threshold // the threshold maybe changed
 						&& chunksize(&mmap_chunk) > pgsize
-						&& (chunksize(&mmap_chunk) & (pgsize - 1)) == 0
+						&& ( (chunksize(&mmap_chunk) & (pgsize - 1)) == 0 || ((chunksize(&mmap_chunk)+CHUNK_HDR_SZ) & (pgsize - 1)) == 0 )
 						&& chunksize(&mmap_chunk) <= hseg->m_vsize
 						&& cursor + chunksize(&mmap_chunk) <= hend)
 					{
@@ -1430,7 +1458,10 @@ static struct ca_arena* build_arena(address_t arena_vaddr, enum HEAP_TYPE type)
 						heap->mEndAddr   = cursor + chunksize(&mmap_chunk);
 						add_ca_heap(arena, heap);
 						// move forward
-						cursor += chunksize(&mmap_chunk);
+						if (glibc_ver_minor >= 43)
+							cursor += chunksize(&mmap_chunk) + CHUNK_HDR_SZ;
+						else
+							cursor += chunksize(&mmap_chunk);
 						cursor = (cursor + (pgsize - 1)) & ~(pgsize - 1);
 					}
 					else
@@ -1514,7 +1545,7 @@ read_mp_by_symbol(void)
 	// glibc 2.42 and later
 	if (ca_get_field_value(val, "tcache_small_bins", &data, true) && data != ULONG_MAX) {
 		mparams.tcache_small_bins = data;
-		mparams.tcache_bins = TCACHE_MAX_BINS;
+		mparams.tcache_bins = 0;
 	}
 
 	/* ptmalloc: static INTERNAL_SIZE_T global_max_fast; */
@@ -1583,7 +1614,7 @@ static bool build_heaps_internal(address_t main_arena_vaddr, address_t mparams_v
 	(void) rc;
 
 	/* Collect per-thread caches */
-	if (mparams.tcache_bins > 0) {
+	if (mparams.tcache_bins > 0 || mparams.tcache_small_bins > 0) {
 		if (!build_tcache()) {
 			CA_PRINT("Failed to extract per-thread cache\n");
 			return false;
@@ -1836,7 +1867,10 @@ static bool fill_heap_block(struct ca_heap* heap, address_t addr, struct heap_bl
 		if (!read_memory_wrapper(NULL, heap->mStartAddr - size_t_sz, &achunk, sizeof(achunk)))
 			return false;
 		blk->addr = heap->mStartAddr + size_t_sz;
-		blk->size = chunksize(&achunk) - size_t_sz*2;
+		if (glibc_ver_minor >= 43)
+			blk->size = chunksize(&achunk) - CHUNK_HDR_SZ + size_t_sz;
+		else
+			blk->size = chunksize(&achunk) - size_t_sz*2;
 		blk->inuse = true;
 		return true;
 	}

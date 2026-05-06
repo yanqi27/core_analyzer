@@ -5,7 +5,7 @@
 # Dockerfile to test core analyzer against ptmalloc/tcmalloc/jemalloc
 # Tested base images:
 #     redhat/ubi10, redhat/ubi9, redhat/ubi8
-#     fedora:40, fedora:39
+#     fedora:44, fedora:43, fedora:42
 # ==============================================================================================
 
 ARG VARIANT=latest

@@ -17,6 +17,7 @@ COPY . .
 RUN ./test/setup_ubuntu.sh
 
 RUN echo 'set pagination off' > /root/.gdbinit
+RUN echo 'set auto-load safe-path /' >> /root/.gdbinit
 
 ARG GDB_VERSION=latest
 

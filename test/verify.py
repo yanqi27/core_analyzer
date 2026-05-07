@@ -192,6 +192,8 @@ try:
 	core_name = 'core.' + str(gdb.inferiors()[0].pid)
 	gdb.execute ('gcore ' + core_name)
 	gdb.execute ('kill')
+	gdb.execute ('shell ls -l ' + core_name)
+	gdb.execute ('shell df -h')
 	gdb.execute ('core ' + core_name)
 	run_tests()
 

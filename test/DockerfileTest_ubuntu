@@ -5,7 +5,7 @@
 # Dockerfile to test core analyzer against ptmalloc/tcmalloc/jemalloc
 # Tested base images:
 #     debian:trixie, debian:bullseye, debian:bookworm(gdb 12.1 only)
-#     ubuntu:24.04, ubuntu:22.04, ubuntu:20.04
+#     ubuntu:26.04, ubuntu:24.04, ubuntu:22.04, ubuntu:20.04
 # ==============================================================================================
 
 ARG VARIANT=latest
@@ -36,7 +36,7 @@ RUN if [[ -z "$SKIP_MIMALLOC" ]] ; then \
 	fi
 
 WORKDIR /workspaces/core_analyzer/
-RUN ./build_jemalloc.sh 5.3.0
+RUN ./build_jemalloc.sh 5.3.1
 WORKDIR test
 RUN make check-jemalloc
 

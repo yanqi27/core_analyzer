@@ -36,7 +36,7 @@ RUN if [[ -z "$SKIP_MIMALLOC" ]] ; then \
 	fi
 
 WORKDIR /workspaces/core_analyzer/
-RUN ./build_jemalloc.sh 5.3.1
+RUN ./build_jemalloc.sh 5.3.0
 WORKDIR test
 RUN make check-jemalloc
 

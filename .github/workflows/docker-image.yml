@@ -39,7 +39,7 @@ jobs:
     - name: Clean up disk space
       run: docker system prune -f
     - name: Run test fedora
-      run: docker build . --file test/DockerfileTest_redhat --build-arg VARIANT="fedora:43" --build-arg GDB_VERSION="16.3" --tag core_analyzer:rdht$(date +%s)
+      run: docker build . --file test/DockerfileTest_redhat --build-arg VARIANT="fedora:42" --build-arg GDB_VERSION="16.3" --tag core_analyzer:rdht$(date +%s)
     - name: Clean up disk space
       run: docker system prune -f
     - name: Run test suse

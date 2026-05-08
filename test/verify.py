@@ -175,7 +175,6 @@ def run_tests():
 # Fun starts here
 #
 core_name = None
-exec_file = gdb.current_progspace().executable_filename
 objfiles = gdb.objfiles()
 for o in objfiles:
 	if 'jemalloc' in o.filename:
@@ -193,8 +192,7 @@ try:
 	core_name = 'core.' + str(gdb.inferiors()[0].pid)
 	gdb.execute ('gcore ' + core_name)
 	gdb.execute ('kill')
-	gdb.execute ('file ' + exec_file)
-	gdb.execute ('core-file ' + core_name)
+	gdb.execute ('core ' + core_name)
 	run_tests()
 
 	print("[ca_test] Pass")

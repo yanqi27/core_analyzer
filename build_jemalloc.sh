@@ -36,6 +36,8 @@ then
 fi
 cd $scr_dir
 
+git checkout -- src/jemalloc_cpp.cpp
+
 echo "checkout $release_tag"
 branch_name=jemalloc-$release_tag
 if [ -n "$(git branch --list ${branch_name})" ]
@@ -44,6 +46,15 @@ then
     git checkout $branch_name
 else
     git checkout tags/$release_tag -b $branch_name
+fi
+
+# fedora:44 compile error: src/jemalloc_cpp.cpp:90:22: error: '__throw_bad_alloc' is not a member of 'std'
+# check file /etc/fedora-release, if it exists and contains "Fedora release 44",
+# replace expression "std::__throw_bad_alloc()" with "throw std::bad_alloc()" in src/jemalloc_cpp.cpp
+if [ -f /etc/fedora-release ] && grep -q "Fedora release 44" /etc/fedora-release; then
+    echo "Fedora 44 detected, replacing expression in src/jemalloc_cpp.cpp"
+    # replace expression "std::__throw_bad_alloc()" with "throw std::bad_alloc()" in src/jemalloc_cpp.cpp
+    sed -i 's/std::__throw_bad_alloc()/throw std::bad_alloc()/g' src/jemalloc_cpp.cpp
 fi
 
 echo "building..."

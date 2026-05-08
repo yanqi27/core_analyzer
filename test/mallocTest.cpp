@@ -167,7 +167,7 @@ last_call(void)
 }
 
 static size_t
-region_size(void *p)
+usable_size(void *p)
 {
 #ifdef __linux__
 
@@ -219,7 +219,7 @@ thread_func(void *arg)
 		regions[index].p = malloc(regions[index].size);
 		if (regions[index].p == NULL)
 			fatal_error("Out of memory");
-		regions[index].size = region_size(regions[index].p);
+		regions[index].size = usable_size(regions[index].p);
 	}
 
 	// Allocate big memory blocks, i.e. > 128KiB
@@ -230,7 +230,7 @@ thread_func(void *arg)
 		regions[index].p = malloc(regions[index].size);
 		if (regions[index].p == NULL)
 			fatal_error("Out of memory");
-		regions[index].size = region_size(regions[index].p);
+		regions[index].size = usable_size(regions[index].p);
 	}
 
 	// Signal memory allocation has finished, wait for memory release
@@ -293,7 +293,7 @@ main(int argc, char** argv)
 	// Include the allocated buffer for regions
 	regions[num_regions - 1].inuse = true;
 	regions[num_regions - 1].p = regions;
-	regions[num_regions - 1].size = region_size(regions);
+	regions[num_regions - 1].size = usable_size(regions);
 
 	// Create a group of Base objects
 	for (i = 0; i < num_derived; i++) {

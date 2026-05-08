@@ -31,6 +31,7 @@ typedef long unsigned int size_t;
 ************************************************************************/
 #define INTERNAL_SIZE_T size_t
 #define SIZE_SZ                (sizeof(INTERNAL_SIZE_T))
+#define CHUNK_HDR_SZ           (2 * SIZE_SZ)
 #define MALLOC_ALIGNMENT       (2 * SIZE_SZ)
 #define MALLOC_ALIGN_MASK      (MALLOC_ALIGNMENT - 1)
 

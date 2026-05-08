@@ -13,7 +13,8 @@ dnf update -y
 dnf install -y wget procps-ng git autoconf gettext \
     gcc gcc-c++ make automake cmake zlib-devel libtool diffutils \
     libcurl-devel sqlite-devel xz \
-    python3-devel python3-pip sudo yum-utils cpan patch
+    python3-devel python3-pip sudo yum-utils cpan patch \
+    gmp-devel mpfr-devel
 
 pip install distro && python3 ./test/extra_setup.py
 
@@ -44,14 +45,3 @@ cd /opt && \
     tar xvf texinfo-7.0.3.tar.gz && \
     cd texinfo-7.0.3 && \
     ./configure $CONF_OPTIONS && make -j 4 && make install
-
-cd /opt && \
-    wget https://ftp.gnu.org/gnu/gmp/gmp-6.2.1.tar.xz && \
-    tar xvf gmp-6.2.1.tar.xz && \
-    cd gmp-6.2.1 && \
-    ./configure $CONF_OPTIONS && make -j 4 && make install
-
-cd /opt && \
-    git clone https://gitlab.inria.fr/mpfr/mpfr.git && \
-    cd mpfr && \
-    ./autogen.sh && ./configure --prefix=/usr $CONF_OPTIONS && make -j 4 && make install

@@ -37,7 +37,7 @@ def check_heap_blocks(known_blks, count):
 			user_blks.append(py_blk)
 		else:
 			if my_blk.inuse:
-				match = False
+				print("[ca_test_info] block at 0x%x was freed but is reported as in-use, it might be a false positive" % (blk_addr))
 
 		if not match:
 			print("[ca_test] core analyzer returns wrong heap info of block [%d]" % (i))

@@ -5,7 +5,7 @@
 # Dockerfile to test core analyzer against ptmalloc/tcmalloc/jemalloc
 # Tested base images:
 #     debian:trixie, debian:bullseye, debian:bookworm(gdb 12.1 only)
-#     ubuntu:24.04, ubuntu:22.04, ubuntu:20.04
+#     ubuntu:26.04, ubuntu:24.04, ubuntu:22.04, ubuntu:20.04
 # ==============================================================================================
 
 ARG VARIANT=latest

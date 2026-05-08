@@ -82,4 +82,5 @@ $RECYCLE.BIN/
 build
 # Visual Studio files
 .vs
+.vscode
 *.vcxproj.user

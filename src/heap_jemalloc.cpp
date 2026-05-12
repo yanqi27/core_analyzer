@@ -17,8 +17,8 @@ static jemalloc *g_jemalloc = nullptr;
 static enum_je_release g_version = enum_je_release::JEMALLOC_UNSUPPORTED_VERSION;
 
 static std::map<enum_je_release, std::string> g_version_names = {
-	{ enum_je_release::JEMALLOC_5_3_0, "jemalloc 5.3.0" },
-	{ enum_je_release::JEMALLOC_5_2_1, "jemalloc 5.2.0/5.2.1" },
+	{ enum_je_release::JEMALLOC_5_3, "jemalloc 5.3.0/5.3.1" },
+	{ enum_je_release::JEMALLOC_5_2, "jemalloc 5.2.0/5.2.1" },
 	{ enum_je_release::JEMALLOC_UNSUPPORTED_VERSION, "jemalloc unsupported version" }
 };
 
@@ -84,6 +84,21 @@ init_heap(void)
 	** retrieve configuration parameters
 	*/
 
+	// je_sz_large_pad (jemalloc 5.3.1+)
+	// type = size_t
+	sym = lookup_symbol("je_sz_large_pad", 0, VAR_DOMAIN, 0).symbol;
+	if (sym) {
+		val = value_of_variable(sym, 0);
+		if (val) {
+			g_jemalloc->sz_large_pad = value_as_long(val);
+		} else {
+			CA_PRINT("Failed to get gdb value of \"je_sz_large_pad\"\n");
+			return false;
+		}
+	} else {
+		g_jemalloc->sz_large_pad = 0;
+	}
+
 	// narenas_total
 	// type = struct {
 	//     unsigned int repr;
@@ -100,7 +115,7 @@ init_heap(void)
 
 	// nbins_total
 	// type = unsigned int
-	if (g_version == enum_je_release::JEMALLOC_5_3_0) {
+	if (g_version == enum_je_release::JEMALLOC_5_3) {
 		sym = lookup_symbol("nbins_total", 0, VAR_DOMAIN, 0).symbol;
 		CHECK_SYM(sym, "nbins_total");
 
@@ -153,7 +168,7 @@ init_heap(void)
 		}
 		g_jemalloc->bin_infos.push_back(binfo);
 	}
-	if (g_version == enum_je_release::JEMALLOC_5_3_0) {
+	if (g_version == enum_je_release::JEMALLOC_5_3) {
 		if (g_jemalloc->bin_infos.size() != g_jemalloc->nbins_total) {
 			CA_PRINT("je_bin_infos length(%ld) != nbins_total(%d)\n",
 				g_jemalloc->bin_infos.size(), g_jemalloc->nbins_total);
@@ -270,13 +285,17 @@ init_heap(void)
 		// je_arenas[i].bins
 		struct value *bins_v = ca_get_field_gdb_value(arena_v, "bins");
 		if (!bins_v) {
-			CA_PRINT("Failed to parse je_arenas[%d]'s data memeber \"bins\"\n", i);
-			return false;
+			// Since jemalloc 5.3.1, "bins" is changed to "all_bins"
+			bins_v = ca_get_field_gdb_value(arena_v, "all_bins");
+			if (!bins_v) {
+				CA_PRINT("Failed to parse je_arenas[%d]'s data memeber \"bins\" or \"all_bins\"\n", i);
+				return false;
+			}
 		}
 		for (int j = 0; j < g_jemalloc->nbins_total; j++) {
 			// je_arenas[i].bins[j]
 			struct value *bin_v = value_subscript(bins_v, j);
-			if (g_version == enum_je_release::JEMALLOC_5_3_0) {
+			if (g_version == enum_je_release::JEMALLOC_5_3) {
 				stats_v = ca_get_field_gdb_value(bin_v, "stats");
 				CHECK_VALUE(stats_v, "bin_t::stats");
 				ca_get_field_value(stats_v, "curslabs", &arena->bins[j].stats.curslabs, false);
@@ -341,7 +360,7 @@ init_heap(void)
 	//     void *repr;
 	// }
 	struct value *rtree_v;
-	if (g_version == enum_je_release::JEMALLOC_5_3_0) {
+	if (g_version == enum_je_release::JEMALLOC_5_3) {
 		sym = lookup_symbol("je_arena_emap_global", 0, VAR_DOMAIN, 0).symbol;
 		if (sym == nullptr) {
 			CA_PRINT("Failed to lookup gv \"je_arena_emap_global\"\n");
@@ -385,7 +404,7 @@ init_heap(void)
 
 	struct type *edata_type;
 	const char *ext_type_name;
-	if (g_version == enum_je_release::JEMALLOC_5_3_0) {
+	if (g_version == enum_je_release::JEMALLOC_5_3) {
 		ext_type_name = "edata_s";
 	} else {
 		ext_type_name = "extent_s";
@@ -426,7 +445,7 @@ init_heap(void)
 			je_rtree_contents_t contents;
 			contents.metadata.szind = bits >> LG_VADDR;
 			contents.metadata.slab = (bool)(bits & 1);
-			if (g_version == enum_je_release::JEMALLOC_5_3_0) {
+			if (g_version == enum_je_release::JEMALLOC_5_3) {
 				contents.metadata.is_head = (bool)(bits & (1 << 1));
 				uintptr_t state_bits = (bits & RTREE_LEAF_STATE_MASK) >> RTREE_LEAF_STATE_SHIFT;
 				contents.metadata.state = ( unsigned int)state_bits;
@@ -450,7 +469,7 @@ init_heap(void)
 			struct value *edata_v = value_at(edata_type, contents.edata);
 			CHECK_VALUE(edata_v, "rtree leaf");
 			je_edata_t *edata;
-			if (g_version == enum_je_release::JEMALLOC_5_3_0)
+			if (g_version == enum_je_release::JEMALLOC_5_3)
 				edata = parse_edata(edata_v, &contents);
 			else
 				edata = parse_extent(edata_v, &contents);
@@ -771,9 +790,9 @@ gdb_symbol_probe(void)
 		return false;
 	nbins_total = lookup_symbol("nbins_total", 0, VAR_DOMAIN, 0).symbol;
 	if (nbins_total)
-		g_version = enum_je_release::JEMALLOC_5_3_0;
+		g_version = enum_je_release::JEMALLOC_5_3;
 	else
-		g_version = enum_je_release::JEMALLOC_5_2_1;
+		g_version = enum_je_release::JEMALLOC_5_2;
 	return true;
 }
 
@@ -867,9 +886,14 @@ parse_edata(struct value *edata_v, je_rtree_contents_t *contents)
 		edata->base = PAGE_ADDR2BASE(edata->e_addr);
 		edata->free_cnt = 0;
 		edata->inuse_cnt = 1;
-		size_t blksz = edata->e_size - (edata->e_addr - edata->base);
-		if (contents->metadata.szind < g_jemalloc->sz_table.size())
+		size_t blksz = edata->e_size;
+		if (contents->metadata.szind < g_jemalloc->bin_infos.size()) {
 			blksz = g_jemalloc->sz_table[contents->metadata.szind];
+		} else if (g_jemalloc->sz_large_pad > 0) {
+			blksz -= g_jemalloc->sz_large_pad;
+		} else {
+			blksz -= (edata->e_addr - edata->base);
+		}
 		edata->inuse_bytes = blksz;
 		// the whole extent serves one large block
 		g_jemalloc->blocks.push_back({edata->e_addr, blksz, true});
@@ -1177,7 +1201,7 @@ thread_tcache (struct thread_info *info, void *data)
 	//     tcache_slow_t *tcache_slow;
 	//     cache_bin_t bins[73];
 	// }
-	if (g_version == enum_je_release::JEMALLOC_5_3_0) {
+	if (g_version == enum_je_release::JEMALLOC_5_3) {
 		struct value *bins_v = ca_get_field_gdb_value(tcache_v, "bins");
 		if (!bins_v) {
 			CA_PRINT("Failed to extract member \"bins\" of \"tcache_t\" of thread [%d]\n", info->ptid.pid());

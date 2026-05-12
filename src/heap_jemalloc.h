@@ -128,8 +128,8 @@ struct je_rtree_contents_t {
 };
 
 enum class enum_je_release {
-	JEMALLOC_5_3_0,
-	JEMALLOC_5_2_1,
+	JEMALLOC_5_3,
+	JEMALLOC_5_2,
 	JEMALLOC_UNSUPPORTED_VERSION
 };
 
@@ -170,6 +170,9 @@ struct jemalloc {
 
 	// size table
 	std::vector<size_t> sz_table;
+
+	// Padding for large allocations (jemalloc 5.3.1+), PAGE or 0
+	size_t sz_large_pad;
 };
 
 /******************************************************************************

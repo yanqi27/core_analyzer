@@ -17,10 +17,10 @@ set -ex
 #   2.18, 2.17, 2.16
 #
 # jemalloc
-#   5.3.0, 5.2.1
+#   5.3, 5.2
 #
 # mimalloc
-#   3.2.8, 2.2.7
+#   3.3, 2.3
 #
 # distros
 #   ubuntu:26.04, ubuntu:24.04, ubuntu:22.04, ubuntu:20.04

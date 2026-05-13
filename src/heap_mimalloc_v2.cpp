@@ -242,8 +242,38 @@ heap_walk(address_t heapaddr, bool verbose)
 	}
 
 	// If heapaddr is not given, display all pages and blocks
+	size_t total_singleton_page_inuse_bytes = 0;
+	size_t total_singleton_page_free_bytes = 0;
+	size_t total_singleton_inuse_pages = 0;
+	size_t total_singleton_free_pages = 0;
 	std::unique_ptr<ca_bin[]> bins(new ca_bin[g_bin_count]);
+	// Set block size for each bin
+	for (int i = 0; i < g_bin_count; i++) {
+		bins[i].block_size = g_bin_sizes[i];
+	}
+	// Traverse pages to count inuse/free blocks for each bin
 	for (const auto& page : g_pages) {
+		if (page.bin_index == g_bin_count - 1) {
+			// Singleton page has one big block
+			size_t inuse_count = 0;
+			size_t free_count = 0;
+			for (address_t addr = page.start; addr < page.end; addr += page.block_size) {
+				if (is_block_cached(addr)) {
+					free_count++;
+					total_singleton_free_pages++;
+					total_singleton_page_free_bytes += page.block_size;
+				} else {
+					inuse_count++;
+					total_singleton_inuse_pages++;
+					total_singleton_page_inuse_bytes += page.block_size;
+				}
+			}
+			if (inuse_count + free_count != 1) {
+				CA_PRINT("Unexpected full queue page [%#lx - %#lx], block size: %zu, inuse blocks: %zu, free blocks: %zu\n",
+					page.start, page.end, page.block_size, inuse_count, free_count);
+			}
+		}
+
 		if (page.bin_index >= 0 && page.bin_index < g_bin_count) {
 			bins[page.bin_index].bin_index = page.bin_index;
 			bins[page.bin_index].page_count++;
@@ -253,6 +283,11 @@ heap_walk(address_t heapaddr, bool verbose)
 					bins[page.bin_index].free_blks++;
 				else
 					bins[page.bin_index].inuse_blks++;
+			}
+			// Sanity check: block size should match the bin size, except for the last two bins which are for huge blocks and full pages
+			if (page.bin_index < g_bin_count - 2 && bins[page.bin_index].block_size != g_bin_sizes[page.bin_index]) {
+				CA_PRINT("Unexpected block size for page [%#lx - %#lx], expected: %zu, actual: %zu\n",
+					page.start, page.end, g_bin_sizes[page.bin_index], page.block_size);
 			}
 		} else {
 			CA_PRINT("Invalid bin index %d for page [%#lx - %#lx]\n", page.bin_index, page.start, page.end);
@@ -270,10 +305,18 @@ heap_walk(address_t heapaddr, bool verbose)
 	// Display statistics
 	CA_PRINT("  size_class   num_pages  block_size  inuse_blks inuse_bytes   free_blks  free_bytes\n");
 	for (int i = 0; i < g_bin_count; i++) {
-		size_t inuse_bytes = bins[i].inuse_blks * bins[i].block_size;
-		size_t free_bytes = bins[i].free_blks * bins[i].block_size;
-		CA_PRINT("%10d %10zu %10zu %10zu %12zu %10zu %12zu\n",
-			i, bins[i].page_count, bins[i].block_size, bins[i].inuse_blks, inuse_bytes, bins[i].free_blks, free_bytes);
+		if (i == g_bin_count - 1) {
+			// Singleton pages
+			CA_PRINT("%10d %10zu %10zu %10zu %12zu %10zu %12zu\n",
+				i, bins[i].page_count, 0ul, total_singleton_inuse_pages, total_singleton_page_inuse_bytes,
+				total_singleton_free_pages, total_singleton_page_free_bytes);
+		} else {
+			size_t inuse_bytes = bins[i].inuse_blks * bins[i].block_size;
+			size_t free_bytes = bins[i].free_blks * bins[i].block_size;
+			CA_PRINT("%10d %10zu %10zu %10zu %12zu %10zu %12zu\n",
+				i, bins[i].page_count, bins[i].block_size, bins[i].inuse_blks, inuse_bytes,
+				bins[i].free_blks, free_bytes);
+		}
 	}
 
 	size_t total_inuse_blks = 0;
@@ -283,8 +326,14 @@ heap_walk(address_t heapaddr, bool verbose)
 	for (int i = 0; i < g_bin_count; i++) {
 		total_inuse_blks += bins[i].inuse_blks;
 		total_free_blks += bins[i].free_blks;
-		total_inuse_bytes += bins[i].inuse_blks * bins[i].block_size;
-		total_free_bytes += bins[i].free_blks * bins[i].block_size;
+		if (i == g_bin_count - 1) {
+			// Singleton pages
+			total_inuse_bytes += total_singleton_page_inuse_bytes;
+			total_free_bytes += total_singleton_page_free_bytes;
+		} else {
+			total_inuse_bytes += bins[i].inuse_blks * bins[i].block_size;
+			total_free_bytes += bins[i].free_blks * bins[i].block_size;
+		}
 	}
 	CA_PRINT("------------------------------------------------------------------------------------\n");
 	CA_PRINT("     Total %10zu %10s %10zu %12zu %10zu %12zu\n",
@@ -386,7 +435,7 @@ void register_mi_malloc_v2() {
  *****************************************************************************/
 static bool read_mi_version(void)
 {
-	// hack it by reading the 2nd byte of funciton mi_version()
+	// hack it by reading the short int at the 2nd byte of funciton mi_version()
 	struct symbol* sym = lookup_symbol("mi_version", nullptr, SEARCH_FUNCTION_DOMAIN, nullptr).symbol;
 	if (sym == nullptr) {
 		CA_PRINT_DBG("Failed to lookup function \"mi_version\"\n");
@@ -394,14 +443,14 @@ static bool read_mi_version(void)
 	}
 	struct value* func_val = value_of_variable(sym, 0);
 	address_t func_addr = value_as_address(func_val);
-	unsigned char version = 0;
+	unsigned short version = 0;
 	if (!read_memory_wrapper(nullptr, func_addr + 1, &version, sizeof(version))) {
 		CA_PRINT_DBG("Failed to read mi_version at address %p\n", (void*)(func_addr + 1));
 		return false;
 	}
-	mi_version_major = version/100;
-	mi_version_minor = (version%100)/10;
-	mi_version_patch = version%10;
+	mi_version_major = version/10000;
+	mi_version_minor = (version%10000)/100;
+	mi_version_patch = version%100;
 	CA_PRINT_DBG("Detected mimalloc version: %d.%d.%d\n",
 		mi_version_major, mi_version_minor, mi_version_patch);
 

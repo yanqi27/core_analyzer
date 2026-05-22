@@ -488,13 +488,16 @@ init_heap(void)
 		je_edata_t *edata = g_jemalloc->edata_sorted[i];
 		unsigned int arena_ind = edata->arena_ind;
 		// update arena stats
+		je_arena *arena = nullptr;
 		if (arena_ind < g_jemalloc->je_arenas.size()) {
-			je_arena *a = g_jemalloc->je_arenas[arena_ind];
-			a->stats.free_cnt += edata->free_cnt;
-			a->stats.inuse_cnt += edata->inuse_cnt;
-			a->stats.free_bytes += edata->free_bytes;
-			a->stats.inuse_bytes += edata->inuse_bytes;
+			arena = g_jemalloc->je_arenas[arena_ind];
+		} else {
+			arena = &g_jemalloc->anon_je_arena;
 		}
+		arena->stats.free_cnt += edata->free_cnt;
+		arena->stats.inuse_cnt += edata->inuse_cnt;
+		arena->stats.free_bytes += edata->free_bytes;
+		arena->stats.inuse_bytes += edata->inuse_bytes;
 		// verify there is no overlapping
 		if (i + 1 < total_edata) {
 			je_edata_t *next = g_jemalloc->edata_sorted[i+1];
@@ -542,14 +545,17 @@ init_heap(void)
 			}
 			// adjust arena
 			unsigned int arena_ind = edata->arena_ind;
+			je_arena *arena = nullptr;
 			if (arena_ind < g_jemalloc->je_arenas.size()) {
-				je_arena *a = g_jemalloc->je_arenas[arena_ind];
-				a->stats.free_cnt++;
-				a->stats.free_bytes += blk->size;
-				if (a->stats.inuse_cnt > 0 && a->stats.inuse_bytes >= blk->size) {
-					a->stats.inuse_cnt--;
-					a->stats.inuse_bytes -= blk->size;
-				}
+				arena = g_jemalloc->je_arenas[arena_ind];
+			} else {
+				arena = &g_jemalloc->anon_je_arena;
+			}
+			arena->stats.free_cnt++;
+			arena->stats.free_bytes += blk->size;
+			if (arena->stats.inuse_cnt > 0 && arena->stats.inuse_bytes >= blk->size) {
+				arena->stats.inuse_cnt--;
+				arena->stats.inuse_bytes -= blk->size;
 			}
 		} else {
 			CA_PRINT("tcache address 0x%lx is not found in edata collection\n", addr);
@@ -635,6 +641,31 @@ heap_walk(address_t heapaddr, bool verbose)
 		return false;
 	}
 
+	// Display blocks surrounding the given address
+	if (heapaddr) {
+		heap_block blk = {heapaddr, 0, false};
+		auto itr = std::lower_bound(g_jemalloc->blocks.begin(), g_jemalloc->blocks.end(),
+			blk, heap_block_cmp_func);
+		if (itr != g_jemalloc->blocks.end()
+			&& heapaddr >= (*itr).addr && heapaddr < (*itr).addr + (*itr).size) {
+			// Print the 5 blocks before and after the given address
+			int idx = (int)(itr - g_jemalloc->blocks.begin());
+			int start = std::max(0, idx - 5);
+			int end = std::min((int)g_jemalloc->blocks.size() - 1, idx + 5);
+			CA_PRINT("Blocks surrounding address 0x%lx:\n", heapaddr);
+			for (int i = start; i <= end; i++) {
+				heap_block *b = &g_jemalloc->blocks[i];
+				CA_PRINT("\t[%#lx - %#lx] %ld bytes %s\n", b->addr, b->addr + b->size,
+					b->size, b->inuse ? "inuse" : "free");
+			}
+			return true;
+		} else {
+			CA_PRINT("Address 0x%lx is not found in heap\n", heapaddr);
+		}
+		return false;
+	}
+
+	// Full heap walk
 	CA_PRINT("%s\n", g_version_names[g_version].c_str());
 
 	size_t totoal_inuse_bytes = 0;
@@ -644,6 +675,10 @@ heap_walk(address_t heapaddr, bool verbose)
 
 	int i = 0;
 	// arenas
+	total_inuse_cnt = g_jemalloc->anon_je_arena.stats.inuse_cnt;
+	total_free_cnt = g_jemalloc->anon_je_arena.stats.free_cnt;
+	totoal_inuse_bytes = g_jemalloc->anon_je_arena.stats.inuse_bytes;
+	totoal_free_bytes = g_jemalloc->anon_je_arena.stats.free_bytes;
 	for (auto arena : g_jemalloc->je_arenas) {
 		total_inuse_cnt += arena->stats.inuse_cnt;
 		total_free_cnt += arena->stats.free_cnt;

@@ -34,15 +34,16 @@
 #include <list>
 #include <iostream>
 #include <mutex>
+#include <atomic>
 
-const int NUM_THREADS = 4;
+const int NUM_THREADS = 8;
 
 const size_t big_region_sizes [] = {
 	128 * 1024, 256 * 1024, 512 * 1024, 1024 * 1024, 2 * 1024 * 1024,
 	4 * 1024 * 1024, 8 * 1024 * 1024, 16 * 1024 * 1024, 32 * 1024 * 1024
 };
 
-const unsigned int num_small_regions = 8192 * NUM_THREADS;
+const unsigned int num_small_regions = 16 * 1024 * NUM_THREADS;
 const unsigned int num_big_regions = (sizeof(big_region_sizes) / sizeof(big_region_sizes[0])) * NUM_THREADS;
 const unsigned int num_regions = num_small_regions + num_big_regions + 1;
 
@@ -52,20 +53,17 @@ const size_t page_size = 4096;
 
 /*
  * Since glibc 2.26, ptmalloc introduces per-thread cache.
- * In order for core_analyzer to parse all heap data, the application
+ * In order for core_analyzer to parse all heap data, the application (and this test program)
  * needs to link with libpthread. This allows gdb to extract thread-local
  * variables of ptmalloc tcache.
  */
-static std::mutex myLock;
-static int region_index;
+static std::atomic<int> region_index;
 
 static int
 get_index(void)
 {
-	int res;
-	std::unique_lock<std::mutex> lock(myLock);
-	res = region_index++;
-	return res;
+	// return the previous value and then increase it by 1
+	return region_index++;
 }
 
 struct region {

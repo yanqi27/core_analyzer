@@ -235,6 +235,8 @@ heap_walk(address_t heapaddr, bool verbose)
 	}
 
 	// If heapaddr is not given, display all pages and blocks
+	if (verbose)
+		init_mem_histogram(16);
 	size_t total_singleton_page_inuse_bytes = 0;
 	size_t total_singleton_page_free_bytes = 0;
 	size_t total_singleton_inuse_pages = 0;
@@ -272,10 +274,13 @@ heap_walk(address_t heapaddr, bool verbose)
 			bins[page.bin_index].page_count++;
 			bins[page.bin_index].block_size = page.block_size;
 			for (address_t addr = page.start; addr < page.end; addr += page.block_size) {
-				if (is_block_cached(addr))
+				if (is_block_cached(addr)) {
 					bins[page.bin_index].free_blks++;
-				else
+					add_block_mem_histogram(page.block_size, false, 1);
+				} else {
 					bins[page.bin_index].inuse_blks++;
+					add_block_mem_histogram(page.block_size, true, 1);
+				}
 			}
 		} else {
 			CA_PRINT("Invalid bin index %d for page [%#lx - %#lx]\n", page.bin_index, page.start, page.end);
@@ -326,6 +331,20 @@ heap_walk(address_t heapaddr, bool verbose)
 	CA_PRINT("------------------------------------------------------------------------------------\n");
 	CA_PRINT("     Total %10zu %10s %10zu %12zu %10zu %12zu\n",
 		g_pages.size(), "", total_inuse_blks, total_inuse_bytes, total_free_blks, total_free_bytes);
+
+	// Print a summary of all heap memory usage
+	CA_PRINT("\n");
+	CA_PRINT("There are %zu pages, total ", g_pages.size());
+	print_size(total_inuse_bytes + total_free_bytes);
+	CA_PRINT("\n");
+	CA_PRINT("Total in-use blocks: %zu of ", total_inuse_blks);
+	print_size(total_inuse_bytes);
+	CA_PRINT(", total free blocks: %zu of ", total_free_blks);
+	print_size(total_free_bytes);
+	CA_PRINT("\n\n");
+
+	if (verbose)
+		display_mem_histogram("");
 
 	return true;
 }

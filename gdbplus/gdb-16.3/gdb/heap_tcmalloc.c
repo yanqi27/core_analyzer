@@ -78,7 +78,7 @@ static int span_search_compare(const void *, const void *);
 static bool verify_sorted_spans(void);
 static bool span_block_free(struct ca_span*, address_t);
 static bool span_populate_free_bitmap(struct ca_span*);
-static void span_get_stat(struct ca_span *, struct span_stats *);
+static void span_get_stat(struct ca_span *, struct span_stats *, bool verbose);
 static void span_walk(struct ca_span *);
 
 static void add_one_big_block(struct heap_block *, unsigned int,
@@ -345,6 +345,8 @@ heap_walk(address_t heapaddr, bool verbose)
 	/*
 	 * Full heap walk
 	 */
+	if (verbose)
+		init_mem_histogram(16);
 	stats = (struct span_stats *)calloc(g_config.kNumClasses + 1, sizeof *stats);
 	if (stats == NULL) {
 		CA_PRINT("Out of memory\n");
@@ -362,9 +364,9 @@ heap_walk(address_t heapaddr, bool verbose)
 		span = &g_spans[i];
 
 		if (span->location == SPAN_IN_USE) {
-			span_get_stat(span, &stats[span->sizeclass]);
+			span_get_stat(span, &stats[span->sizeclass], verbose);
 		} else {
-			span_get_stat(span, &stats[g_config.kNumClasses]);
+			span_get_stat(span, &stats[g_config.kNumClasses], verbose);
 		}
 	}
 	memset(&total, 0, sizeof(total));
@@ -403,6 +405,20 @@ heap_walk(address_t heapaddr, bool verbose)
 	CA_PRINT("%12zu            %12zu%12zu%12zu%12zu\n",
 	    total.span_count, total.inuse_count,  total.inuse_bytes,
 	    total.free_count, total.free_bytes);
+
+	// Print a summary of all heap memory usage
+	CA_PRINT("\n");
+	CA_PRINT("There are %zu spans, total ", g_spans_count);
+	print_size(total.inuse_bytes + total.free_bytes);
+	CA_PRINT("\n");
+	CA_PRINT("Total in-use blocks: %zu of ", total.inuse_count);
+	print_size(total.inuse_bytes);
+	CA_PRINT(", total free blocks: %zu of ", total.free_count);
+	print_size(total.free_bytes);
+	CA_PRINT("\n\n");
+
+	if (verbose)
+		display_mem_histogram("");
 
 	free(stats);
 
@@ -1129,7 +1145,7 @@ span_walk(struct ca_span *span)
 }
 
 void
-span_get_stat(struct ca_span *span, struct span_stats *stats)
+span_get_stat(struct ca_span *span, struct span_stats *stats, bool verbose)
 {
 	unsigned int index, n, bit;
 	size_t blk_sz;
@@ -1141,9 +1157,13 @@ span_get_stat(struct ca_span *span, struct span_stats *stats)
 	if (span->location != SPAN_IN_USE) {
 		stats->free_count++;
 		stats->free_bytes += span->length << g_config.kPageShift;
+		if (verbose)
+			add_block_mem_histogram(span->length << g_config.kPageShift, false, 1);
 	} else if (span->sizeclass == 0) {
 		stats->inuse_count++;
 		stats->inuse_bytes += span->length << g_config.kPageShift;
+		if (verbose)
+			add_block_mem_histogram(span->length << g_config.kPageShift, true, 1);
 	} else {
 		span_populate_free_bitmap(span);
 		blk_sz = g_config.sizemap.class_to_size[span->sizeclass];
@@ -1153,9 +1173,13 @@ span_get_stat(struct ca_span *span, struct span_stats *stats)
 			if (span->bitmap[n] & (1 << bit)) {
 				stats->free_count++;
 				stats->free_bytes += blk_sz;
+				if (verbose)
+					add_block_mem_histogram(blk_sz, false, 1);
 			} else {
 				stats->inuse_count++;
 				stats->inuse_bytes += blk_sz;
+				if (verbose)
+					add_block_mem_histogram(blk_sz, true, 1);
 			}
 		}
 	}

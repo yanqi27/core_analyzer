@@ -153,6 +153,9 @@ struct jemalloc {
 	// parsed arenas
 	std::vector<je_arena *> je_arenas;
 
+	// a special arena
+	je_arena anon_je_arena;
+
 	// fixed bin_info indexed by size class
 	std::vector<je_bin_info_t> bin_infos;
 

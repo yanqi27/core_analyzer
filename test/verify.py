@@ -16,7 +16,15 @@ def check_heap_blocks(known_blks, count):
 	ulong_type = gdb.lookup_type('long')
 	user_blks = []
 	i = 0
+	# Show the progress: print a dot for every 1% and print percentage for every 10%
+	# All within one line.
+	progress_interval = max(count / 100, 1)
+	os.write(1, b'\n')
 	while i < count:
+		if i > 0 and i % progress_interval == 0:
+			os.write(1, b'.')
+			if i % (10 * progress_interval) == 0:
+				os.write(1, (" %d%%" % (i * 100 / count)).encode())
 		blk = known_blks + i
 		if not blk:
 			raise Exception('block[%d] is unexpectedly NIL' % i)
@@ -48,6 +56,7 @@ def check_heap_blocks(known_blks, count):
 			raise Exception('Failed to check block at 0x%x' % blk_addr)
 
 		i = i + 1
+	os.write(1, b'\n')
 	print("[ca_test]\tVerified %d heap blocks" % (count))
 	return user_blks
 
@@ -155,7 +164,7 @@ def check_misc_commands():
 	gdb.execute('segment')
 
 def run_tests():
-	gdb.execute('heap')
+	gdb.execute('heap /v')
 	# Retrieve global variables defined in mallocTest
 	count = gdb.parse_and_eval("num_regions")
 	known_blks = gdb.parse_and_eval("regions")

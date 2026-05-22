@@ -247,6 +247,8 @@ heap_walk(address_t heapaddr, bool verbose)
 	size_t total_singleton_inuse_pages = 0;
 	size_t total_singleton_free_pages = 0;
 	std::unique_ptr<ca_bin[]> bins(new ca_bin[g_bin_count]);
+	if (verbose)
+		init_mem_histogram(16);
 	// Set block size for each bin
 	for (int i = 0; i < g_bin_count; i++) {
 		bins[i].block_size = g_bin_sizes[i];
@@ -279,10 +281,13 @@ heap_walk(address_t heapaddr, bool verbose)
 			bins[page.bin_index].page_count++;
 			bins[page.bin_index].block_size = page.block_size;
 			for (address_t addr = page.start; addr < page.end; addr += page.block_size) {
-				if (is_block_cached(addr))
+				if (is_block_cached(addr)) {
 					bins[page.bin_index].free_blks++;
-				else
+					add_block_mem_histogram(page.block_size, false, 1);
+				} else {
 					bins[page.bin_index].inuse_blks++;
+					add_block_mem_histogram(page.block_size, true, 1);
+				}
 			}
 			// Sanity check: block size should match the bin size, except for the last two bins which are for huge blocks and full pages
 			if (page.bin_index < g_bin_count - 2 && bins[page.bin_index].block_size != g_bin_sizes[page.bin_index]) {
@@ -338,6 +343,20 @@ heap_walk(address_t heapaddr, bool verbose)
 	CA_PRINT("------------------------------------------------------------------------------------\n");
 	CA_PRINT("     Total %10zu %10s %10zu %12zu %10zu %12zu\n",
 		g_pages.size(), "", total_inuse_blks, total_inuse_bytes, total_free_blks, total_free_bytes);
+
+	// Print a summary of all heap memory usage
+	CA_PRINT("\n");
+	CA_PRINT("There are %zu pages, total ", g_pages.size());
+	print_size(total_inuse_bytes + total_free_bytes);
+	CA_PRINT("\n");
+	CA_PRINT("Total in-use blocks: %zu of ", total_inuse_blks);
+	print_size(total_inuse_bytes);
+	CA_PRINT(", total free blocks: %zu of ", total_free_blks);
+	print_size(total_free_bytes);
+	CA_PRINT("\n\n");
+
+	if (verbose)
+		display_mem_histogram("");
 
 	return true;
 }

@@ -221,7 +221,7 @@ init_heap(void)
 	}
 	size_t total_level = high_bound - low_bound + 1;
 	if (total_level != 2) {
-		CA_PRINT("Expect \"rtree_levels\" is an array of length 2, but got %ld\n", total_level);
+		CA_PRINT("Expect \"rtree_levels\" is an array of length 2, but got %ld [%ld..%ld]\n", total_level, low_bound, high_bound);
 		return false;
 	}
 	val = value_of_variable(sym, 0);

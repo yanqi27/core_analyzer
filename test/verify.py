@@ -195,6 +195,7 @@ try:
 	gdb.execute('break last_call')
 	gdb.execute ('set confirm off')
 	gdb.execute('run')
+	gdb.execute('info sharedlibrary')
 	run_tests()
 
 	print("[ca_test] ==== Test Against Core Dump ====")

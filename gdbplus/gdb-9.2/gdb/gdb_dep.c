@@ -294,17 +294,14 @@ static void
 set_segment_module_type(enum storage_type type,
 		address_t low, address_t high, const char* modname)
 {
-	while (low < high)
+	if (low >= high)
+		return;
+
+	struct ca_segment* segment = get_segment(low, 1);
+	if (segment && segment->m_type != type)
 	{
-		struct ca_segment* segment = get_segment(low, 1);
-		if (segment)
-		{
-			segment->m_type = type;
-			segment->m_module_name = strdup(modname);
-			low = segment->m_vaddr + segment->m_vsize;
-		}
-		else
-			low += 4096;	 /* system page size */
+		segment->m_type = type;
+		segment->m_module_name = strdup(modname);
 	}
 }
 

@@ -8,7 +8,7 @@ set -ex
 # The regression test suite includes the following scenarios:
 #
 # gdb
-#   16.3, 12.1, 9.2
+#   17.1, 16.3, 12.1, 9.2
 #
 # ptmalloc
 #   2.43 - 2.27
@@ -31,7 +31,7 @@ set -ex
 #
 
 docker system prune -af > /dev/null
-docker build --build-arg VARIANT="ubuntu:26.04" --build-arg GDB_VERSION="16.3" -t ca_test -q -f test/DockerfileTest_ubuntu .
+docker build --build-arg VARIANT="ubuntu:26.04" --build-arg GDB_VERSION="17.1" -t ca_test -q -f test/DockerfileTest_ubuntu .
 
 docker system prune -af > /dev/null
 docker build --build-arg VARIANT="ubuntu:24.04" --build-arg GDB_VERSION="16.3" -t ca_test -q -f test/DockerfileTest_ubuntu .
@@ -62,7 +62,7 @@ docker build --build-arg VARIANT="redhat/ubi9" --build-arg GDB_VERSION="12.1" -t
 # docker build --build-arg VARIANT="redhat/ubi8" --build-arg GDB_VERSION="12.1" -t ca_test -q -f test/DockerfileTest_redhat .
 
 docker system prune -af > /dev/null
-docker build --build-arg VARIANT="fedora:44" --build-arg GDB_VERSION="16.3" -t ca_test -q -f test/DockerfileTest_redhat .
+docker build --build-arg VARIANT="fedora:44" --build-arg GDB_VERSION="17.1" -t ca_test -q -f test/DockerfileTest_redhat .
 
 docker system prune -af > /dev/null
 docker build --build-arg VARIANT="fedora:43" --build-arg GDB_VERSION="16.3" -t ca_test -q -f test/DockerfileTest_redhat .

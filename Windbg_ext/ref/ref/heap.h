@@ -1,1 +1,1 @@
-./../../src/heap.h
+../../../src/heap.h

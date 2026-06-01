@@ -202,34 +202,29 @@ decode_insns(struct decode_control_block* decode_cb)
 		int unmapped;
 		int offset;
 		int line;
-		char *filename = NULL;
-		char *name = NULL;
+		std::string filename;
+		std::string name;
 
 		if (insn->pc >= decode_cb->high)
 			break;
 		else if (insn->pc >= decode_cb->low)
 		{
 			/* instruction address + offset */
-			ui_out_text(uiout, pc_prefix(insn->pc));
-			ui_out_field_core_addr(uiout, "address", gdbarch, insn->pc);
+			uiout->text(pc_prefix(insn->pc));
+			uiout->field_core_addr("address", gdbarch, insn->pc);
 
-			if (!build_address_symbolic(gdbarch, insn->pc, 0, &name, &offset, &filename,
+			if (!build_address_symbolic(gdbarch, insn->pc, true, false, &name, &offset, &filename,
 					&line, &unmapped))
 			{
-				ui_out_text(uiout, " <");
-				ui_out_text(uiout, "+");
-				ui_out_field_int(uiout, "offset", offset);
-				ui_out_text(uiout, ">:\t");
+				uiout->text(" <");
+				uiout->text("+");
+				uiout->field_signed("offset", offset);
+				uiout->text(">:\t");
 			} else
-				ui_out_text(uiout, ":\t");
+				uiout->text(":\t");
 
 			/* disassembled instruction with annotation */
 			print_one_insn(insn, uiout);
-
-			if (filename != NULL)
-				xfree(filename);
-			if (name != NULL)
-				xfree(name);
 		}
 	}
 
@@ -246,19 +241,19 @@ decode_insns(struct decode_control_block* decode_cb)
 static void
 print_one_insn(struct ca_dis_insn* insn, struct ui_out* uiout)
 {
-	int i, pos;
+	int pos;
 	struct ca_operand* dst_op;
 
-	ui_out_text(uiout, insn->dis_string);
+	uiout->text(insn->dis_string);
 
 	pos = strlen(insn->dis_string);
 	if (pos < MAX_SPACING)
-		ui_out_spaces(uiout, MAX_SPACING - pos);
-	ui_out_text(uiout, " ## ");
+		uiout->spaces(MAX_SPACING - pos);
+	uiout->text(" ## ");
 
 	if (insn->num_operand == 0)
 	{
-		ui_out_text(uiout, "\n");
+		uiout->text("\n");
 		return;
 	}
 
@@ -309,8 +304,8 @@ print_one_insn(struct ca_dis_insn* insn, struct ui_out* uiout)
 					sym = get_stack_sym(&aref, NULL, NULL);
 					if (sym)
 					{
-						symname = SYMBOL_PRINT_NAME (sym);
-						type = SYMBOL_TYPE(sym);
+						symname = sym->natural_name();
+						type = sym->type();
 					}
 				}
 			}
@@ -347,50 +342,50 @@ print_one_insn(struct ca_dis_insn* insn, struct ui_out* uiout)
 		/* Name and value (if known) of destination */
 		print_one_operand(uiout, dst_op, op_size);
 		if (has_value)
-			ui_out_message(uiout, 0, "=0x%lx", val);
+			uiout->message("=0x%lx", val);
 		else
-			ui_out_text(uiout, "=?");
+			uiout->text("=?");
 
 		/* Symbol or type of destination */
 		if (dst_op->type == CA_OP_REGISTER
 			&& dst_op->reg.index == RSP)
 		{
 			if (val == g_debug_context.sp)
-				ui_out_text(uiout, " End of function prologue");
-			ui_out_text(uiout, "\n");
+				uiout->text(" End of function prologue");
+			uiout->text("\n");
 		}
 		else
 		{
 			/* symbol or type is known */
 			if (symname || type)
 			{
-				ui_out_text(uiout, "(");
+				uiout->text("(");
 				if (symname)
 				{
-					ui_out_message(uiout, 0, "symbol=\"%s\"", symname);
+					uiout->message("symbol=\"%s\"", symname);
 				}
 				if (type)
 				{
 					check_typedef(type);
 					if (symname)
-						ui_out_text(uiout, " ");
-					ui_out_text(uiout, "type=\"");
+						uiout->text(" ");
+					uiout->text("type=\"");
 					if (is_vptr)
 					{
-						const char * type_name = type_name_no_tag(type);
+						const char * type_name = TYPE_SAFE_NAME(type);
 						if (type_name)
-							ui_out_message(uiout, 0, "vtable for %s", type_name);
+							uiout->message("vtable for %s", type_name);
 						else
 						{
-							ui_out_text(uiout, "vtable for ");
+							uiout->text("vtable for ");
 							print_type_name (type, NULL, NULL, NULL);
 						}
 					}
 					else
 						print_type_name (type, NULL, NULL, NULL);
-					ui_out_text(uiout, "\"");
+					uiout->text("\"");
 				}
-				ui_out_text(uiout, ")\n");
+				uiout->text(")\n");
 			}
 			/* whatever we can get form the value */
 			else
@@ -416,9 +411,9 @@ print_one_insn(struct ca_dis_insn* insn, struct ui_out* uiout)
 			 * unknown state at this instruction
 			 */
 			if (dst_reg)
-				ui_out_message(uiout, 0, "%s=?", dst_op->reg.name);
+				uiout->message("%s=?", dst_op->reg.name);
 		}
-		ui_out_text(uiout, "\n");
+		uiout->text("\n");
 	}
 }
 
@@ -432,7 +427,6 @@ process_one_insn(struct ca_dis_insn* insn, int current)
 	size_t val;
 	int op_size = insn->op_size;
 	size_t mask = (size_t)(-1);
-	int islea = 0;
 	struct ca_operand* dst_op = NULL;
 	struct ca_operand* src_op = NULL;
 
@@ -477,12 +471,12 @@ process_one_insn(struct ca_dis_insn* insn, int current)
 		{
 			// test zero
 			//print_one_operand(&insn->operands[1], uiout, CA_TRUE);
-			//ui_out_text(uiout, "==0");
+			//uiout->text("==0");
 		}
 		else if (known_op_value(&insn->operands[1]) && known_op_value(&insn->operands[0]))
 		{
 			//print_one_operand(&insn->operands[1], uiout, CA_TRUE);
-			//ui_out_text(uiout, "==");
+			//uiout->text("==");
 			//print_one_operand(&insn->operands[0], uiout, CA_TRUE);
 		}
 	}
@@ -491,7 +485,7 @@ process_one_insn(struct ca_dis_insn* insn, int current)
 		if (known_op_value(&insn->operands[1]) && known_op_value(&insn->operands[0]))
 		{
 			//print_one_operand(&insn->operands[1], uiout, CA_TRUE);
-			//ui_out_text(uiout, "<=>");
+			//uiout->text("<=>");
 			//print_one_operand(&insn->operands[0], uiout, CA_TRUE);
 		}
 	}
@@ -796,7 +790,21 @@ fprintf_disasm (void *stream, const char *format, ...)
 	va_list args;
 
 	va_start (args, format);
-	vfprintf_filtered (stream, format, args);
+	gdb_vprintf ((ui_file *)stream, format, args);
+	va_end (args);
+	/* Something non -ve.  */
+	return 0;
+}
+
+static int ATTRIBUTE_PRINTF(3,4)
+fprintf_styled_disasm (void *dis_info,
+				  enum disassembler_style style,
+				  const char *format, ...) noexcept
+{
+	va_list args;
+
+	va_start (args, format);
+	gdb_vprintf ((ui_file *)dis_info, format, args);
 	va_end (args);
 	/* Something non -ve.  */
 	return 0;
@@ -806,15 +814,15 @@ static void
 dis_asm_memory_error (int status, bfd_vma memaddr,
 		      struct disassemble_info *info)
 {
-	memory_error (status, memaddr);
+	memory_error ((enum target_xfer_status)status, memaddr);
 }
 
 static void
 dis_asm_print_address (bfd_vma addr, struct disassemble_info *info)
 {
-	struct gdbarch *gdbarch = info->application_data;
+	struct gdbarch *gdbarch = (struct gdbarch *)info->application_data;
 
-	print_address (gdbarch, addr, info->stream);
+	print_address (gdbarch, addr, (ui_file *)info->stream);
 }
 
 static int
@@ -822,16 +830,6 @@ dis_asm_read_memory (bfd_vma memaddr, gdb_byte *myaddr, unsigned int len,
 		     struct disassemble_info *info)
 {
 	return target_read_memory (memaddr, myaddr, len);
-}
-
-static void
-mem_ui_file_put (void *object, const char *buffer, long length)
-{
-	char** strp = (char**) object;
-	char* dupstr = (char*) malloc(length + 1);
-	strncpy(dupstr, buffer, length);
-	dupstr[length] = '\0';
-	*strp = dupstr;
 }
 
 /*
@@ -843,15 +841,14 @@ dump_insns(struct decode_control_block* decode_cb)
 	struct gdbarch *gdbarch = decode_cb->gdbarch;
 	CORE_ADDR low = decode_cb->func_start;
 	CORE_ADDR high = decode_cb->func_end;
-	bool verbose = decode_cb->verbose;
 
 	int num_insns = 0;
 	CORE_ADDR pc;
 
 	struct disassemble_info di;
-	struct ui_file *mem_file = mem_fileopen();
+	string_file ui_file;
 
-	init_disassemble_info (&di, mem_file, fprintf_disasm);
+	init_disassemble_info (&di, &ui_file, fprintf_disasm, fprintf_styled_disasm);
 	di.flavour = bfd_target_unknown_flavour;
 	di.memory_error_func = dis_asm_memory_error;
 	di.print_address_func = dis_asm_print_address;
@@ -883,13 +880,10 @@ dump_insns(struct decode_control_block* decode_cb)
 		// disassemble one instruction
 		pc += ca_print_insn_i386 (pc, decode_cb);
 		// record the result
-		ui_file_put (mem_file, mem_ui_file_put, &insn->dis_string);
-		ui_file_rewind(mem_file);
+		insn->dis_string = strdup(ui_file.c_str());
+		ui_file.clear();
 		num_insns++;
 	}
-
-	// clean up
-	ui_file_delete(mem_file);
 
 	return num_insns;
 }
@@ -946,8 +940,10 @@ get_new_stack_var(address_t saddr)
 			g_stack_vars_capacity = STACK_ARRAY_INIT_CAP;
 		else
 			g_stack_vars_capacity *= 2;
-		g_stack_vars = realloc(g_stack_vars, g_stack_vars_capacity * sizeof(struct ca_stack_var));
-		memset(g_stack_vars + g_num_stack_vars, 0, (g_stack_vars_capacity - g_num_stack_vars) * sizeof(struct ca_stack_var));
+		g_stack_vars = (struct ca_stack_var *)
+		    realloc(g_stack_vars, g_stack_vars_capacity * sizeof(struct ca_stack_var));
+		memset(g_stack_vars + g_num_stack_vars, 0,
+		    (g_stack_vars_capacity - g_num_stack_vars) * sizeof(struct ca_stack_var));
 	}
 	return &g_stack_vars[g_num_stack_vars++];
 }
@@ -1033,7 +1029,7 @@ validate_reg_table(void)
 				if (cursor->pc <= (cursor - 1)->pc)
 				{
 					CA_PRINT("Internal error: register table is inconsistent\n");
-					CA_PRINT("\tregister(%d) pc="PRINT_FORMAT_POINTER"\n", i, cursor->pc);
+					CA_PRINT("\tregister(%d) pc=" PRINT_FORMAT_POINTER "\n", i, cursor->pc);
 					break;
 				}
 			}
@@ -1227,7 +1223,6 @@ set_current_reg_pointers(struct ca_dis_insn* insn)
 static void
 set_reg_table_at_pc(struct ca_reg_value* regs, CORE_ADDR pc)
 {
-	struct ca_reg_table* table = &g_reg_table;
 	unsigned int i;
 	for (i = 0; i < TOTAL_REGS; i++)
 	{
@@ -1267,7 +1262,8 @@ get_new_dis_insn(void)
 			g_insns_buffer_capacity = INSN_BUFFER_INIT_CAP;
 		else
 			g_insns_buffer_capacity *= 2;
-		g_insns_buffer = realloc(g_insns_buffer, g_insns_buffer_capacity * sizeof(struct ca_dis_insn));
+		g_insns_buffer = (struct ca_dis_insn *)
+		    realloc(g_insns_buffer, g_insns_buffer_capacity * sizeof(struct ca_dis_insn));
 	}
 	if (!g_insns_buffer)
 	{
@@ -1417,11 +1413,11 @@ get_op_symbol_type(struct ca_operand* op, int lea,
 			struct type* type = base_reg->type;
 			// operand should be a pointer type
 			if (type
-				&& (TYPE_CODE(type) == TYPE_CODE_PTR || TYPE_CODE(type) == TYPE_CODE_REF))
+				&& (type->code() == TYPE_CODE_PTR || type->code() == TYPE_CODE_REF))
 			{
 				int is_vptr = 0;
 				char namebuf[NAME_BUF_SZ];
-				struct type* field_type = get_struct_field_type_and_name(TYPE_TARGET_TYPE(type), op->mem.disp.immediate, lea, namebuf, NAME_BUF_SZ, &is_vptr);
+				struct type* field_type = get_struct_field_type_and_name(type->target_type(), op->mem.disp.immediate, lea, namebuf, NAME_BUF_SZ, &is_vptr);
 				if (field_type)
 				{
 					if (pvptr)
@@ -1436,13 +1432,13 @@ get_op_symbol_type(struct ca_operand* op, int lea,
 						// new symbol is '&' + base_name + "->" + field_name + '\0'
 						size_t baselen = strlen(base_reg->sym_name);
 						size_t namelen = (lea ? 1 : 0) + baselen + 2 + strlen(namebuf) + 1;
-						char* cursor = malloc(namelen);
+						char *cursor = (char *)malloc(namelen);
 						*psymname = cursor;
 						if (lea)
 							*cursor++ = '&';
 						strncpy(cursor, base_reg->sym_name, baselen);
 						cursor += baselen;
-						if (TYPE_CODE(base_reg->type) == TYPE_CODE_PTR)
+						if (base_reg->type->code() == TYPE_CODE_PTR)
 						{
 							*cursor++ = '-';
 							*cursor++ = '>';
@@ -1767,7 +1763,7 @@ print_displacement(char *buf, bfd_vma disp)
 	buf[j++] = '0';
 	buf[j++] = 'x';
 
-	sprintf_vma(tmp, (bfd_vma) val);
+	bfd_sprintf_vma(NULL, tmp, (bfd_vma) val);
 	for (i = 0; tmp[i] == '0'; i++)
 		continue;
 	if (tmp[i] == '\0')
@@ -1781,37 +1777,37 @@ print_one_operand(struct ui_out* uiout, struct ca_operand* op, size_t op_size)
 	char dispbuf[32];
 	if (op->type == CA_OP_REGISTER)
 	{
-		ui_out_text(uiout, op->reg.name);
+		uiout->text(op->reg.name);
 	}
 	else if (op->type == CA_OP_IMMEDIATE)
 	{
 		print_displacement(dispbuf, op->immed.immediate);
-		ui_out_text(uiout, dispbuf);
+		uiout->text(dispbuf);
 	}
 	else if (op->type == CA_OP_MEMORY)
 	{
 		int need_addition_sign = 0;
-		ui_out_text(uiout, "[");
+		uiout->text("[");
 		if (op->mem.base_reg.name)
 		{
-			ui_out_text(uiout,  op->mem.base_reg.name);
+			uiout->text( op->mem.base_reg.name);
 			need_addition_sign = 1;
 		}
 		if (op->mem.index_reg.name)
 		{
 			if (need_addition_sign)
-				ui_out_text(uiout, "+");
+				uiout->text("+");
 			need_addition_sign = 1;
-			ui_out_message(uiout, 0, "%s*%d", op->mem.index_reg.name, 1 << op->mem.scale);
+			uiout->message("%s*%d", op->mem.index_reg.name, 1 << op->mem.scale);
 		}
 		if (op->mem.disp.immediate != 0)
 		{
 			print_displacement(dispbuf, op->mem.disp.immediate);
 			if ((bfd_signed_vma)op->mem.disp.immediate > 0)
-				ui_out_text(uiout, "+");
-			ui_out_text(uiout, dispbuf);
+				uiout->text("+");
+			uiout->text(dispbuf);
 		}
-		ui_out_text(uiout, "]");
+		uiout->text("]");
 	}
 }
 

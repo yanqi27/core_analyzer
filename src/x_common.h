@@ -135,5 +135,6 @@ extern bool heap_command_impl(char* args);
 extern bool ref_command_impl(char* args);
 extern bool segment_command_impl(char* args);
 extern bool pattern_command_impl(char* args);
+extern void ca_initialize_heapcmd();
 
 #endif // X_COMMON_H_

@@ -374,7 +374,7 @@ switch_heap_command(const char *args, int from_tty)
 	return;
 }
 
-CA_INIT_HEAP_CMD(heapcmd)
+void ca_initialize_heapcmd()
 {
 	add_cmd("ref", class_info, ref_command, _("Search for references to a given object.\n"
 		"Usage:\n"

@@ -2912,3 +2912,8 @@ ca_get_field_gdb_value(struct value *val, const char *field_name)
 	}
 	return NULL;
 }
+
+INIT_GDB_FILE (heapcmd)
+{
+	ca_initialize_heapcmd();
+}

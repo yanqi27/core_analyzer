@@ -1,1 +1,16 @@
-../../../src/x_dep.h
+/*
+ * x_dep.h
+ *
+ *  Created on: Dec 13, 2011
+ *      Author: myan
+ */
+#ifndef X_DEP_H_
+#define X_DEP_H_
+
+#define CA_PRINT(format,args...) \
+	printf_filtered(_(format), ##args)
+
+#include "x_common.h"
+#include "gdbcmd.h"
+
+#endif // X_DEP_H_

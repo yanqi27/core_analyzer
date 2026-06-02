@@ -1801,7 +1801,7 @@ user_request_break(void)
 struct ca_x86_register
 {
 	const char*  name;		/* intel syntax */
-	unsigned int index:6;		/* internal index (see x_type.h) */
+	unsigned int index:6;		/* internal index */
 	unsigned int size:5;		/* 1/2/4/8/16 bytes */
 	unsigned int x64_only:1;	/* set if only used by 64bit */
 	unsigned int param_x64:4;	/* nth (1..6) parameter, 0 means not a param reg */
@@ -1812,7 +1812,7 @@ struct ca_x86_register
 };
 
 /*
- * this name list corresponds to the register index defined in x_type.h
+ * this name list corresponds to the register index
  */
 static struct ca_x86_register g_reg_infos[] = {
 	/* name  index  size x64 par64 prsv64 prev32 float regnum */

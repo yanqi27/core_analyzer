@@ -9,6 +9,7 @@
 #include "segment.h"
 #include "search.h"
 #include "decode.h"
+#include "x_dep.h"
 
 /***************************************************************************
 * gdb commands

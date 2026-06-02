@@ -8,7 +8,6 @@
 #define DECODE_H_
 
 #include "x_dep.h"
-#include "x_type.h"
 #include "opcode/i386.h"
 
 /*

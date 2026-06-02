@@ -9,8 +9,7 @@
 #include "segment.h"
 #include "search.h"
 #include "decode.h"
-#include "x_dep.h"
-
+#include "cli/cli-cmds.h"
 /***************************************************************************
 * gdb commands
 ***************************************************************************/
@@ -81,28 +80,28 @@ static void
 include_free_command (const char *args, int from_tty)
 {
 	g_skip_free = false;
-	printf_filtered(_("Reference search will now include free heap memory blocks\n"));
+	CA_PRINT(_("Reference search will now include free heap memory blocks\n"));
 }
 
 static void
 ignore_free_command (const char *args, int from_tty)
 {
 	g_skip_free = true;
-	printf_filtered(_("Reference search will now exclude free heap memory blocks (default)\n"));
+	CA_PRINT(_("Reference search will now exclude free heap memory blocks (default)\n"));
 }
 
 static void
 include_unknown_command (const char *args, int from_tty)
 {
 	g_skip_unknown = false;
-	printf_filtered(_("Reference search will now include all memory\n"));
+	CA_PRINT(_("Reference search will now include all memory\n"));
 }
 
 static void
 ignore_unknown_command (const char *args, int from_tty)
 {
 	g_skip_unknown = true;
-	printf_filtered(_("Reference search will now exclude memory with unknown storage type (default)\n"));
+	CA_PRINT(_("Reference search will now exclude memory with unknown storage type (default)\n"));
 }
 
 static void
@@ -375,10 +374,7 @@ switch_heap_command(const char *args, int from_tty)
 	return;
 }
 
-void _initialize_heapcmd ();
-
-void
-_initialize_heapcmd ()
+CA_INIT_HEAP_CMD(heapcmd)
 {
 	add_cmd("ref", class_info, ref_command, _("Search for references to a given object.\n"
 		"Usage:\n"

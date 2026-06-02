@@ -13,4 +13,8 @@
 #include "x_common.h"
 #include "gdbcmd.h"
 
+#define CA_INIT_HEAP_CMD(heapcmd) \
+	void _initialize_heapcmd (); \
+	void _initialize_heapcmd ()
+
 #endif // X_DEP_H_

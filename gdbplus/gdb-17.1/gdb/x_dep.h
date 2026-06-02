@@ -10,4 +10,7 @@
 
 #include "x_common.h"
 
+#define CA_INIT_HEAP_CMD(heapcmd) \
+	INIT_GDB_FILE (heapcmd)
+
 #endif // X_DEP_H_

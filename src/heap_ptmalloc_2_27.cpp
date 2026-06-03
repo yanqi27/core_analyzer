@@ -941,8 +941,8 @@ compare_tcache_chunk(const void* lhs, const void* rhs)
 		return 0;
 }
 
-static int
-thread_tcache (struct thread_info *info, void *data)
+static THREAD_CB_RETURN_TYPE
+THREAD_CB_FUNC(info, data)
 {
 	struct symbol *tcsym;
 	struct value *val;
@@ -954,36 +954,36 @@ thread_tcache (struct thread_info *info, void *data)
 
 	ca_switch_to_thread (info);
 
-	tcsym = lookup_symbol("tcache", 0, VAR_DOMAIN, 0).symbol;
+	tcsym = CA_LOOKUP_SYMBOL("tcache");
 	if (tcsym == NULL) {
 		CA_PRINT("Failed to lookup thread-local variable \"tcache\"\n");
-		return false;
+		return THREAD_CB_RETURN_CONT;
 	}
 	try
 	{
 		val = value_of_variable(tcsym, 0);
 
 		val = value_coerce_to_target(val);
-		type = value_type(val);
-		type = check_typedef(TYPE_TARGET_TYPE(type));
-		valsz = TYPE_LENGTH(type);
+		type = CA_VALUE_TYPE(val);
+		type = check_typedef(CA_TYPE_TARGET_TYPE(type));
+		valsz = CA_TYPE_LENGTH(type);
 		if (sizeof(tcps) != valsz)
 		{
 			CA_PRINT("Internal error: \"struct tcache_perthread_struct\" is incorrect\n");
 			CA_PRINT("Assumed tcache size=%ld while gdb sees size=%ld\n", sizeof(tcps), valsz);
-			return false;
+			return THREAD_CB_RETURN_CONT;
 		}
 		addr = value_as_address(val);
 	}
 	catch (gdb_exception_error &e)
 	{
 		CA_PRINT("Failed to evaluate thread-local variable \"tcache\": %s\n", e.what());
-		return false;
+		return THREAD_CB_RETURN_CONT;
 	}
 	//CA_PRINT("tcache for ptid.pid [%d]: 0x%lx\n", info->ptid.pid(), addr);
 	if (!read_memory_wrapper(NULL, addr, &tcps, valsz)) {
 		CA_PRINT("Failed to read thread-local variable \"tcache\"\n");
-		return false;
+		return THREAD_CB_RETURN_CONT;
 	}
 	/* Each entry is a singly-linked list */
 	for (i = 0; i < mparams.tcache_bins; i++) {
@@ -1001,13 +1001,13 @@ thread_tcache (struct thread_info *info, void *data)
 			add_cached_chunk(mem2chunk(entry));
 			if (!ca_read_variable((address_t)entry, &next_entry)) {
 				CA_PRINT("Failed to walk tcache.entries[%d]\n", i);
-				return false;
+				return THREAD_CB_RETURN_CONT;
 			}
 			entry = next_entry.next;
 		}
 	}
 
-	return 0;
+	return THREAD_CB_RETURN_CONT;
 }
 
 static bool
@@ -1019,7 +1019,7 @@ build_tcache(void)
 	/* remember current thread */
 	struct thread_info *old = inferior_thread();
 	/* switch to all threads */
-	iterate_over_threads(thread_tcache, NULL);
+	ITERATE_OVER_THREADS();
 	/* resume the old thread */
 	ca_switch_to_thread (old);
 
@@ -1038,14 +1038,14 @@ read_malloc_state_by_symbol(address_t arena_vaddr, struct ca_malloc_state *mstat
 	* Global var
 	* File malloc.c: static struct malloc_state main_arena;
 	*/
-	ma = lookup_symbol("main_arena", 0, VAR_DOMAIN, 0).symbol;
+	ma = CA_LOOKUP_SYMBOL("main_arena");
 	if (ma == NULL) {
 		CA_PRINT("Failed to lookup gv \"main_arena\"\n");
 		return false;
 	}
 	val = value_of_variable(ma, 0);
-	ms_type = value_type(val);
-	mparams.mstate_size = TYPE_LENGTH(ms_type);
+	ms_type = CA_VALUE_TYPE(val);
+	mparams.mstate_size = CA_TYPE_LENGTH(ms_type);
 
 	val = value_at(ms_type, arena_vaddr);
 	/*
@@ -1446,7 +1446,7 @@ read_mp_by_symbol(void)
 	 * Global var
 	 * File malloc.c: static struct malloc_par mp_;
 	 */
-	sym = lookup_symbol("mp_", 0, VAR_DOMAIN, 0).symbol;
+	sym = CA_LOOKUP_SYMBOL("mp_");
 	if (sym == NULL) {
 		CA_PRINT("Failed to lookup gv \"mp_\"\n");
 		return false;
@@ -1492,7 +1492,7 @@ read_mp_by_symbol(void)
 		mparams.tcache_count = data;
 
 	/* ptmalloc: static INTERNAL_SIZE_T global_max_fast; */
-	sym = lookup_symbol("global_max_fast", 0, VAR_DOMAIN, 0).symbol;
+	sym = CA_LOOKUP_SYMBOL("global_max_fast");
 	if (sym) {
 		val = value_of_variable(sym, 0);
 		mparams.MAX_FAST_SIZE = value_as_long(val);

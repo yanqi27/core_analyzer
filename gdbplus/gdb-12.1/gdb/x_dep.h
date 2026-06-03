@@ -22,6 +22,8 @@
 
 #define CA_VALUE_TYPE(value) value_type(value)
 #define CA_VALUE_ADDRESS(value) value_address(value)
+#define CA_TYPE_LENGTH(type) TYPE_LENGTH(type)
+#define CA_TYPE_TARGET_TYPE(type) TYPE_TARGET_TYPE(type)
 
 #define CA_LOOKUP_SYMBOL(name) lookup_symbol(name, 0, VAR_DOMAIN, 0).symbol
 #define CA_LOOKUP_SYMBOL_FUNC(name) lookup_symbol(name, 0, VAR_DOMAIN, 0).symbol

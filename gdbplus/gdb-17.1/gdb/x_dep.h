@@ -17,6 +17,8 @@
 
 #define CA_VALUE_TYPE(value) (value)->type()
 #define CA_VALUE_ADDRESS(value) (value)->address()
+#define CA_TYPE_LENGTH(type) (type)->length()
+#define CA_TYPE_TARGET_TYPE(type) (type)->target_type()
 
 #define CA_LOOKUP_SYMBOL(name) lookup_symbol(name, nullptr, SEARCH_VAR_DOMAIN, nullptr).symbol
 #define CA_LOOKUP_SYMBOL_FUNC(name) lookup_symbol(name, 0, SEARCH_FUNCTION_DOMAIN, 0).symbol

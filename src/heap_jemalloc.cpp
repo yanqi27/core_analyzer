@@ -86,7 +86,7 @@ init_heap(void)
 
 	// je_sz_large_pad (jemalloc 5.3.1+)
 	// type = size_t
-	sym = lookup_symbol("je_sz_large_pad", 0, VAR_DOMAIN, 0).symbol;
+	sym = CA_LOOKUP_SYMBOL("je_sz_large_pad");
 	if (sym) {
 		val = value_of_variable(sym, 0);
 		if (val) {
@@ -103,7 +103,7 @@ init_heap(void)
 	// type = struct {
 	//     unsigned int repr;
 	// }
-	sym = lookup_symbol("narenas_total", 0, VAR_DOMAIN, 0).symbol;
+	sym = CA_LOOKUP_SYMBOL("narenas_total");
 	CHECK_SYM(sym, "narenas_total");
 
 	val = value_of_variable(sym, 0);
@@ -116,7 +116,7 @@ init_heap(void)
 	// nbins_total
 	// type = unsigned int
 	if (g_version == enum_je_release::JEMALLOC_5_3) {
-		sym = lookup_symbol("nbins_total", 0, VAR_DOMAIN, 0).symbol;
+		sym = CA_LOOKUP_SYMBOL("nbins_total");
 		CHECK_SYM(sym, "nbins_total");
 
 		val = value_of_variable(sym, 0);
@@ -125,7 +125,7 @@ init_heap(void)
 
 	// je_bin_infos
 	// type = bin_info_t [36]
-	sym = lookup_symbol("je_bin_infos", 0, VAR_DOMAIN, 0).symbol;
+	sym = CA_LOOKUP_SYMBOL("je_bin_infos");
 	CHECK_SYM(sym, "je_bin_infos");
 	type = ca_type(sym);
 	if(ca_code(type) != TYPE_CODE_ARRAY) {
@@ -179,7 +179,7 @@ init_heap(void)
 	}
 
 	// size_t sz_index2size_tab[SC_NSIZES];
-	sym = lookup_symbol("je_sz_index2size_tab", 0, VAR_DOMAIN, 0).symbol;
+	sym = CA_LOOKUP_SYMBOL("je_sz_index2size_tab");
 	CHECK_SYM(sym, "je_sz_index2size_tab");
 	type = ca_type(sym);
 	if(ca_code(type) != TYPE_CODE_ARRAY) {
@@ -208,7 +208,7 @@ init_heap(void)
 	//     unsigned int bits;
 	//     unsigned int cumbits;
 	// } [2]
-	sym = lookup_symbol("rtree_levels", 0, VAR_DOMAIN, 0).symbol;
+	sym = CA_LOOKUP_SYMBOL("rtree_levels");
 	CHECK_SYM(sym, "rtree_levels");
 	type = ca_type(sym);
 	if(ca_code(type) != TYPE_CODE_ARRAY) {
@@ -221,7 +221,7 @@ init_heap(void)
 	}
 	size_t total_level = high_bound - low_bound + 1;
 	if (total_level != 2) {
-		CA_PRINT("Expect \"rtree_levels\" is an array of length 2, but got %ld\n", total_level);
+		CA_PRINT("Expect \"rtree_levels\" is an array of length 2, but got %ld [%ld..%ld]\n", total_level, low_bound, high_bound);
 		return false;
 	}
 	val = value_of_variable(sym, 0);
@@ -244,7 +244,7 @@ init_heap(void)
 	// type = struct {
 	//     void *repr;
 	// } [4095]
-	sym = lookup_symbol("je_arenas", 0, VAR_DOMAIN, 0).symbol;
+	sym = CA_LOOKUP_SYMBOL("je_arenas");
 	if (sym == nullptr) {
 		CA_PRINT("Failed to lookup gv \"je_arenas\"\n");
 		return false;
@@ -314,7 +314,7 @@ init_heap(void)
 			auto binfo = &g_jemalloc->bin_infos[j];
 			je_edata_t *slab = nullptr;
 			struct value *slabcur_v = ca_get_field_gdb_value(bin_v, "slabcur");
-			struct type	*edata_p_type = value_type(slabcur_v);
+			struct type	*edata_p_type = CA_VALUE_TYPE(slabcur_v);
 			if (value_as_address(slabcur_v) != 0) {
 				slabcur_v = value_ind(slabcur_v);
 				slab = parse_edata(binfo, slabcur_v);
@@ -361,7 +361,7 @@ init_heap(void)
 	// }
 	struct value *rtree_v;
 	if (g_version == enum_je_release::JEMALLOC_5_3) {
-		sym = lookup_symbol("je_arena_emap_global", 0, VAR_DOMAIN, 0).symbol;
+		sym = CA_LOOKUP_SYMBOL("je_arena_emap_global");
 		if (sym == nullptr) {
 			CA_PRINT("Failed to lookup gv \"je_arena_emap_global\"\n");
 			return false;
@@ -372,7 +372,7 @@ init_heap(void)
 		rtree_v = ca_get_field_gdb_value(val, "rtree");
 		CHECK_VALUE(rtree_v, "je_arena_emap_global::rtree");
 	} else {
-		sym = lookup_symbol("je_extents_rtree", 0, VAR_DOMAIN, 0).symbol;
+		sym = CA_LOOKUP_SYMBOL("je_extents_rtree");
 		if (sym == nullptr) {
 			CA_PRINT("Failed to lookup gv \"je_extents_rtree\"\n");
 			return false;
@@ -384,7 +384,7 @@ init_heap(void)
 	struct value *root_v = ca_get_field_gdb_value(rtree_v, "root");
 	CHECK_VALUE(root_v, "je_arena_emap_global::rtree::root");
 
-	type = value_type(root_v);
+	type = CA_VALUE_TYPE(root_v);
 	if(ca_code(type) != TYPE_CODE_ARRAY) {
 		CA_PRINT("Failed to validate the type of \"je_arena_emap_global::rtree::root\"\n");
 		return false;
@@ -488,13 +488,16 @@ init_heap(void)
 		je_edata_t *edata = g_jemalloc->edata_sorted[i];
 		unsigned int arena_ind = edata->arena_ind;
 		// update arena stats
+		je_arena *arena = nullptr;
 		if (arena_ind < g_jemalloc->je_arenas.size()) {
-			je_arena *a = g_jemalloc->je_arenas[arena_ind];
-			a->stats.free_cnt += edata->free_cnt;
-			a->stats.inuse_cnt += edata->inuse_cnt;
-			a->stats.free_bytes += edata->free_bytes;
-			a->stats.inuse_bytes += edata->inuse_bytes;
+			arena = g_jemalloc->je_arenas[arena_ind];
+		} else {
+			arena = &g_jemalloc->anon_je_arena;
 		}
+		arena->stats.free_cnt += edata->free_cnt;
+		arena->stats.inuse_cnt += edata->inuse_cnt;
+		arena->stats.free_bytes += edata->free_bytes;
+		arena->stats.inuse_bytes += edata->inuse_bytes;
 		// verify there is no overlapping
 		if (i + 1 < total_edata) {
 			je_edata_t *next = g_jemalloc->edata_sorted[i+1];
@@ -542,14 +545,17 @@ init_heap(void)
 			}
 			// adjust arena
 			unsigned int arena_ind = edata->arena_ind;
+			je_arena *arena = nullptr;
 			if (arena_ind < g_jemalloc->je_arenas.size()) {
-				je_arena *a = g_jemalloc->je_arenas[arena_ind];
-				a->stats.free_cnt++;
-				a->stats.free_bytes += blk->size;
-				if (a->stats.inuse_cnt > 0 && a->stats.inuse_bytes >= blk->size) {
-					a->stats.inuse_cnt--;
-					a->stats.inuse_bytes -= blk->size;
-				}
+				arena = g_jemalloc->je_arenas[arena_ind];
+			} else {
+				arena = &g_jemalloc->anon_je_arena;
+			}
+			arena->stats.free_cnt++;
+			arena->stats.free_bytes += blk->size;
+			if (arena->stats.inuse_cnt > 0 && arena->stats.inuse_bytes >= blk->size) {
+				arena->stats.inuse_cnt--;
+				arena->stats.inuse_bytes -= blk->size;
 			}
 		} else {
 			CA_PRINT("tcache address 0x%lx is not found in edata collection\n", addr);
@@ -635,6 +641,31 @@ heap_walk(address_t heapaddr, bool verbose)
 		return false;
 	}
 
+	// Display blocks surrounding the given address
+	if (heapaddr) {
+		heap_block blk = {heapaddr, 0, false};
+		auto itr = std::lower_bound(g_jemalloc->blocks.begin(), g_jemalloc->blocks.end(),
+			blk, heap_block_cmp_func);
+		if (itr != g_jemalloc->blocks.end()
+			&& heapaddr >= (*itr).addr && heapaddr < (*itr).addr + (*itr).size) {
+			// Print the 5 blocks before and after the given address
+			int idx = (int)(itr - g_jemalloc->blocks.begin());
+			int start = std::max(0, idx - 5);
+			int end = std::min((int)g_jemalloc->blocks.size() - 1, idx + 5);
+			CA_PRINT("Blocks surrounding address 0x%lx:\n", heapaddr);
+			for (int i = start; i <= end; i++) {
+				heap_block *b = &g_jemalloc->blocks[i];
+				CA_PRINT("\t[%#lx - %#lx] %ld bytes %s\n", b->addr, b->addr + b->size,
+					b->size, b->inuse ? "inuse" : "free");
+			}
+			return true;
+		} else {
+			CA_PRINT("Address 0x%lx is not found in heap\n", heapaddr);
+		}
+		return false;
+	}
+
+	// Full heap walk
 	CA_PRINT("%s\n", g_version_names[g_version].c_str());
 
 	size_t totoal_inuse_bytes = 0;
@@ -644,6 +675,10 @@ heap_walk(address_t heapaddr, bool verbose)
 
 	int i = 0;
 	// arenas
+	total_inuse_cnt = g_jemalloc->anon_je_arena.stats.inuse_cnt;
+	total_free_cnt = g_jemalloc->anon_je_arena.stats.free_cnt;
+	totoal_inuse_bytes = g_jemalloc->anon_je_arena.stats.inuse_bytes;
+	totoal_free_bytes = g_jemalloc->anon_je_arena.stats.free_bytes;
 	for (auto arena : g_jemalloc->je_arenas) {
 		total_inuse_cnt += arena->stats.inuse_cnt;
 		total_free_cnt += arena->stats.free_cnt;
@@ -711,7 +746,7 @@ get_biggest_blocks(struct heap_block* blks, unsigned int num)
 
 	struct heap_block* smallest = &blks[num - 1];
 	for (auto blk : g_jemalloc->blocks) {
-		if (blk.size > smallest->size)
+		if (blk.inuse && blk.size > smallest->size)
 		{
 			for (unsigned int j = 0; j < num; j++)
 			{
@@ -785,10 +820,10 @@ gdb_symbol_probe(void)
 {
 	struct symbol *arenas;
 	struct symbol *nbins_total;
-	arenas = lookup_symbol("je_arenas", 0, VAR_DOMAIN, 0).symbol;
+	arenas = CA_LOOKUP_SYMBOL("je_arenas");
 	if (!arenas)
 		return false;
-	nbins_total = lookup_symbol("nbins_total", 0, VAR_DOMAIN, 0).symbol;
+	nbins_total = CA_LOOKUP_SYMBOL("nbins_total");
 	if (nbins_total)
 		g_version = enum_je_release::JEMALLOC_5_3;
 	else
@@ -796,7 +831,7 @@ gdb_symbol_probe(void)
 	return true;
 }
 
-// For jemalloc 5.3.0
+// For jemalloc 5.3
 je_edata_t *
 parse_edata(struct value *edata_v, je_rtree_contents_t *contents)
 {
@@ -1168,9 +1203,9 @@ get_heap_block(address_t addr)
 	return nullptr;
 }
 
-// Always return 0 so that all threads are visited
-static int
-thread_tcache (struct thread_info *info, void *data)
+// Always return THREAD_CB_RETURN_CONT so that all threads are visited
+static THREAD_CB_RETURN_TYPE
+THREAD_CB_FUNC(info, data)
 {
 	struct symbol *sym;
 	struct value *val;
@@ -1180,20 +1215,20 @@ thread_tcache (struct thread_info *info, void *data)
 
 	// je_tsd_tls
 	// type = __thread tsd_t je_tsd_tls
-	sym = lookup_symbol("je_tsd_tls", 0, VAR_DOMAIN, 0).symbol;
+	sym = CA_LOOKUP_SYMBOL("je_tsd_tls");
 	if (!sym) {
 		CA_PRINT("Failed to lookup thread-local variable \"je_tsd_tls\" of thread [%d]\n", info->ptid.pid());
-		return 0;
+		return THREAD_CB_RETURN_CONT;
 	}
 	val = value_of_variable(sym, 0);
 	if (!val) {
 		CA_PRINT("Failed to get the value of \"je_tsd_tls\" of thread [%d]\n", info->ptid.pid());
-		return 0;
+		return THREAD_CB_RETURN_CONT;
 	}
 	struct value *tcache_v = ca_get_field_gdb_value(val, "cant_access_tsd_items_directly_use_a_getter_or_setter_tcache");
 	if (!tcache_v) {
 		CA_PRINT("Failed to extract member \"cant_access_tsd_items_directly_use_a_getter_or_setter_tcache\" of \"je_tsd_tls\" of thread [%d]\n", info->ptid.pid());
-		return 0;
+		return THREAD_CB_RETURN_CONT;
 	}
 
 	// je_tsd_tls.cant_access_tsd_items_directly_use_a_getter_or_setter_tcache
@@ -1205,17 +1240,17 @@ thread_tcache (struct thread_info *info, void *data)
 		struct value *bins_v = ca_get_field_gdb_value(tcache_v, "bins");
 		if (!bins_v) {
 			CA_PRINT("Failed to extract member \"bins\" of \"tcache_t\" of thread [%d]\n", info->ptid.pid());
-			return 0;
+			return THREAD_CB_RETURN_CONT;
 		}
-		type = value_type(bins_v);
+		type = CA_VALUE_TYPE(bins_v);
 		if(ca_code(type) != TYPE_CODE_ARRAY) {
 			CA_PRINT("Failed to validate the array type of \"tcache_t::bins\"\n");
-			return 0;
+			return THREAD_CB_RETURN_CONT;
 		}
 		LONGEST low_bound=0, high_bound=0;
 		if (!get_array_bounds(type, &low_bound, &high_bound)) {
 			CA_PRINT("Failed to query array bounds of \"tcache_t::bins\"\n");
-			return 0;
+			return THREAD_CB_RETURN_CONT;
 		}
 		size_t bins_len = high_bound - low_bound + 1;
 		for (int i = 0; i < bins_len; i++) {
@@ -1230,18 +1265,18 @@ thread_tcache (struct thread_info *info, void *data)
 			struct value *cache_bin_v = value_subscript(bins_v, i);
 			if (!cache_bin_v) {
 				CA_PRINT("Failed to index array of \"tcache_t::bins\" at [%d]\n", i);
-				return 0;
+				return THREAD_CB_RETURN_CONT;
 			}
 			struct value *head_v = ca_get_field_gdb_value(cache_bin_v, "stack_head");
 			if (!head_v) {
 				CA_PRINT("Failed to extract member \"stack_head\" of \"cache_bin_t\"\n");
-				return 0;
+				return THREAD_CB_RETURN_CONT;
 			}
 			uintptr_t head = value_as_address(head_v);
 			size_t mdata;
 			if (!ca_get_field_value(cache_bin_v, "low_bits_empty", &mdata, false)) {
 				CA_PRINT("Failed to extract member \"low_bits_empty\" of \"cache_bin_t\"\n");
-				return 0;
+				return THREAD_CB_RETURN_CONT;
 			}
 			// cache_bin_t::stack_head (type = void **) points to an array of cached memory block addresses.
 			// the end of the array is specified by cache_bin_t::low_bits_empty, which has only lowest 16bit
@@ -1267,7 +1302,7 @@ thread_tcache (struct thread_info *info, void *data)
 				struct value *ptr_v = value_subscript(head_v, j);
 				if (!ptr_v) {
 					CA_PRINT("Failed to index array of \"cache_bin_t::stack_head\" at [%d]\n", j);
-					return 0;
+					return THREAD_CB_RETURN_CONT;
 				}
 				uintptr_t ptr = value_as_address(ptr_v);
 				if (ptr)
@@ -1278,17 +1313,17 @@ thread_tcache (struct thread_info *info, void *data)
 		struct value *bins_small_v = ca_get_field_gdb_value(tcache_v, "bins_small");
 		if (!bins_small_v) {
 			CA_PRINT("Failed to extract member \"bins_small\" of \"tcache_t\" of thread [%d]\n", info->ptid.pid());
-			return 0;
+			return THREAD_CB_RETURN_CONT;
 		}
-		type = value_type(bins_small_v);
+		type = CA_VALUE_TYPE(bins_small_v);
 		if(ca_code(type) != TYPE_CODE_ARRAY) {
 			CA_PRINT("Failed to validate the array type of \"tcache_t::bins_small\"\n");
-			return 0;
+			return THREAD_CB_RETURN_CONT;
 		}
 		LONGEST low_bound=0, high_bound=0;
 		if (!get_array_bounds(type, &low_bound, &high_bound)) {
 			CA_PRINT("Failed to query array bounds of \"tcache_t::bins_small\"\n");
-			return 0;
+			return THREAD_CB_RETURN_CONT;
 		}
 		size_t bins_len = high_bound - low_bound + 1;
 		for (int i = 0; i < bins_len; i++) {
@@ -1302,17 +1337,17 @@ thread_tcache (struct thread_info *info, void *data)
 			struct value *cache_bin_v = value_subscript(bins_small_v, i);
 			if (!cache_bin_v) {
 				CA_PRINT("Failed to index array of \"tcache_t::bins_small\" at [%d]\n", i);
-				return 0;
+				return THREAD_CB_RETURN_CONT;
 			}
 			struct value *avail_v = ca_get_field_gdb_value(cache_bin_v, "avail");
 			if (!avail_v) {
 				CA_PRINT("Failed to extract member \"avail\" of \"cache_bin_t\"\n");
-				return 0;
+				return THREAD_CB_RETURN_CONT;
 			}
 			long cdata;
 			if (!ca_get_field_value(cache_bin_v, "ncached", (size_t*)&cdata, false)) {
 				CA_PRINT("Failed to extract member \"ncached\" of \"cache_bin_t\"\n");
-				return 0;
+				return THREAD_CB_RETURN_CONT;
 			}
 			int ncached = (int) cdata;
 			// cache_bin_t::avail (type = void **) points to an array of cached memory block addresses.
@@ -1322,7 +1357,7 @@ thread_tcache (struct thread_info *info, void *data)
 				struct value *ptr_v = value_subscript(avail_v, -j);
 				if (!ptr_v) {
 					CA_PRINT("Failed to index array of \"cache_bin_t::avail\" at [%d]\n", -j);
-					return 0;
+					return THREAD_CB_RETURN_CONT;
 				}
 				uintptr_t ptr = value_as_address(ptr_v);
 				if (ptr)
@@ -1331,7 +1366,7 @@ thread_tcache (struct thread_info *info, void *data)
 		}
 	}
 
-	return 0;
+	return THREAD_CB_RETURN_CONT;
 }
 
 // Traverse all threads for thread-local variables
@@ -1341,7 +1376,7 @@ build_tcache(void)
 	/* remember current thread */
 	struct thread_info* old = inferior_thread();
 	/* switch to all threads */
-	iterate_over_threads(thread_tcache, NULL);
+	ITERATE_OVER_THREADS(thread_tcache);
 	/* resume the old thread */
 	switch_to_thread (old);
 

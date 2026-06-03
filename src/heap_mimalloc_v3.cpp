@@ -74,8 +74,7 @@ init_heap(void)
 	read_mi_version();
 
 	// Initialize bin sizes through gv `const mi_theap_t _mi_theap_empty`
-	struct symbol* sym = lookup_global_symbol("_mi_theap_empty", nullptr,
-		SEARCH_VAR_DOMAIN).symbol;
+	struct symbol* sym = CA_LOOKUP_GLOBAL_SYMBOL("_mi_theap_empty");
 	if (sym == NULL) {
 		CA_PRINT("Failed to lookup gv \"_mi_theap_empty\"\n");
 		return false;
@@ -83,7 +82,7 @@ init_heap(void)
 	struct value* theap_empty_val = value_of_variable(sym, 0);
 	struct value* pages_val = ca_get_field_gdb_value(theap_empty_val, "pages");
 	LONGEST low_bound, high_bound;
-	if (get_array_bounds (pages_val->type(), &low_bound, &high_bound) == 0) {
+	if (get_array_bounds (CA_VALUE_TYPE(pages_val), &low_bound, &high_bound) == 0) {
 		CA_PRINT("Could not determine \"_mi_theap_empty.pages\" bounds\n");
 		return false;
 	}
@@ -443,7 +442,7 @@ void register_mi_malloc_v3() {
 static bool read_mi_version(void)
 {
 	// hack it by reading the short int at the 2nd byte of funciton mi_version()
-	struct symbol* sym = lookup_symbol("mi_version", nullptr, SEARCH_FUNCTION_DOMAIN, nullptr).symbol;
+	struct symbol* sym = CA_LOOKUP_SYMBOL_FUNC("mi_version");
 	if (sym == nullptr) {
 		CA_PRINT_DBG("Failed to lookup function \"mi_version\"\n");
 		return false;
@@ -468,13 +467,13 @@ static bool parse_page(struct value* page_val, int bin_index)
 {
 	struct ca_segment *segment;
 
-	if (g_parsed_pages.find(page_val->address()) != g_parsed_pages.end()) {
-		CA_PRINT_DBG("\tSkipping already parsed mi_page_t at address %p\n", (void*)(page_val->address()));
+	if (g_parsed_pages.find(CA_VALUE_ADDRESS(page_val)) != g_parsed_pages.end()) {
+		CA_PRINT_DBG("\tSkipping already parsed mi_page_t at address %p\n", (void*)CA_VALUE_ADDRESS(page_val));
 		return true;
 	}
 
 	CA_PRINT_DBG("\tParsing mi_page_t at address %p for bin index %d\n",
-		(void*)(page_val->address()), bin_index);
+		(void*)CA_VALUE_ADDRESS(page_val), bin_index);
 	
 	// If the page has "keys" field, it means the free list is encoded.
 	// We currently don't support parsing encoded free list, so skip this page
@@ -547,7 +546,7 @@ static bool parse_page(struct value* page_val, int bin_index)
 	block_addr &= ~0x3;
 	while (block_addr != 0) {
 		if (block_addr < block_start || block_addr >= block_end) {
-			CA_PRINT("Invalid xthread free block address %p in mi_page_t %p\n", (void*)block_addr, (void*)page_val->address());
+			CA_PRINT("Invalid xthread free block address %p in mi_page_t %p\n", (void*)block_addr, (void*)CA_VALUE_ADDRESS(page_val));
 			return false;
 		}
 		g_cached_blocks.insert(block_addr);
@@ -583,9 +582,9 @@ static bool parse_page(struct value* page_val, int bin_index)
 	}
 
 	// Add the page to the global page list for future reference
-	ca_page page = { page_val->address(), block_start, block_end, block_size, bin_index };
+	ca_page page = { CA_VALUE_ADDRESS(page_val), block_start, block_end, block_size, bin_index };
 	g_pages.push_back(page);
-	g_parsed_pages.insert(page_val->address());
+	g_parsed_pages.insert(CA_VALUE_ADDRESS(page_val));
 
 	// update the segment that the page belongs to
 	segment = get_segment(block_start, block_end - block_start);
@@ -607,16 +606,14 @@ static bool parse_page_map(void)
 
 	// _mi_page_map is an array of mi_submap_t
 	// gv mi_page_map_count is the length of the array
-	sym = lookup_global_symbol("_mi_page_map", nullptr,
-		SEARCH_VAR_DOMAIN).symbol;
+	sym = CA_LOOKUP_GLOBAL_SYMBOL("_mi_page_map");
 	if (sym == NULL) {
 		CA_PRINT("Failed to lookup gv \"_mi_page_map\"\n");
 		return false;
 	}
 	page_map = value_of_variable(sym, 0);
 
-	struct symbol *count_sym = lookup_symbol("mi_page_map_count", nullptr,
-		SEARCH_VAR_DOMAIN, nullptr).symbol;
+	struct symbol *count_sym = CA_LOOKUP_SYMBOL("mi_page_map_count");
 	if (count_sym == NULL) {
 		CA_PRINT("Failed to lookup gv \"mi_page_map_count\"\n");
 		return false;
@@ -663,7 +660,8 @@ static bool parse_page_queue(struct value* page_queue_val, int bin_index)
 	return true;
 }
 
-static int thread_local_heap (struct thread_info *info, void *data)
+static THREAD_CB_RETURN_TYPE
+THREAD_CB_FUNC(info, data)
 {
 	struct symbol *sym;
 	struct value *thread_heap_p, *thread_heap;
@@ -671,11 +669,10 @@ static int thread_local_heap (struct thread_info *info, void *data)
 	switch_to_thread (info);
 
 	// __thread mi_theap_t* __mi_theap_default
-	sym = lookup_global_symbol("__mi_theap_default", nullptr,
-		SEARCH_VAR_DOMAIN).symbol;
+	sym = CA_LOOKUP_GLOBAL_SYMBOL("__mi_theap_default");
 	if (sym == NULL) {
 		CA_PRINT("Failed to lookup gv \"__mi_theap_default\"\n");
-		return false;
+		return THREAD_CB_RETURN_CONT;
 	}
 	thread_heap_p = value_of_variable(sym, 0);
 	CA_PRINT_DBG("Thread %d: __mi_theap_default at address %p\n", info->global_num, (void*)value_as_address(thread_heap_p));
@@ -694,7 +691,7 @@ static int thread_local_heap (struct thread_info *info, void *data)
 	// Traverse heap list
 	while (thread_heap)
 	{
-		CA_PRINT_DBG("Process heap at address %p\n", (void*)thread_heap->address());
+		CA_PRINT_DBG("Process heap at address %p\n", (void*)CA_VALUE_ADDRESS(thread_heap));
 		struct value* page_count_val = ca_get_field_gdb_value(thread_heap, "page_count");
 		if (page_count_val && value_as_long(page_count_val) > 0) {
 			// Field "pages" is an array of mi_page_queue_t
@@ -716,7 +713,7 @@ static int thread_local_heap (struct thread_info *info, void *data)
 			thread_heap = value_ind(theap_next);
 	}
 
-	return 0;
+	return THREAD_CB_RETURN_CONT;
 }
 
 static bool parse_thread_local_heap(void)
@@ -726,7 +723,7 @@ static bool parse_thread_local_heap(void)
 	// remember current thread
 	old = inferior_thread();
 	// switch to all threads
-	iterate_over_threads(thread_local_heap, NULL);
+	ITERATE_OVER_THREADS();
 	// resume the old thread
 	switch_to_thread (old);
 
@@ -754,7 +751,7 @@ static void add_one_big_block(struct heap_block *blks, unsigned int num,
 static bool gdb_symbol_prelude(void)
 {
 	// static __attribute__((aligned(64))) mi_arena_t* mi_arenas[MI_MAX_ARENAS];
-	struct symbol *sym = lookup_symbol("_mi_page_map", nullptr, SEARCH_VAR_DOMAIN, nullptr).symbol;
+	struct symbol *sym = CA_LOOKUP_SYMBOL("_mi_page_map");
 	if (sym == nullptr) {
 		CA_PRINT_DBG("Failed to lookup gv \"_mi_page_map\"\n");
 		return false;

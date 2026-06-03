@@ -76,8 +76,7 @@ init_heap(void)
 	read_mi_version();
 
 	// Initialize bin sizes through gv `const mi_heap_t _mi_heap_empty`
-	struct symbol* sym = lookup_global_symbol("_mi_heap_empty", nullptr,
-		SEARCH_VAR_DOMAIN).symbol;
+	struct symbol* sym = CA_LOOKUP_GLOBAL_SYMBOL("_mi_heap_empty");
 	if (sym == NULL) {
 		CA_PRINT("Failed to lookup gv \"_mi_heap_empty\"\n");
 		return false;
@@ -85,7 +84,7 @@ init_heap(void)
 	struct value* heap_empty_val = value_of_variable(sym, 0);
 	struct value* pages_val = ca_get_field_gdb_value(heap_empty_val, "pages");
 	LONGEST low_bound, high_bound;
-	if (get_array_bounds (pages_val->type(), &low_bound, &high_bound) == 0) {
+	if (get_array_bounds (CA_VALUE_TYPE(pages_val), &low_bound, &high_bound) == 0) {
 		CA_PRINT("Could not determine \"_mi_heap_empty.pages\" bounds\n");
 		return false;
 	}
@@ -455,7 +454,7 @@ void register_mi_malloc_v2() {
 static bool read_mi_version(void)
 {
 	// hack it by reading the short int at the 2nd byte of funciton mi_version()
-	struct symbol* sym = lookup_symbol("mi_version", nullptr, SEARCH_FUNCTION_DOMAIN, nullptr).symbol;
+	struct symbol* sym = CA_LOOKUP_SYMBOL_FUNC("mi_version");
 	if (sym == nullptr) {
 		CA_PRINT_DBG("Failed to lookup function \"mi_version\"\n");
 		return false;
@@ -480,13 +479,13 @@ static bool parse_page(struct value* page_val, int bin_index)
 {
 	struct ca_segment *segment;
 
-	if (g_parsed_pages.find(page_val->address()) != g_parsed_pages.end()) {
-		CA_PRINT_DBG("\tSkipping already parsed mi_page_t at address %p\n", (void*)(page_val->address()));
+	if (g_parsed_pages.find(CA_VALUE_ADDRESS(page_val)) != g_parsed_pages.end()) {
+		CA_PRINT_DBG("\tSkipping already parsed mi_page_t at address %p\n", (void*)CA_VALUE_ADDRESS(page_val));
 		return true;
 	}
 
 	CA_PRINT_DBG("\tParsing mi_page_t at address %p for bin index %d\n",
-		(void*)(page_val->address()), bin_index);
+		(void*)CA_VALUE_ADDRESS(page_val), bin_index);
 
 	// If the page has "keys" field, it means the free list is encoded.
 	// We currently don't support parsing encoded free list, so skip this page
@@ -559,7 +558,7 @@ static bool parse_page(struct value* page_val, int bin_index)
 	block_addr &= ~0x3;
 	while (block_addr != 0) {
 		if (block_addr < block_start || block_addr >= block_end) {
-			CA_PRINT("Invalid xthread free block address %p in mi_page_t %p\n", (void*)block_addr, (void*)page_val->address());
+			CA_PRINT("Invalid xthread free block address %p in mi_page_t %p\n", (void*)block_addr, (void*)CA_VALUE_ADDRESS(page_val));
 			return false;
 		}
 		g_cached_blocks.insert(block_addr);
@@ -595,9 +594,9 @@ static bool parse_page(struct value* page_val, int bin_index)
 	}
 
 	// Add the page to the global page list for future reference
-	ca_page page = { page_val->address(), block_start, block_end, block_size, bin_index };
+	ca_page page = { CA_VALUE_ADDRESS(page_val), block_start, block_end, block_size, bin_index };
 	g_pages.push_back(page);
-	g_parsed_pages.insert(page_val->address());
+	g_parsed_pages.insert(CA_VALUE_ADDRESS(page_val));
 
 	// update the segment that the page belongs to
 	segment = get_segment(block_start, block_end - block_start);
@@ -624,7 +623,8 @@ static bool parse_page_queue(struct value* page_queue_val, int bin_index)
 	return true;
 }
 
-static int thread_local_heap (struct thread_info *info, void *data)
+static THREAD_CB_RETURN_TYPE
+THREAD_CB_FUNC(info, data)
 {
 	struct symbol *sym;
 	struct value *thread_heap_p, *thread_heap;
@@ -632,11 +632,10 @@ static int thread_local_heap (struct thread_info *info, void *data)
 	switch_to_thread (info);
 
 	// __thread mi_heap_t* _mi_heap_default
-	sym = lookup_global_symbol("_mi_heap_default", nullptr,
-		SEARCH_VAR_DOMAIN).symbol;
+	sym = CA_LOOKUP_GLOBAL_SYMBOL("_mi_heap_default");
 	if (sym == NULL) {
 		CA_PRINT("Failed to lookup gv \"_mi_heap_default\"\n");
-		return false;
+		return THREAD_CB_RETURN_CONT;
 	}
 	thread_heap_p = value_of_variable(sym, 0);
 	CA_PRINT_DBG("Thread %d: _mi_heap_default at address %p\n", info->global_num, (void*)value_as_address(thread_heap_p));
@@ -655,7 +654,7 @@ static int thread_local_heap (struct thread_info *info, void *data)
 	// Traverse heap list
 	while (thread_heap)
 	{
-		CA_PRINT_DBG("Process heap at address %p\n", (void*)thread_heap->address());
+		CA_PRINT_DBG("Process heap at address %p\n", (void*)CA_VALUE_ADDRESS(thread_heap));
 		struct value* page_count_val = ca_get_field_gdb_value(thread_heap, "page_count");
 		if (page_count_val && value_as_long(page_count_val) > 0) {
 			// Field "pages" is an array of mi_page_queue_t
@@ -688,7 +687,7 @@ static int thread_local_heap (struct thread_info *info, void *data)
 			thread_heap = value_ind(heap_next);
 	}
 
-	return 0;
+	return THREAD_CB_RETURN_CONT;
 }
 
 static bool parse_thread_local_heap(void)
@@ -698,7 +697,7 @@ static bool parse_thread_local_heap(void)
 	// remember current thread
 	old = inferior_thread();
 	// switch to all threads
-	iterate_over_threads(thread_local_heap, NULL);
+	ITERATE_OVER_THREADS();
 	// resume the old thread
 	switch_to_thread (old);
 
@@ -733,7 +732,7 @@ static bool parse_segment(struct value* segment_val)
 		return false;
 	}
 	LONGEST low_bound, high_bound;
-	if (get_array_bounds (slices_val->type(), &low_bound, &high_bound) == 0) {
+	if (get_array_bounds (CA_VALUE_TYPE(slices_val), &low_bound, &high_bound) == 0) {
 		CA_PRINT("Could not determine \"slices\" bounds\n");
 		return false;
 	}
@@ -764,20 +763,20 @@ static bool parse_arenas(void)
 	// Starts with gv "mi_arenas[MI_MAX_ARENAS]"
 	// When pages/segments are abandoned, they are detached from thread local data.
 	// But they are still reachable from the global arena, which mark them in a bitmap
-	struct symbol *sym = lookup_symbol("mi_arenas", nullptr, SEARCH_VAR_DOMAIN, nullptr).symbol;
+	struct symbol *sym = CA_LOOKUP_SYMBOL("mi_arenas");
 	if (sym == nullptr) {
 		CA_PRINT("Failed to lookup gv \"mi_arenas\"\n");
 		return false;
 	}
 	struct value* mi_arenas_val = value_of_variable(sym, 0);
 	LONGEST low_bound, high_bound;
-	if (get_array_bounds (mi_arenas_val->type(), &low_bound, &high_bound) == 0) {
+	if (get_array_bounds (CA_VALUE_TYPE(mi_arenas_val), &low_bound, &high_bound) == 0) {
 		CA_PRINT("Could not determine \"mi_arenas\" bounds\n");
 		return false;
 	}
 	unsigned int mi_arenas_len = high_bound - low_bound + 1;
 	// Get gv "mi_arena_count", which is the actual number of arenas in use (can be less than MI_MAX_ARENAS)
-	sym = lookup_symbol("mi_arena_count", nullptr, SEARCH_VAR_DOMAIN, nullptr).symbol;
+	sym = CA_LOOKUP_SYMBOL("mi_arena_count");
 	if (sym == nullptr) {
 		CA_PRINT("Failed to lookup gv \"mi_arena_count\"\n");
 		return false;
@@ -817,9 +816,9 @@ static bool parse_arenas(void)
 			//     mi_bitmap_field_t   blocks_inuse[1];
 			struct value* blocks_inuse_val = ca_get_field_gdb_value(val, "blocks_inuse");
 			blocks_inuse_val = value_subscript(blocks_inuse_val, 0);
-			if (!read_memory_wrapper(nullptr, blocks_inuse_val->address(), bitmap.get(), bitmap_size)) {
+			if (!read_memory_wrapper(nullptr, CA_VALUE_ADDRESS(blocks_inuse_val), bitmap.get(), bitmap_size)) {
 				CA_PRINT("Failed to read blocks_inuse bitmap of mi_arenas[%d] at address %p\n",
-					index, (void*)blocks_inuse_val->address());
+					index, (void*)CA_VALUE_ADDRESS(blocks_inuse_val));
 				return false;
 			}
 			// Get the start address with field "start"
@@ -839,7 +838,7 @@ static bool parse_arenas(void)
 			// and we can calculate the segment address by start address + index * MI_ARENA_BLOCK_SIZE
 			//
 			// First get the type of "mi_segment_t*"" for future use in value_at() through gv "mi_subproc_default"
-			struct symbol* mi_subproc_default_sym = lookup_symbol("mi_subproc_default", nullptr, SEARCH_VAR_DOMAIN, nullptr).symbol;
+			struct symbol* mi_subproc_default_sym = CA_LOOKUP_SYMBOL("mi_subproc_default");
 			if (mi_subproc_default_sym == nullptr) {
 				CA_PRINT("Failed to lookup gv \"mi_subproc_default\"\n");
 				return false;
@@ -850,7 +849,7 @@ static bool parse_arenas(void)
 				CA_PRINT("Failed to get field \"abandoned_os_list\" of mi_subproc_default\n");
 				return false;
 			}
-			struct type* mi_segment_type = value_ind(abandoned_os_list_val)->type();
+			struct type* mi_segment_type = CA_VALUE_TYPE(value_ind(abandoned_os_list_val));
 
 			for (size_t bit_index = 0; bit_index < block_count; bit_index++) {
 				size_t byte_index = bit_index / 8;
@@ -878,7 +877,7 @@ static bool parse_arenas(void)
 static bool parse_abandoned_os_segments(void)
 {
 	// Traverse the global list `mi_subproc_default.abandoned_os_list` to find abandoned segments that are not in thread local heaps
-	struct symbol* mi_subproc_default_sym = lookup_symbol("mi_subproc_default", nullptr, SEARCH_VAR_DOMAIN, nullptr).symbol;
+	struct symbol* mi_subproc_default_sym = CA_LOOKUP_SYMBOL("mi_subproc_default");
 	if (mi_subproc_default_sym == nullptr) {
 		CA_PRINT("Failed to lookup gv \"mi_subproc_default\"\n");
 		return false;
@@ -889,7 +888,7 @@ static bool parse_abandoned_os_segments(void)
 	while (segment_val && value_as_address(segment_val) != 0) {
 		segment_val = value_ind(segment_val);
 		if (!parse_segment(segment_val)) {
-			CA_PRINT("Failed to parse mi_segment_t at address %p\n", (void*)segment_val->address());
+			CA_PRINT("Failed to parse mi_segment_t at address %p\n", (void*)CA_VALUE_ADDRESS(segment_val));
 			return false;
 		}
 		// Assume singly linked list
@@ -902,7 +901,7 @@ static bool parse_abandoned_os_segments(void)
 static bool gdb_symbol_prelude(void)
 {
 	// static __attribute__((aligned(64))) mi_arena_t* mi_arenas[MI_MAX_ARENAS];
-	struct symbol *sym = lookup_symbol("mi_arenas", nullptr, SEARCH_VAR_DOMAIN, nullptr).symbol;
+	struct symbol *sym = CA_LOOKUP_SYMBOL("mi_arenas");
 	if (sym == nullptr) {
 		CA_PRINT_DBG("Failed to lookup gv \"mi_arenas\"\n");
 		return false;

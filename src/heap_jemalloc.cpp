@@ -1376,7 +1376,7 @@ build_tcache(void)
 	/* remember current thread */
 	struct thread_info* old = inferior_thread();
 	/* switch to all threads */
-	ITERATE_OVER_THREADS(thread_tcache);
+	ITERATE_OVER_THREADS();
 	/* resume the old thread */
 	switch_to_thread (old);
 

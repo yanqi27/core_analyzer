@@ -603,11 +603,11 @@ gdb_symbol_prelude(void)
 	 * template <int BITS>
 	 *     class TCMalloc_PageMap2, TCMalloc_PageMap3
 	 */
-	pagemap2 = CA_LOOKUP_SYMBOL("TCMalloc_PageMap2<35>::LEAF_BITS");
-	pagemap3 = CA_LOOKUP_SYMBOL("TCMalloc_PageMap3<35>::LEAF_BITS");
+	pagemap2 = CA_LOOKUP_SYMBOL(CA_TCMALLOC_PAGE_MAP2);
+	pagemap3 = CA_LOOKUP_SYMBOL(CA_TCMALLOC_PAGE_MAP3);
 	if (pagemap2 == NULL && pagemap3 == NULL) {
-		CA_PRINT_DBG("Failed to lookup type \"TCMalloc_PageMap2<35>\" and \"TCMalloc_PageMap3<35>\""
-		    "\n");
+		CA_PRINT_DBG("Failed to lookup type \"%s\" and \"%s\"\n",
+		    CA_TCMALLOC_PAGE_MAP2, CA_TCMALLOC_PAGE_MAP3);
 		return false;
 	}
 

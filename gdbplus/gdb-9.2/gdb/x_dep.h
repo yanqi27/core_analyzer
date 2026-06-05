@@ -28,4 +28,7 @@
 #define CA_LOOKUP_SYMBOL_FUNC(name) lookup_symbol(name, 0, VAR_DOMAIN, 0).symbol
 #define CA_LOOKUP_GLOBAL_SYMBOL(name) lookup_global_symbol(name, 0, VAR_DOMAIN).symbol
 
+#define CA_TCMALLOC_PAGE_MAP2 "TCMalloc_PageMap2<35>"
+#define CA_TCMALLOC_PAGE_MAP3 "TCMalloc_PageMap3<35>"
+
 #endif // X_DEP_H_

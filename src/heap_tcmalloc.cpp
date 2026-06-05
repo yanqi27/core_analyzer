@@ -78,7 +78,7 @@ static int span_search_compare(const void *, const void *);
 static bool verify_sorted_spans(void);
 static bool span_block_free(struct ca_span*, address_t);
 static bool span_populate_free_bitmap(struct ca_span*);
-static void span_get_stat(struct ca_span *, struct span_stats *);
+static void span_get_stat(struct ca_span *, struct span_stats *, bool verbose);
 static void span_walk(struct ca_span *);
 
 static void add_one_big_block(struct heap_block *, unsigned int,
@@ -345,6 +345,8 @@ heap_walk(address_t heapaddr, bool verbose)
 	/*
 	 * Full heap walk
 	 */
+	if (verbose)
+		init_mem_histogram(16);
 	stats = (struct span_stats *)calloc(g_config.kNumClasses + 1, sizeof *stats);
 	if (stats == NULL) {
 		CA_PRINT("Out of memory\n");
@@ -362,9 +364,9 @@ heap_walk(address_t heapaddr, bool verbose)
 		span = &g_spans[i];
 
 		if (span->location == SPAN_IN_USE) {
-			span_get_stat(span, &stats[span->sizeclass]);
+			span_get_stat(span, &stats[span->sizeclass], verbose);
 		} else {
-			span_get_stat(span, &stats[g_config.kNumClasses]);
+			span_get_stat(span, &stats[g_config.kNumClasses], verbose);
 		}
 	}
 	memset(&total, 0, sizeof(total));
@@ -403,6 +405,20 @@ heap_walk(address_t heapaddr, bool verbose)
 	CA_PRINT("%12zu            %12zu%12zu%12zu%12zu\n",
 	    total.span_count, total.inuse_count,  total.inuse_bytes,
 	    total.free_count, total.free_bytes);
+
+	// Print a summary of all heap memory usage
+	CA_PRINT("\n");
+	CA_PRINT("There are %zu spans, total ", g_spans_count);
+	print_size(total.inuse_bytes + total.free_bytes);
+	CA_PRINT("\n");
+	CA_PRINT("Total in-use blocks: %zu of ", total.inuse_count);
+	print_size(total.inuse_bytes);
+	CA_PRINT(", total free blocks: %zu of ", total.free_count);
+	print_size(total.free_bytes);
+	CA_PRINT("\n\n");
+
+	if (verbose)
+		display_mem_histogram("");
 
 	free(stats);
 
@@ -585,8 +601,8 @@ gdb_symbol_prelude(void)
 	 * template <int BITS>
 	 *     class TCMalloc_PageMap2, TCMalloc_PageMap3
 	 */
-	pagemap2 = lookup_symbol("TCMalloc_PageMap2<35>", 0, VAR_DOMAIN, 0).symbol;
-	pagemap3 = lookup_symbol("TCMalloc_PageMap3<35>", 0, VAR_DOMAIN, 0).symbol;
+	pagemap2 = CA_LOOKUP_SYMBOL("TCMalloc_PageMap2<35>::LEAF_BITS");
+	pagemap3 = CA_LOOKUP_SYMBOL("TCMalloc_PageMap3<35>::LEAF_BITS");
 	if (pagemap2 == NULL && pagemap3 == NULL) {
 		CA_PRINT_DBG("Failed to lookup type \"TCMalloc_PageMap2<35>\" and \"TCMalloc_PageMap3<35>\""
 		    "\n");
@@ -622,7 +638,7 @@ parse_config(void)
 	 * Global var
 	 * static const size_t kPageShift;
 	 */
-	pageshift_ = lookup_symbol("kPageShift", 0, VAR_DOMAIN, 0).symbol;
+	pageshift_ = CA_LOOKUP_SYMBOL("kPageShift");
 	if (pageshift_ == NULL) {
 		CA_PRINT("Failed to lookup gv \"kPageShift\"\n");
 		return false;
@@ -633,8 +649,7 @@ parse_config(void)
 	 * Global var
 	 * tcmalloc::Static::sizemap_
 	 */
-	sizemap_ = lookup_global_symbol("tcmalloc::Static::sizemap_", 0,
-	    VAR_DOMAIN).symbol;
+	sizemap_ = CA_LOOKUP_GLOBAL_SYMBOL("tcmalloc::Static::sizemap_");
 	if (sizemap_ == NULL) {
 		CA_PRINT("Failed to lookup gv "
 		    "\"tcmalloc::Static::sizemap_\"\n");
@@ -648,11 +663,11 @@ parse_config(void)
 	class_to_size = get_field_value(sizemap, "class_to_size_");
 	if (!class_to_size)
 		return false;
-	if (ca_code(value_type(class_to_size)) != TYPE_CODE_ARRAY) {
+	if (ca_code(CA_VALUE_TYPE(class_to_size)) != TYPE_CODE_ARRAY) {
 		CA_PRINT("Unexpected \"class_to_size\" is not an array\n");
 		return false;
 	}
-	if (get_array_bounds (value_type(class_to_size), &low_bound,
+	if (get_array_bounds (CA_VALUE_TYPE(class_to_size), &low_bound,
 	    &high_bound) == 0) {
 		CA_PRINT("Could not determine \"class_to_size\" bounds\n");
 		return false;
@@ -714,11 +729,11 @@ parse_pagemap_2_5(struct symbol *pageheap_, struct type *leaf_type,
 	 * tcmalloc::Static::pageheap_->pagemap_.root_->ptrs
 	 */
 	ptrs = get_field_value(root, "ptrs");
-	if (ca_code(value_type(ptrs)) != TYPE_CODE_ARRAY) {
+	if (ca_code(CA_VALUE_TYPE(ptrs)) != TYPE_CODE_ARRAY) {
 		CA_PRINT("Unexpected \"ptrs\" is not an array\n");
 		return false;
 	}
-	if (get_array_bounds (value_type(ptrs), &low_bound, &high_bound) == 0) {
+	if (get_array_bounds (CA_VALUE_TYPE(ptrs), &low_bound, &high_bound) == 0) {
 		CA_PRINT("Could not determine \"ptrs\" bounds\n");
 		return false;
 	}
@@ -742,7 +757,7 @@ parse_pagemap_2_5(struct symbol *pageheap_, struct type *leaf_type,
 		 * tcmalloc::Static::pageheap_->pagemap_.root_->ptrs[index]->ptrs
 		 */
 		ptrs2 = get_field_value(node, "ptrs");
-		get_array_bounds (value_type(ptrs2), &low_bound2, &high_bound2);
+		get_array_bounds (CA_VALUE_TYPE(ptrs2), &low_bound2, &high_bound2);
 		CA_PRINT_DBG("tcmalloc::Static::pageheap_->pagemap_.root_->ptrs[%ld]->ptrs[%ld-%ld] "
 		    "array length %ld\n", index, low_bound2, high_bound2,
 		    high_bound2 - low_bound2 + 1);
@@ -800,14 +815,14 @@ parse_pagemap_2_7(struct symbol *pageheap_, struct type *leaf_type,
 	 * }
 	 */
 	pagemap = get_field_value(pageheap, "pagemap_");
-	type_name = ca_name(check_typedef(value_type(pagemap)));
+	type_name = ca_name(check_typedef(CA_VALUE_TYPE(pagemap)));
 	if (strcmp(type_name, "TCMalloc_PageMap2<35>") != 0) {
 		CA_PRINT("Internal error: pageheap_.pagemap_ has unexpected type\n");
 		return false;
 	}
 	root = get_field_value(pagemap, "root_");
 
-	if (get_array_bounds (value_type(root), &low_bound, &high_bound) == 0) {
+	if (get_array_bounds (CA_VALUE_TYPE(root), &low_bound, &high_bound) == 0) {
 		CA_PRINT("Could not determine \"root_\" bounds\n");
 		return false;
 	}
@@ -859,8 +874,7 @@ parse_pagemap(void)
 	 * Version detection through global var:
 	 *   tcmalloc::PageHeap *tcmalloc::Static::pageheap_;
 	 */
-	pageheap_ = lookup_global_symbol("tcmalloc::Static::pageheap_", 0,
-	    VAR_DOMAIN).symbol;
+	pageheap_ = CA_LOOKUP_GLOBAL_SYMBOL("tcmalloc::Static::pageheap_");
 	if (pageheap_ == NULL) {
 		CA_PRINT("Failed to lookup gv "
 		    "\"tcmalloc::Static::pageheap_\"\n");
@@ -925,19 +939,18 @@ parse_central_cache(void)
 	 * Global var
 	 * tcmalloc::CentralFreeListPadded tcmalloc::Static::central_cache_[88]
 	 */
-	central_cache_ = lookup_global_symbol("tcmalloc::Static::central_cache_",
-	    0, VAR_DOMAIN).symbol;
+	central_cache_ = CA_LOOKUP_GLOBAL_SYMBOL("tcmalloc::Static::central_cache_");
 	if (central_cache_ == NULL) {
 		CA_PRINT("Failed to lookup gv "
 		    "\"tcmalloc::Static::central_cache_\"\n");
 		return false;
 	}
 	central_cache = value_of_variable(central_cache_, 0);
-	if (ca_code(value_type(central_cache)) != TYPE_CODE_ARRAY) {
+	if (ca_code(CA_VALUE_TYPE(central_cache)) != TYPE_CODE_ARRAY) {
 		CA_PRINT("Unexpected \"central_cache_\" is not an array\n");
 		return false;
 	}
-	if (get_array_bounds (value_type(central_cache), &low_bound,
+	if (get_array_bounds (CA_VALUE_TYPE(central_cache), &low_bound,
 	    &high_bound) == 0) {
 		CA_PRINT("Could not determine \"central_cache_\" bounds\n");
 		return false;
@@ -964,7 +977,7 @@ parse_central_cache(void)
 			* which is base class of tcmalloc::CentralFreeListPaddedTo<16>,
 			* which is base class of tcmalloc::CentralFreeListPadded
 			*/
-			cfl_type = TYPE_BASECLASS(value_type(v), 0);
+			cfl_type = TYPE_BASECLASS(CA_VALUE_TYPE(v), 0);
 			cfl_type = TYPE_BASECLASS(cfl_type, 0);
 			cfl = value_cast(cfl_type, v);
 		} else {
@@ -995,11 +1008,11 @@ parse_central_freelist(struct value *cfl)
 	 * tcmalloc::CentralFreeList::used_slots_
 	 */
 	tc_slots = get_field_value(cfl, "tc_slots_");
-	if (ca_code(value_type(tc_slots)) != TYPE_CODE_ARRAY) {
+	if (ca_code(CA_VALUE_TYPE(tc_slots)) != TYPE_CODE_ARRAY) {
 		CA_PRINT("Unexpected \"tc_slots\" is not an array\n");
 		return false;
 	}
-	if (get_array_bounds (value_type(tc_slots), &low_bound,
+	if (get_array_bounds (CA_VALUE_TYPE(tc_slots), &low_bound,
 	    &high_bound) == 0) {
 		CA_PRINT("Could not determine \"tc_slots\" bounds\n");
 		return false;
@@ -1042,7 +1055,7 @@ parse_central_freelist_tcentry(struct value *tcentry, bool *empty_slot)
 	 * tcmalloc::CentralFreeList::TCEntry::head
 	 */
 	head = get_field_value(tcentry, "head");
-	void_p = value_type(head);
+	void_p = CA_VALUE_TYPE(head);
 	void_pp = lookup_pointer_type(void_p);
 
 	/*
@@ -1129,7 +1142,7 @@ span_walk(struct ca_span *span)
 }
 
 void
-span_get_stat(struct ca_span *span, struct span_stats *stats)
+span_get_stat(struct ca_span *span, struct span_stats *stats, bool verbose)
 {
 	unsigned int index, n, bit;
 	size_t blk_sz;
@@ -1141,9 +1154,13 @@ span_get_stat(struct ca_span *span, struct span_stats *stats)
 	if (span->location != SPAN_IN_USE) {
 		stats->free_count++;
 		stats->free_bytes += span->length << g_config.kPageShift;
+		if (verbose)
+			add_block_mem_histogram(span->length << g_config.kPageShift, false, 1);
 	} else if (span->sizeclass == 0) {
 		stats->inuse_count++;
 		stats->inuse_bytes += span->length << g_config.kPageShift;
+		if (verbose)
+			add_block_mem_histogram(span->length << g_config.kPageShift, true, 1);
 	} else {
 		span_populate_free_bitmap(span);
 		blk_sz = g_config.sizemap.class_to_size[span->sizeclass];
@@ -1153,9 +1170,13 @@ span_get_stat(struct ca_span *span, struct span_stats *stats)
 			if (span->bitmap[n] & (1 << bit)) {
 				stats->free_count++;
 				stats->free_bytes += blk_sz;
+				if (verbose)
+					add_block_mem_histogram(blk_sz, false, 1);
 			} else {
 				stats->inuse_count++;
 				stats->inuse_bytes += blk_sz;
+				if (verbose)
+					add_block_mem_histogram(blk_sz, true, 1);
 			}
 		}
 	}
@@ -1293,7 +1314,7 @@ get_field_value(struct value *val, const char *field_name)
 {
 	int fieldno;
 
-	fieldno = type_field_name2no(value_type(val), field_name);
+	fieldno = type_field_name2no(CA_VALUE_TYPE(val), field_name);
 	if (fieldno < 0) {
 		CA_PRINT("failed to find member \"%s\"\n", field_name);
 		return NULL;
@@ -1311,11 +1332,11 @@ parse_leaf(struct value *leaf, struct type *span_type)
 	 * leaf->values
 	 */
 	values = get_field_value(leaf, "values");
-	if (ca_code(value_type(values)) != TYPE_CODE_ARRAY) {
+	if (ca_code(CA_VALUE_TYPE(values)) != TYPE_CODE_ARRAY) {
 		CA_PRINT("Unexpected: \"values\" is not an array\n");
 		return false;
 	}
-	if (get_array_bounds (value_type(values), &low_bound, &high_bound) == 0) {
+	if (get_array_bounds (CA_VALUE_TYPE(values), &low_bound, &high_bound) == 0) {
 		CA_PRINT("Could not determine \"values\" bounds\n");
 		return false;
 	}
@@ -1386,7 +1407,7 @@ parse_span(struct value *span)
 		my_span->objects = value_as_address(m);
 	} else {
 		int n;
-		struct type *span_type = value_type(span);
+		struct type *span_type = CA_VALUE_TYPE(span);
 		/*
 		 * struct tcmalloc::Span {
 		 *     union {
@@ -1439,8 +1460,7 @@ parse_thread_cache(void)
 	 * Global var
 	 * tcmalloc::ThreadCache *tcmalloc::ThreadCache::thread_heaps_
 	 */
-	thread_heaps_ = lookup_global_symbol("tcmalloc::ThreadCache::thread_heaps_",
-	    0, VAR_DOMAIN).symbol;
+	thread_heaps_ = CA_LOOKUP_GLOBAL_SYMBOL("tcmalloc::ThreadCache::thread_heaps_");
 	if (thread_heaps_ == NULL) {
 		CA_PRINT("Failed to lookup gv "
 		    "\"tcmalloc::ThreadCache::thread_heaps_\"\n");
@@ -1456,11 +1476,11 @@ parse_thread_cache(void)
 
 		thread_heaps = value_ind(thread_heaps_p);
 		lists = get_field_value(thread_heaps, "list_");
-		if (ca_code(value_type(lists)) != TYPE_CODE_ARRAY) {
+		if (ca_code(CA_VALUE_TYPE(lists)) != TYPE_CODE_ARRAY) {
 			CA_PRINT("Unexpected \"list_\" is not an array\n");
 			return false;
 		}
-		if (get_array_bounds (value_type(lists), &low_bound,
+		if (get_array_bounds (CA_VALUE_TYPE(lists), &low_bound,
 		    &high_bound) == 0) {
 			CA_PRINT("Could not determine \"list_\" bounds\n");
 			return false;
@@ -1500,7 +1520,7 @@ parse_thread_cache_lists(struct value *lists)
 		len = value_as_address(get_field_value(freelist, "length_"));
 
 		list = get_field_value(freelist, "list_");
-		void_p = value_type(list);
+		void_p = CA_VALUE_TYPE(list);
 		void_pp = lookup_pointer_type(void_p);
 		count = 0;
 		while (value_as_address(list) != 0) {

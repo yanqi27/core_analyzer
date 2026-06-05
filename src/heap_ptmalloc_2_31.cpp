@@ -367,7 +367,8 @@ static bool heap_walk(address_t heapaddr, bool verbose)
 		}
 	}
 
-	// Tuning and stats info
+	// Display version, tuning and stats info
+	CA_PRINT("glibc/ptmalloc version: %d.%d\n", glibc_ver_major, glibc_ver_minor);
 	CA_PRINT("\tTuning params & stats:\n");
 	CA_PRINT("\t\tmmap_threshold=" PRINT_FORMAT_SIZE "\n", mparams.mmap_threshold);
 	CA_PRINT("\t\tpagesize=%d\n", mparams.pagesize);

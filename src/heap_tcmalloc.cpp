@@ -34,7 +34,7 @@ struct span_stats {
 /*
  * Globals
  */
-//static int tc_version_major = 2;
+static int tc_version_major = 2;
 static int tc_version_minor = 0;
 //static int tc_version_patch = 0;
 
@@ -371,6 +371,8 @@ heap_walk(address_t heapaddr, bool verbose)
 	}
 	memset(&total, 0, sizeof(total));
 
+	// Display version info
+	CA_PRINT("TCmalloc version: %d.%d\n", tc_version_major, tc_version_minor);
 	/*
 	 * Display statistics
 	 */

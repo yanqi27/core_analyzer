@@ -137,4 +137,7 @@ extern bool segment_command_impl(char* args);
 extern bool pattern_command_impl(char* args);
 extern void ca_initialize_heapcmd();
 
+// misc functions
+extern bool get_tcmalloc_version(address_t func_addr, int *major, int *minor);
+
 #endif // X_COMMON_H_

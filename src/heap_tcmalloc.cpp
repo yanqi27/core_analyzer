@@ -135,6 +135,18 @@ init_heap(void)
 		return false;
 	}
 
+	// Try to extract tcmalloc version from the code of tc_version function
+	struct symbol *sym = CA_LOOKUP_SYMBOL_FUNC("tc_version");
+	if (sym != NULL) {
+		struct value* func_val = value_of_variable(sym, 0);
+		address_t func_addr = value_as_address(func_val);
+		int major, minor;
+		if (get_tcmalloc_version(func_addr, &major, &minor)) {
+			tc_version_major = major;
+			tc_version_minor = minor;
+		}
+	}
+
 	/*
 	 * Show result
 	 */

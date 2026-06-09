@@ -7,12 +7,11 @@
 #ifndef X_DEP_H_
 #define X_DEP_H_
 
-#include "x_common.h"
-#include "gdbcmd.h"
-
-
 #define CA_PRINT(format,args...) \
 	printf_filtered(_(format), ##args)
+
+#include "x_common.h"
+#include "gdbcmd.h"
 
 #define ITERATE_OVER_THREADS() iterate_over_threads(thread_tcache, NULL)
 

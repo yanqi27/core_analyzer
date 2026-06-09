@@ -52,4 +52,4 @@ fi
 echo "building..."
 autoreconf --force --install
 ./configure
-make clean && make -j 4 && sudo make install
+make clean && make -j 4 && sudo rm -rf /usr/local/lib/libtcmalloc* && sudo make install

@@ -1853,3 +1853,86 @@ is_same_string(const char* str1, const char* str2)
 	}
 	return rc;
 }
+
+bool get_tcmalloc_version(address_t func_addr, int *major, int *minor)
+{
+	/*
+	** tc_version is defined in tcamlloc.cc
+	** const char* tc_version(int* major, int* minor, const char** patch) {
+	**     if (major) *major = TC_VERSION_MAJOR;
+	**     if (minor) *minor = TC_VERSION_MINOR;
+	**     if (patch) *patch = TC_VERSION_PATCH;
+	**     return TC_VERSION_STRING;
+	** }
+	*/
+
+	/* We will disassemble the function and look for the mov instructions 
+	** that store the major and minor version numbers into the memory locations
+	** pointed to by the argument registers.
+	** For example, the following instructions might be present in the function:
+	** (gdb) disassemble /r tc_version
+	** Dump of assembler code for function tc_version(int*, int*, char const**):
+	**  0x00007ffff7df0870 <+0>:     48 85 ff                test   %rdi,%rdi
+	**  0x00007ffff7df0873 <+3>:     74 06                   je     0x7ffff7df087b <tc_version(int*, int*, char const**)+11 at src/tcmalloc.cc:1763>
+	**  0x00007ffff7df0875 <+5>:     c7 07 02 00 00 00       movl   $0x2,(%rdi)
+	**  0x00007ffff7df087b <+11>:    48 85 f6                test   %rsi,%rsi
+	**  0x00007ffff7df087e <+14>:    74 06                   je     0x7ffff7df0886 <tc_version(int*, int*, char const**)+22 at src/tcmalloc.cc:1764>
+	**  0x00007ffff7df0880 <+16>:    c7 06 11 00 00 00       movl   $0x11,(%rsi)
+	**  0x00007ffff7df0886 <+22>:    48 85 d2                test   %rdx,%rdx
+	**  0x00007ffff7df0889 <+25>:    74 0a                   je     0x7ffff7df0895 <tc_version(int*, int*, char const**)+37 at src/tcmalloc.cc:1765>
+	**  0x00007ffff7df088b <+27>:    48 8d 05 90 3e 01 00    lea    0x13e90(%rip),%rax        # 0x7ffff7e04722
+	**  0x00007ffff7df0892 <+34>:    48 89 02                mov    %rax,(%rdx)
+	**  0x00007ffff7df0895 <+37>:    48 8d 05 77 3e 01 00    lea    0x13e77(%rip),%rax        # 0x7ffff7e04713
+	**  0x00007ffff7df089c <+44>:    c3                      ret
+	** End of assembler dump.
+	*/
+	if (func_addr == 0 || major == NULL || minor == NULL)
+		return false;
+	*major = 0;
+	*minor = 0;
+	
+	// Disassemble the function
+	struct decode_control_block decode_cb;
+	struct ca_reg_value param_regs[TOTAL_REGS];
+	memset(param_regs, 0, sizeof(param_regs));
+	CORE_ADDR pc = func_addr;
+	CORE_ADDR func_lo, func_hi;
+	if (!find_pc_partial_function (pc, NULL, &func_lo, &func_hi))
+		return false;
+	decode_cb.gdbarch = get_current_arch();
+	decode_cb.uiout   = 0;
+	decode_cb.low     = func_lo;
+	decode_cb.high    = func_hi;
+	decode_cb.current = func_hi;
+	decode_cb.func_start = func_lo;
+	decode_cb.func_end   = func_hi;
+	decode_cb.param_regs = param_regs;
+	decode_cb.user_regs  = NULL;
+	decode_cb.verbose    = 0;
+	decode_cb.innermost_frame = 0;
+
+	dump_insns(&decode_cb);
+	for (unsigned int insn_index = 0; insn_index < g_num_insns; insn_index++) {
+		struct ca_dis_insn* insn = &g_insns_buffer[insn_index];
+		if (*insn->opcode_name == 0)
+			continue;
+		if (strncmp(insn->opcode_name, "mov", 3) == 0) {
+			struct ca_operand* dst_op = &insn->operands[0];
+			struct ca_operand* src_op = &insn->operands[1];
+			if (dst_op->type == CA_OP_MEMORY && src_op->type == CA_OP_IMMEDIATE) {
+				size_t imm_val = get_op_value(src_op, 4);
+				// version number should be small
+				if (imm_val > 0 && imm_val < 0x100)	{
+					if (dst_op->mem.base_reg.name && strcmp(dst_op->mem.base_reg.name, "%rdi") == 0)
+						*major = (int)imm_val;
+					else if (dst_op->mem.base_reg.name && strcmp(dst_op->mem.base_reg.name, "%rsi") == 0)
+						*minor = (int)imm_val;
+				}
+			}
+		}
+	}
+
+	if (*major == 0 && *minor == 0)
+		return false;
+	return true;
+}

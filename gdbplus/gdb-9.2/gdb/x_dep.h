@@ -36,7 +36,7 @@
 #define CA_VFPRINTF(stream, format, args) \
 	vfprintf_filtered ((ui_file *)stream, format, args)
 
-#define INIT_DISASSEMBLE_INFO(di, stream, fprintf_func, fprintf_styled_func) \
+#define CA_INIT_DISASSEMBLE_INFO(di, stream, fprintf_func, fprintf_styled_func) \
 	init_disassemble_info(di, stream, fprintf_func)
 
 #define CA_SPRINTF_VMA(bfd, buffer, val) \

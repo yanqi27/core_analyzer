@@ -1161,7 +1161,7 @@ find_shared_objects_one_thread(struct ca_segment* segment, bool ignore_new_shrob
 					shrobj->thread_owners.push_front(aref);
 				}
 				else
-					free (aref);
+					delete aref;
 			}
 		}
 		cursor += ptr_sz;

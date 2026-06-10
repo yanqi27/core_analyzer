@@ -848,7 +848,7 @@ dump_insns(struct decode_control_block* decode_cb)
 	struct disassemble_info di;
 	string_file ui_file;
 
-	INIT_DISASSEMBLE_INFO(&di, &ui_file, fprintf_disasm, fprintf_styled_disasm);
+	CA_INIT_DISASSEMBLE_INFO(&di, &ui_file, fprintf_disasm, fprintf_styled_disasm);
 	di.flavour = bfd_target_unknown_flavour;
 	di.memory_error_func = dis_asm_memory_error;
 	di.print_address_func = dis_asm_print_address;
@@ -1763,7 +1763,7 @@ print_displacement(char *buf, bfd_vma disp)
 	buf[j++] = '0';
 	buf[j++] = 'x';
 
-	CA_SPRINTF_VMA(NULL, tmp, val);
+	CA_SPRINTF_VMA(current_program_space->exec_bfd(), tmp, val);
 	for (i = 0; tmp[i] == '0'; i++)
 		continue;
 	if (tmp[i] == '\0')

@@ -305,7 +305,7 @@ print_one_insn(struct ca_dis_insn* insn, struct ui_out* uiout)
 					if (sym)
 					{
 						symname = sym->natural_name();
-						type = sym->type();
+						type = CA_SYMBOL_TYPE(sym);
 					}
 				}
 			}
@@ -790,7 +790,7 @@ fprintf_disasm (void *stream, const char *format, ...)
 	va_list args;
 
 	va_start (args, format);
-	gdb_vprintf ((ui_file *)stream, format, args);
+	CA_VFPRINTF(stream, format, args);
 	va_end (args);
 	/* Something non -ve.  */
 	return 0;
@@ -804,7 +804,7 @@ fprintf_styled_disasm (void *dis_info,
 	va_list args;
 
 	va_start (args, format);
-	gdb_vprintf ((ui_file *)dis_info, format, args);
+	CA_VFPRINTF(dis_info, format, args);
 	va_end (args);
 	/* Something non -ve.  */
 	return 0;
@@ -848,7 +848,7 @@ dump_insns(struct decode_control_block* decode_cb)
 	struct disassemble_info di;
 	string_file ui_file;
 
-	init_disassemble_info (&di, &ui_file, fprintf_disasm, fprintf_styled_disasm);
+	INIT_DISASSEMBLE_INFO(&di, &ui_file, fprintf_disasm, fprintf_styled_disasm);
 	di.flavour = bfd_target_unknown_flavour;
 	di.memory_error_func = dis_asm_memory_error;
 	di.print_address_func = dis_asm_print_address;
@@ -1413,11 +1413,11 @@ get_op_symbol_type(struct ca_operand* op, int lea,
 			struct type* type = base_reg->type;
 			// operand should be a pointer type
 			if (type
-				&& (type->code() == TYPE_CODE_PTR || type->code() == TYPE_CODE_REF))
+				&& (CA_TYPE_CODE(type) == TYPE_CODE_PTR || CA_TYPE_CODE(type) == TYPE_CODE_REF))
 			{
 				int is_vptr = 0;
 				char namebuf[NAME_BUF_SZ];
-				struct type* field_type = get_struct_field_type_and_name(type->target_type(), op->mem.disp.immediate, lea, namebuf, NAME_BUF_SZ, &is_vptr);
+				struct type* field_type = get_struct_field_type_and_name(CA_TYPE_TARGET_TYPE(type), op->mem.disp.immediate, lea, namebuf, NAME_BUF_SZ, &is_vptr);
 				if (field_type)
 				{
 					if (pvptr)
@@ -1438,7 +1438,7 @@ get_op_symbol_type(struct ca_operand* op, int lea,
 							*cursor++ = '&';
 						strncpy(cursor, base_reg->sym_name, baselen);
 						cursor += baselen;
-						if (base_reg->type->code() == TYPE_CODE_PTR)
+						if (CA_TYPE_CODE(base_reg->type) == TYPE_CODE_PTR)
 						{
 							*cursor++ = '-';
 							*cursor++ = '>';
@@ -1763,7 +1763,7 @@ print_displacement(char *buf, bfd_vma disp)
 	buf[j++] = '0';
 	buf[j++] = 'x';
 
-	bfd_sprintf_vma(NULL, tmp, (bfd_vma) val);
+	CA_SPRINTF_VMA(NULL, tmp, val);
 	for (i = 0; tmp[i] == '0'; i++)
 		continue;
 	if (tmp[i] == '\0')

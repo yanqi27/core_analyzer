@@ -54,7 +54,7 @@ static unsigned long g_cached_blocks_count;
 /*
  * Forward declaration
  */
-static bool gdb_symbol_prelude(void);
+static bool detect_tcmalloc(void);
 static int type_field_name2no(struct type *, const char *);
 static struct value *get_field_value(struct value *, const char *);
 static bool parse_config(void);
@@ -118,9 +118,7 @@ init_heap(void)
 	skip_npage = 0;
 	g_cached_blocks_count = 0;
 
-	/* Trigger gdb symbol resolution */
-	gdb_symbol_prelude();
-
+	/* Parse heap data */
 	if (parse_config() == false ||
 	    parse_pagemap() == false ||
 	    parse_thread_cache() == false ||
@@ -580,7 +578,7 @@ CoreAnalyzerHeapInterface sTcMallHeapManager = {
 };
 
 void register_tc_malloc() {
-	bool my_heap = gdb_symbol_prelude();
+	bool my_heap = detect_tcmalloc();
     return register_heap_manager("tc", &sTcMallHeapManager, my_heap);
 }
 /******************************************************************************
@@ -606,24 +604,16 @@ add_one_big_block(struct heap_block *blks, unsigned int num,
 }
 
 bool
-gdb_symbol_prelude(void)
+detect_tcmalloc(void)
 {
-	struct symbol *pagemap2;
-	struct symbol *pagemap3;
-
-	/*
-	 * template <int BITS>
-	 *     class TCMalloc_PageMap2, TCMalloc_PageMap3
-	 */
-	pagemap2 = CA_LOOKUP_SYMBOL(CA_TCMALLOC_PAGE_MAP2);
-	pagemap3 = CA_LOOKUP_SYMBOL(CA_TCMALLOC_PAGE_MAP3);
-	if (pagemap2 == NULL && pagemap3 == NULL) {
-		CA_PRINT_DBG("Failed to lookup type \"%s\" and \"%s\"\n",
-		    CA_TCMALLOC_PAGE_MAP2, CA_TCMALLOC_PAGE_MAP3);
-		return false;
+	for (objfile *objfile : current_program_space->objfiles ()) {
+		CA_PRINT_DBG("objfile: %s\n", objfile->original_name);
+		if (objfile->original_name && strstr(objfile->original_name, "libtcmalloc.so") != NULL) {
+			CA_PRINT_DBG("Found tcmalloc library: %s\n", objfile->original_name);
+			return true;
+		}
 	}
-
-	return true;
+	return false;
 }
 
 struct ca_span *
